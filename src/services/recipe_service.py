@@ -9,6 +9,12 @@ from services.item_service import (
     get_next_available_item_name,
     normalize_item_name,
 )
+from services.item_event_service import (
+    build_creation_summary,
+    build_resubmission_summary,
+    build_update_summary,
+    record_item_event,
+)
 from services.recipe_instruction_codec import encode_instruction_steps_to_text
 
 
@@ -20,14 +26,7 @@ class InvalidRecipePayloadError(ValueError):
     """Raised when the recipe payload is structurally invalid."""
 
 
-def create_recipe(payload: dict[str, Any]) -> int:
-    """
-    Validate and insert a recipe plus its component rows.
-
-    Returns the new recipe item_id.
-    """
-    initialize_database()
-
+def _validate_recipe_payload(payload: dict[str, Any]) -> dict[str, Any]:
     recipe_name = normalize_item_name(str(payload.get("item_name", "")))
     if not recipe_name:
         raise InvalidItemNameError("Recipe name cannot be empty or only whitespace.")
@@ -126,6 +125,44 @@ def create_recipe(payload: dict[str, Any]) -> int:
             }
         )
 
+    concept_classification = str(payload.get("concept_classification", "")).strip() or None
+    meal_classification = str(payload.get("meal_classification", "")).strip() or None
+    haccp_process_classification = (
+        str(payload.get("haccp_process_classification", "")).strip() or None
+    )
+
+    return {
+        "recipe_name": recipe_name,
+        "yield_quantity": yield_quantity,
+        "yield_unit": yield_unit,
+        "serving_size_quantity": serving_size_quantity,
+        "serving_size_unit": serving_size_unit,
+        "serving_count": serving_count,
+        "notes": notes,
+        "primary_cooking_method_code": primary_cooking_method_code,
+        "instructions_text": instructions_text,
+        "validated_ingredients": validated_ingredients,
+        "concept_classification": concept_classification,
+        "meal_classification": meal_classification,
+        "haccp_process_classification": haccp_process_classification,
+    }
+
+
+def create_recipe(
+    payload: dict[str, Any],
+    author_user_id: str = MOCK_RECIPE_AUTHOR_USER_ID,
+    author_display_name: str = MOCK_RECIPE_AUTHOR_DISPLAY_NAME,
+    author_role: str = "standard_user",
+) -> int:
+    """
+    Validate and insert a recipe plus its component rows.
+
+    Returns the new recipe item_id.
+    """
+    initialize_database()
+
+    validated = _validate_recipe_payload(payload)
+
     try:
         with get_connection() as conn:
             cursor = conn.cursor()
@@ -155,28 +192,28 @@ def create_recipe(payload: dict[str, Any]) -> int:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
                 """,
                 (
-                    recipe_name,
+                    validated["recipe_name"],
                     "recipe",
-                    MOCK_RECIPE_AUTHOR_USER_ID,
-                    MOCK_RECIPE_AUTHOR_DISPLAY_NAME,
-                    yield_quantity,
-                    yield_unit,
-                    serving_size_quantity,
-                    serving_size_unit,
-                    serving_count,
-                    instructions_text,
-                    primary_cooking_method_code,
+                    author_user_id,
+                    author_display_name,
+                    validated["yield_quantity"],
+                    validated["yield_unit"],
+                    validated["serving_size_quantity"],
+                    validated["serving_size_unit"],
+                    validated["serving_count"],
+                    validated["instructions_text"],
+                    validated["primary_cooking_method_code"],
                     "submitted",
-                    notes,
-                    None,
-                    None,
-                    None,
+                    validated["notes"],
+                    validated["concept_classification"],
+                    validated["meal_classification"],
+                    validated["haccp_process_classification"],
                 ),
             )
 
             recipe_item_id = cursor.lastrowid
 
-            for ingredient in validated_ingredients:
+            for ingredient in validated["validated_ingredients"]:
                 cursor.execute(
                     """
                     INSERT INTO recipe_component (
@@ -199,6 +236,16 @@ def create_recipe(payload: dict[str, Any]) -> int:
                     ),
                 )
 
+            record_item_event(
+                item_id=int(recipe_item_id),
+                event_type="item_created",
+                actor_user_id=author_user_id,
+                actor_display_name=author_display_name,
+                actor_role=author_role,
+                event_summary=build_creation_summary("recipe"),
+                conn=conn,
+            )
+
             conn.commit()
             return int(recipe_item_id)
 
@@ -206,7 +253,124 @@ def create_recipe(payload: dict[str, Any]) -> int:
         error_text = str(exc).lower()
 
         if "unique constraint failed: item.item_name" in error_text:
-            suggested_name = get_next_available_item_name(recipe_name)
+            suggested_name = get_next_available_item_name(validated["recipe_name"])
+            raise DuplicateItemNameError(
+                "Recipe name already exists. Please enter a unique recipe name.",
+                suggested_name=suggested_name,
+            ) from exc
+
+        raise
+
+
+def update_recipe(
+    item_id: int,
+    payload: dict[str, Any],
+    clear_resubmission_request: bool = False,
+    actor_user_id: str = MOCK_RECIPE_AUTHOR_USER_ID,
+    actor_display_name: str = MOCK_RECIPE_AUTHOR_DISPLAY_NAME,
+    actor_role: str = "standard_user",
+) -> None:
+    """Validate and update an existing recipe plus its component rows."""
+    initialize_database()
+
+    validated = _validate_recipe_payload(payload)
+
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE item
+                SET item_name = ?,
+                    yield_quantity = ?,
+                    yield_unit = ?,
+                    serving_size_quantity = ?,
+                    serving_size_unit = ?,
+                    serving_count = ?,
+                    instructions_text = ?,
+                    primary_cooking_method_code = ?,
+                    notes = ?,
+                    concept_classification = ?,
+                    meal_classification = ?,
+                    haccp_process_classification = ?,
+                    requires_resubmission = CASE
+                        WHEN ? THEN 0
+                        ELSE requires_resubmission
+                    END,
+                    updated_at = datetime('now')
+                WHERE item_id = ?
+                  AND item_type = 'recipe'
+                """,
+                (
+                    validated["recipe_name"],
+                    validated["yield_quantity"],
+                    validated["yield_unit"],
+                    validated["serving_size_quantity"],
+                    validated["serving_size_unit"],
+                    validated["serving_count"],
+                    validated["instructions_text"],
+                    validated["primary_cooking_method_code"],
+                    validated["notes"],
+                    validated["concept_classification"],
+                    validated["meal_classification"],
+                    validated["haccp_process_classification"],
+                    1 if clear_resubmission_request else 0,
+                    item_id,
+                ),
+            )
+
+            if cursor.rowcount == 0:
+                raise InvalidRecipePayloadError("Recipe not found.")
+
+            cursor.execute(
+                "DELETE FROM recipe_component WHERE parent_recipe_item_id = ?",
+                (item_id,),
+            )
+
+            for ingredient in validated["validated_ingredients"]:
+                cursor.execute(
+                    """
+                    INSERT INTO recipe_component (
+                        parent_recipe_item_id,
+                        component_item_id,
+                        component_quantity,
+                        component_unit,
+                        component_sequence,
+                        component_notes
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        item_id,
+                        ingredient["component_item_id"],
+                        ingredient["component_quantity"],
+                        ingredient["component_unit"],
+                        ingredient["component_sequence"],
+                        None,
+                    ),
+                )
+
+            record_item_event(
+                item_id=item_id,
+                event_type="item_resubmitted" if clear_resubmission_request else "item_updated",
+                actor_user_id=actor_user_id,
+                actor_display_name=actor_display_name,
+                actor_role=actor_role,
+                event_summary=(
+                    build_resubmission_summary()
+                    if clear_resubmission_request
+                    else build_update_summary("recipe")
+                ),
+                conn=conn,
+            )
+
+            conn.commit()
+
+    except sqlite3.IntegrityError as exc:
+        error_text = str(exc).lower()
+
+        if "unique constraint failed: item.item_name" in error_text:
+            suggested_name = get_next_available_item_name(validated["recipe_name"])
             raise DuplicateItemNameError(
                 "Recipe name already exists. Please enter a unique recipe name.",
                 suggested_name=suggested_name,

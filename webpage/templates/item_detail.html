@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+
+{% block title %}{{ item.item_name }}{% endblock %}
+
+{% block content %}
+    <div class="item-detail">
+        <header class="item-detail-header">
+            <div class="item-detail-header-main">
+                <p class="item-detail-kicker">{{ item.item_type_label }}</p>
+                <h2>{{ item.item_name }}</h2>
+                {% if can_edit_item_for_current_user %}
+                    <p><a class="page-action-link secondary" href="{{ url_for('edit_item', item_id=item.item_id) }}">Edit Item</a></p>
+                {% endif %}
+            </div>
+
+            <div class="item-detail-meta">
+                <p><strong>Item ID:</strong> {{ item.item_id }}</p>
+                <p><strong>Status:</strong> {{ item.status_label }}</p>
+                <p><strong>Author:</strong> {{ item.author_display_name }}</p>
+                {% if item.status == "live" and can_use_advanced_workflow %}
+                    <p>
+                        <a
+                            class="page-action-link secondary"
+                            href="{{ url_for('item_detail', item_id=item.item_id, workflow_view='default' if advanced_workflow_enabled else 'advanced') }}"
+                        >
+                            {% if advanced_workflow_enabled %}Hide Advanced Workflow{% else %}Show Advanced Workflow{% endif %}
+                        </a>
+                    </p>
+                {% endif %}
+            </div>
+        </header>
+
+        {% if item.requires_resubmission %}
+            <section class="item-detail-section">
+                <h3>Revision Requested</h3>
+                <p>This recipe has been returned to the submitter for updates and resubmission.</p>
+            </section>
+        {% endif %}
+
+        {% if item.item_type == "recipe" %}
+            <section class="item-detail-section">
+                <h3>Yield</h3>
+                <p><strong>Yield:</strong> {{ item.yield_quantity }} {{ item.yield_unit }}</p>
+
+                {% if item.serving_size_quantity and item.serving_size_unit %}
+                    <p><strong>Serving Size:</strong> {{ item.serving_size_quantity }} {{ item.serving_size_unit }}</p>
+                {% endif %}
+
+                {% if item.serving_count %}
+                    <p><strong>Serving Count:</strong> {{ item.serving_count }}</p>
+                {% endif %}
+            </section>
+
+            <section class="item-detail-section">
+                <h3>Preparation</h3>
+                <p>
+                    <strong>Primary Cooking Method:</strong>
+                    {{ item.primary_cooking_method_label }}
+                </p>
+            </section>
+
+            <section class="item-detail-section">
+                <h3>Ingredients</h3>
+
+                {% if item.ingredients %}
+                    <ul class="item-detail-list">
+                        {% for ingredient in item.ingredients %}
+                            <li>
+                                {{ ingredient.component_quantity }} {{ ingredient.component_unit }}
+                                - {{ ingredient.component_item_name }}
+                                <span class="muted">[{{ ingredient.component_item_type_label }} | ID {{ ingredient.component_item_id }}]</span>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p>No ingredients found.</p>
+                {% endif %}
+            </section>
+
+            <section class="item-detail-section">
+                <h3>Method Steps</h3>
+
+                {% if item.instruction_steps %}
+                    <ol class="item-detail-list">
+                        {% for step in item.instruction_steps %}
+                            <li>{{ step }}</li>
+                        {% endfor %}
+                    </ol>
+                {% else %}
+                    <p>No method steps found.</p>
+                {% endif %}
+            </section>
+        {% endif %}
+
+        {% if item.notes %}
+            <section class="item-detail-section">
+                <h3>Notes</h3>
+                <p>{{ item.notes }}</p>
+            </section>
+        {% endif %}
+
+        {% if item.item_type == "recipe" %}
+            <section class="item-detail-section">
+                <h3>Classification</h3>
+                <p><strong>Concept:</strong> {{ item.concept_classification or "-" }}</p>
+                <p><strong>Meal:</strong> {{ item.meal_classification or "-" }}</p>
+                <p><strong>HACCP Process:</strong> {{ item.haccp_process_classification or "-" }}</p>
+            </section>
+        {% endif %}
+
+        <section class="item-detail-section">
+            <h3>Audit</h3>
+            <p><strong>Created At:</strong> {{ item.created_at }}</p>
+            <p><strong>Updated At:</strong> {{ item.updated_at }}</p>
+        </section>
+
+        {% if show_workflow_panels %}
+            <section class="item-detail-section">
+                <h3>Workflow History</h3>
+
+                {% if item_events %}
+                    <div class="event-thread">
+                        {% for event in item_events %}
+                            <article class="event-card">
+                                <p class="event-card-meta">
+                                    <strong>{{ event.actor_display_name }}</strong> ({{ event.actor_role }})
+                                    - {{ event.created_at }}
+                                </p>
+                                <p>{{ event.event_summary }}</p>
+                                {% if event.reason_text %}
+                                    <p class="event-card-reason"><strong>Reason:</strong> {{ event.reason_text }}</p>
+                                {% endif %}
+                            </article>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p>No workflow history yet.</p>
+                {% endif %}
+            </section>
+
+            <section class="item-detail-section">
+                <h3>Workflow Notes</h3>
+
+                {% if item_notes %}
+                    <div class="note-thread">
+                        {% for note in item_notes %}
+                            <article class="note-card">
+                                <p class="note-card-meta">
+                                    <strong>{{ note.author_display_name }}</strong> ({{ note.author_role }})
+                                    - {{ note.created_at }}
+                                </p>
+                                <p>{{ note.note_text }}</p>
+                            </article>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p>No workflow notes yet.</p>
+                {% endif %}
+
+                {% if note_recipient %}
+                    <form method="post" action="{{ url_for('item_post_note', item_id=item.item_id) }}">
+                        <label for="note_text">Post note to {{ note_recipient.recipient_label }}</label>
+                        <textarea id="note_text" name="note_text" rows="4"></textarea>
+                        <button type="submit">Post Note</button>
+                    </form>
+                {% endif %}
+            </section>
+        {% endif %}
+
+        <p><a href="{{ url_for('index') }}">Back to Home</a></p>
+    </div>
+{% endblock %}

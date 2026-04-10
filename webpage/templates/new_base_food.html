@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 
-{% block title %}New Base Food{% endblock %}
+{% block title %}{% if form_mode == "edit" %}Edit Base Food{% else %}New Base Food{% endif %}{% endblock %}
 
 {% block content %}
-    <h2>New Base Food</h2>
+    <h2>{% if form_mode == "edit" %}Edit Base Food{% else %}New Base Food{% endif %}</h2>
 
     <form method="post">
         <label for="item_name">Item Name</label>
@@ -16,59 +16,11 @@
             minlength="1"
         >
 
-        <label for="yield_quantity">Yield Quantity</label>
-        <input
-            type="number"
-            step="0.01"
-            id="yield_quantity"
-            name="yield_quantity"
-            value="{{ form_data.yield_quantity }}"
-            required
-        >
-
-        <label for="yield_unit">Yield Unit</label>
-        <select id="yield_unit" name="yield_unit" required>
-            <option value="">-- Select Unit --</option>
-            {% for unit in approved_units %}
-                <option value="{{ unit }}" {% if form_data.yield_unit == unit %}selected{% endif %}>
-                    {{ unit }}
-                </option>
-            {% endfor %}
-        </select>
-
-        <label for="serving_size_quantity">Serving Size Quantity (optional)</label>
-        <input
-            type="number"
-            step="0.01"
-            id="serving_size_quantity"
-            name="serving_size_quantity"
-            value="{{ form_data.serving_size_quantity }}"
-        >
-
-        <label for="serving_size_unit">Serving Size Unit (optional)</label>
-        <select id="serving_size_unit" name="serving_size_unit">
-            <option value="">-- Select Unit --</option>
-            {% for unit in approved_units %}
-                <option value="{{ unit }}" {% if form_data.serving_size_unit == unit %}selected{% endif %}>
-                    {{ unit }}
-                </option>
-            {% endfor %}
-        </select>
-
-        <label for="serving_count">Serving Count (optional)</label>
-        <input
-            type="number"
-            step="0.01"
-            id="serving_count"
-            name="serving_count"
-            value="{{ form_data.serving_count }}"
-        >
-
         <label for="notes">Notes (optional)</label>
         <textarea id="notes" name="notes" rows="4">{{ form_data.notes }}</textarea>
 
-        <button type="submit">Submit Base Food</button>
+        <button type="submit">{% if form_mode == "edit" %}Save Base Food{% else %}Submit Base Food{% endif %}</button>
     </form>
 
-    <p><a href="{{ url_for('index') }}">Back to Home</a></p>
+    <p><a href="{% if form_mode == 'edit' %}{{ url_for('item_detail', item_id=item_id) }}{% else %}{{ url_for('index') }}{% endif %}">{% if form_mode == "edit" %}Back to Item Detail{% else %}Back to Home{% endif %}</a></p>
 {% endblock %}

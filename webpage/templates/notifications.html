@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}Notifications{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <div>
+            <h2>Notifications</h2>
+            <p class="page-subtitle">Open workflow notes for {{ current_user.display_name }}.</p>
+        </div>
+    </div>
+
+    <section class="my-recipes-list">
+        {% if notification_rows %}
+            {% for notification in notification_rows %}
+                <article class="recipe-card">
+                    <div class="recipe-card-main">
+                        <div class="recipe-card-header">
+                            <div>
+                                <p class="item-detail-kicker">{{ notification.item_type }}</p>
+                                <h3>
+                                    <a href="{{ url_for('item_detail', item_id=notification.item_id) }}">
+                                        {{ notification.item_name }}
+                                    </a>
+                                </h3>
+                            </div>
+                        </div>
+
+                        <p class="recipe-card-meta">
+                            From {{ notification.actor_display_name }} ({{ notification.actor_role }})
+                        </p>
+                        <p>{{ notification.message_text }}</p>
+                        <p class="recipe-card-dates">Posted: {{ notification.created_at }}</p>
+                    </div>
+                </article>
+            {% endfor %}
+        {% else %}
+            <div class="empty-state">
+                <h3>No open notifications</h3>
+                <p>You are all caught up.</p>
+            </div>
+        {% endif %}
+    </section>
+{% endblock %}

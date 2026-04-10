@@ -2,6 +2,7 @@ import re
 import sqlite3
 
 from db import get_connection, initialize_database
+from services.item_event_service import build_creation_summary, build_update_summary, record_item_event
 
 
 SYSTEM_BASE_FOOD_USER_ID = "system_base_food"
@@ -81,14 +82,17 @@ def get_next_available_item_name(base_name: str) -> str:
 
 def create_base_food(
     item_name: str,
-    yield_quantity: float,
-    yield_unit: str,
+    yield_quantity: float | None = None,
+    yield_unit: str | None = None,
     serving_size_quantity: float | None = None,
     serving_size_unit: str | None = None,
     serving_count: float | None = None,
     notes: str | None = None,
-) -> None:
-    """Insert a new base food item."""
+    actor_user_id: str = SYSTEM_BASE_FOOD_USER_ID,
+    actor_display_name: str = SYSTEM_BASE_FOOD_DISPLAY_NAME,
+    actor_role: str = "standard_user",
+) -> int:
+    """Insert a new base food item and return its item_id."""
     initialize_database()
 
     item_name = normalize_item_name(item_name)
@@ -142,6 +146,81 @@ def create_base_food(
                     None,
                     None,
                 ),
+            )
+
+            item_id = int(cursor.lastrowid)
+            record_item_event(
+                item_id=item_id,
+                event_type="item_created",
+                actor_user_id=actor_user_id,
+                actor_display_name=actor_display_name,
+                actor_role=actor_role,
+                event_summary=build_creation_summary("base_food"),
+                conn=conn,
+            )
+
+            conn.commit()
+            return item_id
+
+    except sqlite3.IntegrityError as exc:
+        error_text = str(exc).lower()
+
+        if "unique constraint failed: item.item_name" in error_text:
+            suggested_name = get_next_available_item_name(item_name)
+            raise DuplicateItemNameError(
+                "Item name already exists. Please enter a unique item name.",
+                suggested_name=suggested_name,
+            ) from exc
+
+        raise
+
+
+def update_base_food(
+    item_id: int,
+    item_name: str,
+    notes: str | None = None,
+    actor_user_id: str = SYSTEM_BASE_FOOD_USER_ID,
+    actor_display_name: str = SYSTEM_BASE_FOOD_DISPLAY_NAME,
+    actor_role: str = "standard_user",
+) -> None:
+    """Update an existing base food item."""
+    initialize_database()
+
+    item_name = normalize_item_name(item_name)
+
+    if not item_name:
+        raise InvalidItemNameError("Item name cannot be empty or only whitespace.")
+
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE item
+                SET item_name = ?,
+                    notes = ?,
+                    updated_at = datetime('now')
+                WHERE item_id = ?
+                  AND item_type = 'base_food'
+                """,
+                (
+                    item_name,
+                    notes,
+                    item_id,
+                ),
+            )
+
+            if cursor.rowcount == 0:
+                raise InvalidItemNameError("Base food not found.")
+
+            record_item_event(
+                item_id=item_id,
+                event_type="item_updated",
+                actor_user_id=actor_user_id,
+                actor_display_name=actor_display_name,
+                actor_role=actor_role,
+                event_summary=build_update_summary("base_food"),
+                conn=conn,
             )
 
             conn.commit()

@@ -5,9 +5,38 @@ body {
 }
 
 .container {
-    max-width: 700px;
+    max-width: 1200px;
     margin: 2rem auto;
     padding: 1rem;
+}
+
+.site-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: start;
+    margin-bottom: 1.5rem;
+}
+
+.site-header h1 {
+    margin-bottom: 0.35rem;
+}
+
+.site-session {
+    margin-top: 0;
+    color: #666;
+}
+
+.site-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.site-nav a {
+    color: #2563eb;
+    text-decoration: none;
+    font-weight: 600;
 }
 
 form {
@@ -63,6 +92,43 @@ button {
 
 .message.error {
     background: #ffebee;
+}
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: start;
+    margin-bottom: 1rem;
+}
+
+.page-header h2 {
+    margin-bottom: 0.35rem;
+}
+
+.page-subtitle {
+    margin-top: 0;
+    color: #666;
+}
+
+.page-action-link {
+    display: inline-block;
+    border: 1px solid #2563eb;
+    background: #2563eb;
+    color: #fff;
+    text-decoration: none;
+    padding: 0.6rem 0.9rem;
+    border-radius: 6px;
+}
+
+.page-action-link.secondary {
+    background: #fff;
+    color: #2563eb;
+}
+
+.text-link {
+    color: #2563eb;
+    text-decoration: none;
 }
 
 .recipe-editor {
@@ -224,7 +290,291 @@ button:disabled {
     background: #f5f8ff;
 }
 
+.item-detail {
+    display: grid;
+    gap: 1.25rem;
+}
+
+.item-detail-header,
+.item-detail-section {
+    border: 1px solid #ddd;
+    background: #fff;
+    padding: 1rem;
+}
+
+.item-detail-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: end;
+}
+
+.item-detail-header h2,
+.item-detail-section h3 {
+    margin-top: 0;
+}
+
+.item-detail-header-main h2 {
+    margin-bottom: 0;
+}
+
+.item-detail-kicker {
+    margin: 0 0 0.4rem;
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #6b7280;
+}
+
+.item-detail-meta {
+    text-align: right;
+}
+
+.item-detail-meta p {
+    margin: 0.2rem 0;
+}
+
+.item-detail-list {
+    padding-left: 1.5rem;
+}
+
+.my-recipes-toolbar,
+.recipe-card,
+.empty-state,
+.auth-panel,
+.auth-session-card {
+    border: 1px solid #ddd;
+    background: #fff;
+    padding: 1rem;
+}
+
+.my-recipes-list {
+    display: grid;
+    gap: 1rem;
+}
+
+.filter-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1rem;
+    align-items: end;
+    margin-bottom: 1rem;
+}
+
+.filter-row {
+    display: grid;
+    gap: 0.35rem;
+}
+
+.status-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.status-chip,
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 0.25rem 0.7rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.status-chip-submitted,
+.status-badge-submitted {
+    background: #fff7e6;
+    color: #9a6700;
+}
+
+.status-chip-reviewed,
+.status-badge-reviewed {
+    background: #e8f1ff;
+    color: #1d4ed8;
+}
+
+.status-chip-approved,
+.status-badge-approved {
+    background: #ecfdf3;
+    color: #15803d;
+}
+
+.status-chip-analyzed,
+.status-badge-analyzed {
+    background: #f3e8ff;
+    color: #7c3aed;
+}
+
+.status-chip-live,
+.status-badge-live {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.status-chip-rejected,
+.status-badge-rejected {
+    background: #fff1f2;
+    color: #be123c;
+}
+
+.recipe-card {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: start;
+}
+
+.recipe-card-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: start;
+}
+
+.recipe-card-header h3,
+.empty-state h3 {
+    margin-top: 0;
+}
+
+.recipe-card-header a {
+    color: inherit;
+    text-decoration: none;
+}
+
+.recipe-card-header a:hover {
+    text-decoration: underline;
+}
+
+.recipe-card-meta,
+.recipe-card-dates {
+    margin-bottom: 0;
+    color: #666;
+}
+
+.workflow-card {
+    align-items: stretch;
+}
+
+.workflow-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-width: 220px;
+}
+
+.workflow-actions form {
+    display: grid;
+    gap: 0.4rem;
+}
+
+.workflow-button {
+    width: 100%;
+    border: 1px solid transparent;
+    border-radius: 6px;
+}
+
+.workflow-button-primary {
+    background: #2563eb;
+    color: #fff;
+}
+
+.workflow-button-secondary {
+    background: #fff;
+    color: #2563eb;
+    border-color: #2563eb;
+}
+
+.workflow-button-danger {
+    background: #fff1f2;
+    color: #be123c;
+    border-color: #fda4af;
+}
+
+.workflow-note-input {
+    width: 100%;
+    box-sizing: border-box;
+    resize: vertical;
+}
+
+.workflow-reason-label {
+    display: grid;
+    gap: 0.25rem;
+    font-size: 0.92rem;
+    color: #444;
+}
+
+.workflow-reason-input {
+    width: 100%;
+    box-sizing: border-box;
+    resize: vertical;
+}
+
+.note-thread {
+    display: grid;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.event-thread {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.note-card {
+    border: 1px solid #ddd;
+    background: #fafafa;
+    padding: 0.85rem;
+}
+
+.event-card {
+    border: 1px solid #ddd;
+    background: #f8fafc;
+    padding: 0.85rem;
+}
+
+.note-card-meta {
+    margin-top: 0;
+    color: #666;
+}
+
+.event-card-meta,
+.event-card-reason {
+    margin-top: 0;
+    color: #666;
+}
+
+.auth-shell-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.auth-panel h3,
+.auth-session-card h3 {
+    margin-top: 0;
+}
+
+.auth-panel-copy {
+    color: #666;
+    min-height: 3rem;
+}
+
+.muted {
+    color: #666;
+    font-size: 0.92em;
+}
+
 @media (max-width: 900px) {
+    .site-header,
+    .page-header,
+    .recipe-card,
+    .recipe-card-header {
+        flex-direction: column;
+    }
+
     .recipe-editor {
         grid-template-columns: 1fr;
     }
@@ -234,6 +584,19 @@ button:disabled {
     }
 
     .ingredient-row {
+        grid-template-columns: 1fr;
+    }
+
+    .item-detail-header {
+        flex-direction: column;
+        align-items: start;
+    }
+
+    .item-detail-meta {
+        text-align: left;
+    }
+
+    .auth-shell-grid {
         grid-template-columns: 1fr;
     }
 }

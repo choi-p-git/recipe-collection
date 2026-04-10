@@ -1,101 +1,117 @@
 Recipe Collection System
 Project Summary
 
-The Recipe Collection System is a modular, database-driven application designed to standardize, store, and manage recipes and food items within a structured environment. It is built to support both operational kitchen workflows and scalable system integration with menu planning and production tools.
+The Recipe Collection System is a modular, database-driven application for managing recipes and base food submissions in a structured environment. It is designed as an MVP foundation for future menu planning, production, scaling, and nutrition-analysis workflows.
 
-The system emphasizes:
+Current MVP behavior
 
-Structured recipe data (ingredients, yields, classifications)
-Data integrity through validation and controlled inputs
-Expandability for future features such as querying, rendering, and scaling
+- Recipes are structured records with yield, optional serving data, ingredients, methods, and a primary cooking method.
+- Base foods are lightweight approval submissions with only an item name and optional notes.
+- A shared item detail page supports both recipes and base foods.
+- Mock auth/login is session-backed for MVP development and role testing.
+- Reviewer, dietitian, and admin workflow portals support status movement across the MVP lifecycle.
+- Workflow history, note threads, and notifications are active across the review lifecycle.
 
-This project is being developed as part of a larger ecosystem intended to integrate with forecasting, menu building, and operational tooling.
+System priorities
 
-Project Goals
-Core Objectives
-Establish a normalized database schema for recipes and ingredients
-Build a robust recipe creation workflow with validation and structured input
-Enable consistent and scalable data entry across all recipe types
-Prepare the system for future querying, rendering, and scaling operations
-Functional Targets
-Create and store recipes with:
-General metadata (name, author, classifications)
-Yield and serving structure
-Ingredient relationships (future expansion)
-Instruction encoding/decoding (in progress)
-Implement frontend validation logic to ensure completeness before submission
-Provide a foundation for:
-Recipe querying/search
-Recipe rendering (user-facing display)
-Integration with external systems (e.g., menu builders)
-Current Project State (Latest Push)
-Completed Components
-1. Database Layer
-Database initialization and connection handling implemented
-Core item table structure established
-Insert operations functional and tested
-2. GUI Framework
-Multi-page recipe creation interface implemented
-Page navigation system functional (conditional access based on validation)
-Submit button gating based on completion of required fields
-3. Validation System
-Per-page validation logic implemented
-Visual feedback for incomplete sections (warning indicators)
-Submission enabled only when all required data is valid
-4. Ingredient Search (Debounced)
-Database-backed ingredient search implemented
-Debounce logic active (currently tuned, future target ~150ms)
-Planned enhancements:
-Minimum character threshold (e.g., ≥2 chars)
-Result limiting (e.g., top 15)
-Scroll/pagination for additional results
-5. Recipe Creation Flow
-Successful end-to-end creation of recipe records
-Database insert confirmed with generated recipe ID
-Current behavior: success popup displayed after submission
-In Progress
-Instruction Encoding / Decoding Layer
-Next major component to be implemented
-Will define how recipe instructions are:
-Stored in the database
-Parsed and reconstructed for display
-Critical for enabling future rendering and scaling logic
-Not Yet Started
-Recipe Query Module
-No query/search module implemented yet
-Planned capabilities:
-Search recipes by name, classification, or ingredients
-Retrieve and display full recipe data
-Serve as backend for rendering layer
-Recipe Rendering Page
-Post-submit routing not implemented yet
-Planned behavior:
-Redirect to a dedicated recipe view page
-Display recipe with:
-Author
-Recipe ID
-Structured ingredients and instructions
-Known Design Decisions / Future Direction
-Replace submission popup with post-submit page routing
-Optimize debounce timing (~150ms target) to balance responsiveness vs load
-Implement result pagination for ingredient search
-Build modular architecture to support:
-API integration
-Scaling logic
-External system interoperability
-Next Step
+- Structured recipe data where structure matters
+- Minimal friction for base food submission and approval
+- Data integrity through validation and controlled inputs
+- Expandability for future scaling, nutrition analysis, and external integration
 
-Implement Recipe Instruction Encode/Decode Layer
+Current implemented features
 
-This will:
+1. Database layer
+SQLite migrations stored in `database/migrations/`
+Latest full schema snapshot stored in `database/schema.sql`
+Unified `item` table plus `recipe_component` table
+Database initialization and pending migration application handled by `src/db.py`
 
-Define the internal structure of recipe instructions
-Enable consistent storage and retrieval
-Serve as the bridge to recipe rendering and scaling features
-Notes
-Current version represents a functional MVP foundation
-Focus has been on data integrity, structure, and workflow correctness
-Future iterations will prioritize:
-Usability (UI/UX improvements)
-Performance optimization
-Feature expansion (querying, rendering, scaling)
+2. Mock auth shell
+Session-backed mock login page
+Existing account switcher
+Direct mock user creation with role selection
+Debug override panel for account, role, and display name testing
+
+3. Base food workflow
+Minimal base food submission form
+Whitespace normalization and case-insensitive duplicate protection
+Duplicate-name suggestion flow
+Successful submit redirects to shared item detail page
+
+4. Recipe workflow
+Single-page multi-section recipe editor
+Client-side validation with section warnings
+Database-backed ingredient search
+Recipe submit flow inserts item row and component rows
+Recipe authorship follows the active mock session user
+Instruction codec stores ordered method steps as numbered text
+
+5. Item viewing
+Shared item detail route at `/items/<item_id>`
+Legacy recipe route redirects to the shared item detail route
+Recipe pages render yield, ingredients, methods, cooking method, and classifications
+Base food pages render only relevant information
+
+6. My Recipes and testing
+`/my-recipes` is scoped to the active mock session user and supports filtering/sorting
+Automated tests cover schema initialization, services, policies, queries, routes, workflow, notifications, and instruction codec behavior
+
+7. Workflow tooling
+Reviewer portal for `submitted`, `reviewed`, and `analyzed` items
+Dietitian portal for `approved` items
+Admin workflow portal with full visibility and transition access
+Official terminal `rejected` workflow status
+Returned-to-submitter recipe flow with resubmission unlock
+Workflow note threads hidden on `live` item detail pages
+Workflow history timeline with reason capture on send-back and reject actions
+Automatic workflow-action notifications for affected users/roles even without a note
+
+Database migration/versioning note
+
+- Add future schema changes as a new numbered SQL file in `database/migrations/`
+- Keep migration filenames ordered, for example `0002_add_workflow_event.sql`
+- `src/db.py` applies pending migrations and records them in the `schema_migration` table
+- `database/schema.sql` remains the latest full snapshot for rebuild/reference use
+- Existing local databases without migration history are stamped forward the first time the migration runner sees them
+
+MVP validation checklist
+
+1. Run `.\.venv\Scripts\python.exe .\src\db.py`
+2. Run `.\.venv\Scripts\python.exe -m pytest -q`
+3. Verify base food create, detail view, and reviewer/dietitian/admin workflow movement
+4. Verify recipe create, edit, return-to-submitter, resubmit, analyze, and live flow
+5. Verify notes, automatic workflow notifications, and notification clearing on item view
+6. Verify live item default view hides workflow notes/history, with advanced toggle for privileged roles
+
+Schema Change Checklist
+
+1. Add a new numbered SQL migration in `database/migrations/`
+2. Put the schema/data change in that migration file
+3. Update `database/schema.sql` so the snapshot matches the latest DB shape
+4. Update app code, queries, services, templates, and tests as needed
+5. Run `.\.venv\Scripts\python.exe .\src\db.py`
+6. Run `.\.venv\Scripts\python.exe -m pytest -q`
+7. Manually verify the affected workflow or UI behavior
+
+Patch Notes
+
+## v0.0.1
+
+Initial MVP proof-of-concept release.
+
+Highlights
+
+- Added unified item support for both `recipe` and `base_food` records
+- Added shared item detail pages with recipe-specific and base-food-specific rendering
+- Added base food submission flow with duplicate-name handling and minimal approval-oriented fields
+- Added multi-section recipe editor with validation, ingredient search, and structured submit/edit flow
+- Added mock auth shell with account switching, role selection, and debug override support
+- Added `My Recipes` view with filtering and sorting for the active mock user
+- Added reviewer, dietitian, and admin workflow portals
+- Added returned-to-submitter recipe flow with resubmission unlock for the original author
+- Added workflow note threads, workflow history timeline, rationale capture for send-back/reject actions, and automatic notifications for workflow actions
+- Added live-item advanced workflow toggle for privileged roles while keeping default live pages clean
+- Added lightweight forward-only SQLite migration/versioning support through `database/migrations/`
+- Added centralized role/policy service for workflow and item-level permissions
+- Expanded automated validation coverage across schema, services, policies, queries, routes, workflow, notifications, and instruction codec behavior

@@ -1,52 +1,56 @@
 {% extends "base.html" %}
 
-{% block title %}New Recipe{% endblock %}
+{% block title %}{% if editor_mode == "edit" %}Edit Recipe{% else %}New Recipe{% endif %}{% endblock %}
 
 {% block content %}
-    <h2>New Recipe</h2>
+    <h2>{% if editor_mode == "edit" %}Edit Recipe{% else %}New Recipe{% endif %}</h2>
 
     <div class="recipe-editor">
         <aside class="recipe-editor-nav">
             <button type="button" class="editor-nav-button active" data-section="general">
                 General Information
-                <span class="section-warning is-hidden" id="warning-general">⚠</span>
+                <span class="section-warning is-hidden" id="warning-general">&#9888;</span>
             </button>
 
             <button type="button" class="editor-nav-button" data-section="ingredients">
                 Ingredients
-                <span class="section-warning is-hidden" id="warning-ingredients">⚠</span>
+                <span class="section-warning is-hidden" id="warning-ingredients">&#9888;</span>
             </button>
 
             <button type="button" class="editor-nav-button" data-section="methods">
                 Methods
-                <span class="section-warning is-hidden" id="warning-methods">⚠</span>
+                <span class="section-warning is-hidden" id="warning-methods">&#9888;</span>
             </button>
 
             <button type="button" class="editor-nav-button" data-section="classification">
                 Classification
-                <span class="section-warning is-hidden" id="warning-classification">⚠</span>
+                <span class="section-warning is-hidden" id="warning-classification">&#9888;</span>
             </button>
 
             <button type="button" class="editor-nav-button" data-section="finish">
                 Finish
-                <span class="section-warning is-hidden" id="warning-finish">⚠</span>
+                <span class="section-warning is-hidden" id="warning-finish">&#9888;</span>
             </button>
         </aside>
 
         <section class="recipe-editor-content">
-            <form id="recipe-editor-form">
+            <form
+                id="recipe-editor-form"
+                data-editor-mode="{{ editor_mode or 'create' }}"
+                data-submit-url="{{ submit_url or url_for('api_create_recipe') }}"
+            >
                 <div class="editor-section active" id="section-general">
                     <h3>General Information</h3>
 
                     <div class="form-section">
                         <div class="form-row">
                             <label for="recipe_item_name">Recipe Name</label>
-                            <input type="text" id="recipe_item_name" name="recipe_item_name">
+                            <input type="text" id="recipe_item_name" name="recipe_item_name" value="{{ recipe.item_name if recipe else '' }}">
                         </div>
 
                         <div class="form-row">
                             <label for="recipe_yield_quantity">Yield Quantity</label>
-                            <input type="number" step="0.01" id="recipe_yield_quantity" name="recipe_yield_quantity">
+                            <input type="number" step="0.01" id="recipe_yield_quantity" name="recipe_yield_quantity" value="{{ recipe.yield_quantity if recipe and recipe.yield_quantity is not none else '' }}">
                         </div>
 
                         <div class="form-row">
@@ -54,14 +58,14 @@
                             <select id="recipe_yield_unit" name="recipe_yield_unit">
                                 <option value="">-- Select Unit --</option>
                                 {% for unit in approved_units %}
-                                    <option value="{{ unit }}">{{ unit }}</option>
+                                    <option value="{{ unit }}" {% if recipe and recipe.yield_unit == unit %}selected{% endif %}>{{ unit }}</option>
                                 {% endfor %}
                             </select>
                         </div>
 
                         <div class="form-row">
                             <label for="recipe_serving_size_quantity">Serving Size Quantity (optional)</label>
-                            <input type="number" step="0.01" id="recipe_serving_size_quantity" name="recipe_serving_size_quantity">
+                            <input type="number" step="0.01" id="recipe_serving_size_quantity" name="recipe_serving_size_quantity" value="{{ recipe.serving_size_quantity if recipe and recipe.serving_size_quantity is not none else '' }}">
                         </div>
 
                         <div class="form-row">
@@ -69,19 +73,19 @@
                             <select id="recipe_serving_size_unit" name="recipe_serving_size_unit">
                                 <option value="">-- Select Unit --</option>
                                 {% for unit in approved_units %}
-                                    <option value="{{ unit }}">{{ unit }}</option>
+                                    <option value="{{ unit }}" {% if recipe and recipe.serving_size_unit == unit %}selected{% endif %}>{{ unit }}</option>
                                 {% endfor %}
                             </select>
                         </div>
 
                         <div class="form-row">
                             <label for="recipe_serving_count">Serving Count (optional)</label>
-                            <input type="number" step="0.01" id="recipe_serving_count" name="recipe_serving_count">
+                            <input type="number" step="0.01" id="recipe_serving_count" name="recipe_serving_count" value="{{ recipe.serving_count if recipe and recipe.serving_count is not none else '' }}">
                         </div>
 
                         <div class="form-row form-row-textarea">
                             <label for="recipe_notes">Notes (optional)</label>
-                            <textarea id="recipe_notes" name="recipe_notes" rows="4"></textarea>
+                            <textarea id="recipe_notes" name="recipe_notes" rows="4">{{ recipe.notes if recipe and recipe.notes else '' }}</textarea>
                         </div>
                     </div>
                 </div>
@@ -92,28 +96,55 @@
                     <button type="button" id="add-ingredient-button">Add Ingredient</button>
 
                     <div id="ingredient-list">
-                        <div class="ingredient-row">
-                            <div class="ingredient-search-block">
-                                <input type="hidden" class="ingredient-item-id">
-                                <input type="text" placeholder="Search item by name or ID" class="ingredient-search">
-                                <div class="ingredient-search-results hidden"></div>
+                        {% if recipe and recipe.ingredients %}
+                            {% for ingredient in recipe.ingredients %}
+                                <div class="ingredient-row">
+                                    <div class="ingredient-search-block">
+                                        <input type="hidden" class="ingredient-item-id" value="{{ ingredient.component_item_id }}">
+                                        <input type="text" placeholder="Search item by name or ID" class="ingredient-search" value="{{ ingredient.component_item_name }}">
+                                        <div class="ingredient-search-results hidden"></div>
+                                    </div>
+
+                                    <input type="number" step="0.01" placeholder="Qty" class="ingredient-quantity" value="{{ ingredient.component_quantity }}">
+
+                                    <select class="ingredient-unit">
+                                        <option value="">-- Unit --</option>
+                                        {% for unit in approved_units %}
+                                            <option value="{{ unit }}" {% if ingredient.component_unit == unit %}selected{% endif %}>{{ unit }}</option>
+                                        {% endfor %}
+                                    </select>
+
+                                    <div class="row-actions">
+                                        <button type="button" class="move-up" aria-label="Move Up">&#8593;</button>
+                                        <button type="button" class="move-down" aria-label="Move Down">&#8595;</button>
+                                        <button type="button" class="delete-row">X</button>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="ingredient-row">
+                                <div class="ingredient-search-block">
+                                    <input type="hidden" class="ingredient-item-id">
+                                    <input type="text" placeholder="Search item by name or ID" class="ingredient-search">
+                                    <div class="ingredient-search-results hidden"></div>
+                                </div>
+
+                                <input type="number" step="0.01" placeholder="Qty" class="ingredient-quantity">
+
+                                <select class="ingredient-unit">
+                                    <option value="">-- Unit --</option>
+                                    {% for unit in approved_units %}
+                                        <option value="{{ unit }}">{{ unit }}</option>
+                                    {% endfor %}
+                                </select>
+
+                                <div class="row-actions">
+                                    <button type="button" class="move-up" aria-label="Move Up">&#8593;</button>
+                                    <button type="button" class="move-down" aria-label="Move Down">&#8595;</button>
+                                    <button type="button" class="delete-row">X</button>
+                                </div>
                             </div>
-
-                            <input type="number" step="0.01" placeholder="Qty" class="ingredient-quantity">
-
-                            <select class="ingredient-unit">
-                                <option value="">-- Unit --</option>
-                                {% for unit in approved_units %}
-                                    <option value="{{ unit }}">{{ unit }}</option>
-                                {% endfor %}
-                            </select>
-
-                            <div class="row-actions">
-                                <button type="button" class="move-up">↑</button>
-                                <button type="button" class="move-down">↓</button>
-                                <button type="button" class="delete-row">X</button>
-                            </div>
-                        </div>
+                        {% endif %}
                     </div>
                 </div>
 
@@ -126,7 +157,7 @@
                             <select id="recipe_primary_cooking_method" name="recipe_primary_cooking_method">
                                 <option value="">-- Select Cooking Method --</option>
                                 {% for code, label in approved_cooking_methods %}
-                                    <option value="{{ code }}">{{ label }}</option>
+                                    <option value="{{ code }}" {% if recipe and recipe.primary_cooking_method_code == code %}selected{% endif %}>{{ label }}</option>
                                 {% endfor %}
                             </select>
                         </div>
@@ -135,15 +166,29 @@
                     <button type="button" id="add-method-step-button">Add Step</button>
 
                     <div id="method-step-list">
-                        <div class="method-step-row">
-                            <textarea rows="4" placeholder="Enter recipe step" class="method-step-text"></textarea>
+                        {% if recipe and recipe.instruction_steps %}
+                            {% for step in recipe.instruction_steps %}
+                                <div class="method-step-row">
+                                    <textarea rows="4" placeholder="Enter recipe step" class="method-step-text">{{ step }}</textarea>
 
-                            <div class="row-actions">
-                                <button type="button" class="move-up">↑</button>
-                                <button type="button" class="move-down">↓</button>
-                                <button type="button" class="delete-row">X</button>
+                                    <div class="row-actions">
+                                        <button type="button" class="move-up" aria-label="Move Up">&#8593;</button>
+                                        <button type="button" class="move-down" aria-label="Move Down">&#8595;</button>
+                                        <button type="button" class="delete-row">X</button>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="method-step-row">
+                                <textarea rows="4" placeholder="Enter recipe step" class="method-step-text"></textarea>
+
+                                <div class="row-actions">
+                                    <button type="button" class="move-up" aria-label="Move Up">&#8593;</button>
+                                    <button type="button" class="move-down" aria-label="Move Down">&#8595;</button>
+                                    <button type="button" class="delete-row">X</button>
+                                </div>
                             </div>
-                        </div>
+                        {% endif %}
                     </div>
                 </div>
 
@@ -155,17 +200,17 @@
                     <div class="form-section">
                         <div class="form-row">
                             <label for="concept_classification">Concept</label>
-                            <input type="text" id="concept_classification" name="concept_classification">
+                            <input type="text" id="concept_classification" name="concept_classification" value="{{ recipe.concept_classification if recipe and recipe.concept_classification else '' }}">
                         </div>
 
                         <div class="form-row">
                             <label for="meal_classification">Meal</label>
-                            <input type="text" id="meal_classification" name="meal_classification">
+                            <input type="text" id="meal_classification" name="meal_classification" value="{{ recipe.meal_classification if recipe and recipe.meal_classification else '' }}">
                         </div>
 
                         <div class="form-row">
                             <label for="haccp_process_classification">HACCP Process</label>
-                            <input type="text" id="haccp_process_classification" name="haccp_process_classification">
+                            <input type="text" id="haccp_process_classification" name="haccp_process_classification" value="{{ recipe.haccp_process_classification if recipe and recipe.haccp_process_classification else '' }}">
                         </div>
                     </div>
                 </div>
@@ -173,7 +218,7 @@
                 <div class="editor-section" id="section-finish">
                     <h3>Finish</h3>
 
-                    <p>Final validation and submit will be added next.</p>
+                    <p>{% if editor_mode == "edit" %}Review the updated recipe and save changes when ready.{% else %}Final validation and submit will be added next.{% endif %}</p>
 
                     <ul class="finish-check-list">
                         <li id="finish-check-general">General Information: Pending</li>
@@ -182,13 +227,17 @@
                         <li id="finish-check-classification">Classification: Optional</li>
                     </ul>
 
-                    <button type="button" id="submit-recipe-button" disabled>Submit Recipe</button>
+                    <button type="button" id="submit-recipe-button" disabled>{% if editor_mode == "edit" %}Save Recipe{% else %}Submit Recipe{% endif %}</button>
                 </div>
             </form>
         </section>
     </div>
 
-    <p><a href="{{ url_for('index') }}">Back to Home</a></p>
+    <p>
+        <a href="{% if editor_mode == 'edit' %}{{ url_for('item_detail', item_id=recipe.item_id) }}{% else %}{{ url_for('index') }}{% endif %}">
+            {% if editor_mode == "edit" %}Back to Item Detail{% else %}Back to Home{% endif %}
+        </a>
+    </p>
 
     <script src="{{ url_for('static', filename='recipe_editor.js') }}"></script>
 {% endblock %}

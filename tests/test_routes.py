@@ -1,0 +1,1166 @@
+import sqlite3
+
+from services.item_service import create_base_food
+
+
+def test_index_and_form_routes_render(app_client):
+    assert app_client.get("/").status_code == 200
+    base_food_page = app_client.get("/new/base-food")
+    assert base_food_page.status_code == 200
+    assert "Yield Quantity" not in base_food_page.get_data(as_text=True)
+    assert app_client.get("/new/recipe").status_code == 200
+    assert app_client.get("/login").status_code == 200
+
+
+def test_new_base_food_post_redirects_to_item_detail(app_client):
+    response = app_client.post(
+        "/new/base-food",
+        data={
+            "item_name": "Honey Ham",
+            "notes": "Thin sliced.",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert "/items/" in response.headers["Location"]
+
+
+def test_item_detail_route_renders_base_food(app_client):
+    item_id = create_base_food(item_name="Shredded Carrots")
+
+    response = app_client.get(f"/items/{item_id}")
+
+    page = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert "Base Food" in page
+    assert "Shredded Carrots" in page
+    assert "Yield" not in page
+    assert "Ingredients" not in page
+    assert "Method Steps" not in page
+    assert "Classification" not in page
+    assert "Workflow History" in page
+    assert "Base Food created." in page
+
+
+def test_item_detail_route_renders_recipe(app_client):
+    dressing_id = create_base_food(item_name="Salad Dressing")
+
+    create_response = app_client.post(
+        "/api/recipes",
+        json={
+            "item_name": "Dressed Greens",
+            "yield_quantity": 2,
+            "yield_unit": "each",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Mix greens", "Add dressing"],
+            "ingredients": [
+                {
+                    "component_item_id": dressing_id,
+                    "component_quantity": 4,
+                    "component_unit": "oz",
+                }
+            ],
+        },
+    )
+
+    payload = create_response.get_json()
+    response = app_client.get(f"/items/{payload['recipe_item_id']}")
+    page = response.get_data(as_text=True)
+
+    assert create_response.status_code == 200
+    assert response.status_code == 200
+    assert "Recipe" in page
+    assert "Primary Cooking Method:" in page
+    assert "no cooking" in page
+    assert "Ingredients" in page
+    assert "Method Steps" in page
+
+
+def test_item_detail_shows_edit_link_for_allowed_roles(app_client):
+    item_id = create_base_food(item_name="Editable Celery")
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "reviewer_001"},
+        follow_redirects=False,
+    )
+
+    response = app_client.get(f"/items/{item_id}")
+
+    assert "Edit Item" in response.get_data(as_text=True)
+
+
+def test_item_detail_hides_edit_link_for_standard_user(app_client):
+    item_id = create_base_food(item_name="Readonly Celery")
+
+    response = app_client.get(f"/items/{item_id}")
+
+    assert "Edit Item" not in response.get_data(as_text=True)
+
+
+def test_recipe_legacy_route_redirects_to_item_detail(app_client):
+    item_id = create_base_food(item_name="Pepperoni")
+
+    response = app_client.get(f"/recipes/{item_id}", follow_redirects=False)
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith(f"/items/{item_id}")
+
+
+def test_api_search_items_returns_json_results(app_client):
+    create_base_food(item_name="Liquid Egg")
+
+    response = app_client.get("/api/items/search?q=egg")
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert payload
+    assert payload[0]["item_name"] == "Liquid Egg"
+
+
+def test_item_detail_returns_404_for_missing_item(app_client):
+    response = app_client.get("/items/9999")
+
+    assert response.status_code == 404
+    assert "Item not found." in response.get_data(as_text=True)
+
+
+def test_my_recipes_route_renders_recipe_list_and_filters(app_client, isolated_db):
+    dressing_id = create_base_food(item_name="Dijon Dressing")
+
+    app_client.post(
+        "/api/recipes",
+        json={
+            "item_name": "Lunch Salad",
+            "yield_quantity": 2,
+            "yield_unit": "each",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Prep greens", "Dress salad"],
+            "ingredients": [
+                {
+                    "component_item_id": dressing_id,
+                    "component_quantity": 2,
+                    "component_unit": "oz",
+                }
+            ],
+        },
+    )
+    second_response = app_client.post(
+        "/api/recipes",
+        json={
+            "item_name": "Dinner Salad",
+            "yield_quantity": 4,
+            "yield_unit": "each",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Prep", "Plate"],
+            "ingredients": [
+                {
+                    "component_item_id": dressing_id,
+                    "component_quantity": 4,
+                    "component_unit": "oz",
+                }
+            ],
+        },
+    )
+
+    recipe_id = second_response.get_json()["recipe_item_id"]
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE item SET status = ? WHERE item_id = ?",
+        ("reviewed", recipe_id),
+    )
+    conn.commit()
+    conn.close()
+
+    response = app_client.get("/my-recipes?status=reviewed&sort=name_asc")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "My Recipes" in page
+    assert "Dinner Salad" in page
+    assert "Lunch Salad" not in page
+    assert "Reviewed" in page
+
+
+def test_my_recipes_route_shows_empty_state(app_client):
+    response = app_client.get("/my-recipes")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "No recipes found" in page
+
+
+def test_notifications_page_shows_note_notifications(app_client, isolated_db):
+    base_food_id = create_base_food(item_name="Notification Base")
+    recipe_response = app_client.post(
+        "/api/recipes",
+        json={
+            "item_name": "Notification Route Recipe",
+            "yield_quantity": 1,
+            "yield_unit": "each",
+            "primary_cooking_method_code": "bake",
+            "instruction_steps": ["Mix", "Bake"],
+            "ingredients": [
+                {
+                    "component_item_id": base_food_id,
+                    "component_quantity": 1,
+                    "component_unit": "oz",
+                }
+            ],
+        },
+    )
+    recipe_id = recipe_response.get_json()["recipe_item_id"]
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = ? WHERE item_id = ?", ("reviewed", recipe_id))
+    conn.commit()
+    conn.close()
+
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "reviewer_001"},
+        follow_redirects=False,
+    )
+    app_client.post(
+        f"/items/{recipe_id}/notes",
+        data={"note_text": "Please review the revised version."},
+        follow_redirects=False,
+    )
+
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "dev_user_001"},
+        follow_redirects=False,
+    )
+    response = app_client.get("/notifications")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Notification Route Recipe" in page
+    assert "Please review the revised version." in page
+
+
+def test_admin_send_back_to_review_notifies_reviewer(app_client, isolated_db):
+    item_id = create_base_food(item_name="Admin Review Return")
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = ? WHERE item_id = ?", ("approved", item_id))
+    conn.commit()
+    conn.close()
+
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "admin_001"},
+        follow_redirects=False,
+    )
+    app_client.post(
+        f"/workflow/items/{item_id}/transition",
+        data={
+            "portal_name": "admin",
+            "action_code": "send_back_review",
+            "target_status": "reviewed",
+            "reason_text": "Need reviewer follow-up before analysis resumes.",
+        },
+        follow_redirects=False,
+    )
+
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "reviewer_001"},
+        follow_redirects=False,
+    )
+    response = app_client.get("/notifications")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Admin Review Return" in page
+    assert "Item sent back from Approved to Reviewed." in page
+
+
+def test_reviewer_return_to_submitter_notifies_author(app_client):
+    base_food_id = create_base_food(item_name="Workflow Notify Oil")
+    recipe_response = app_client.post(
+        "/api/recipes",
+        json={
+            "item_name": "Workflow Notify Recipe",
+            "yield_quantity": 1,
+            "yield_unit": "each",
+            "primary_cooking_method_code": "bake",
+            "instruction_steps": ["Mix", "Bake"],
+            "ingredients": [
+                {
+                    "component_item_id": base_food_id,
+                    "component_quantity": 1,
+                    "component_unit": "oz",
+                }
+            ],
+        },
+    )
+    recipe_id = recipe_response.get_json()["recipe_item_id"]
+
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "reviewer_001"},
+        follow_redirects=False,
+    )
+    app_client.post(
+        f"/workflow/items/{recipe_id}/transition",
+        data={
+            "portal_name": "reviewer",
+            "action_code": "return_to_submitter",
+            "target_status": "submitted",
+            "reason_text": "Please revise the seasoning language.",
+        },
+        follow_redirects=False,
+    )
+
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "dev_user_001"},
+        follow_redirects=False,
+    )
+    response = app_client.get("/notifications")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Workflow Notify Recipe" in page
+    assert "Recipe returned to submitter." in page
+
+
+def test_item_detail_view_acknowledges_open_notifications(app_client, isolated_db):
+    base_food_id = create_base_food(item_name="Viewed Notification Base")
+    recipe_response = app_client.post(
+        "/api/recipes",
+        json={
+            "item_name": "Viewed Notification Recipe",
+            "yield_quantity": 1,
+            "yield_unit": "each",
+            "primary_cooking_method_code": "bake",
+            "instruction_steps": ["Mix", "Bake"],
+            "ingredients": [
+                {
+                    "component_item_id": base_food_id,
+                    "component_quantity": 1,
+                    "component_unit": "oz",
+                }
+            ],
+        },
+    )
+    recipe_id = recipe_response.get_json()["recipe_item_id"]
+
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "reviewer_001"},
+        follow_redirects=False,
+    )
+    app_client.post(
+        f"/items/{recipe_id}/notes",
+        data={"note_text": "Please revise and resubmit."},
+        follow_redirects=False,
+    )
+
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "dev_user_001"},
+        follow_redirects=False,
+    )
+
+    response = app_client.get(f"/items/{recipe_id}")
+    notifications_response = app_client.get("/notifications")
+
+    assert response.status_code == 200
+    assert "Please revise and resubmit." in response.get_data(as_text=True)
+    assert "No open notifications" in notifications_response.get_data(as_text=True)
+
+
+def test_item_detail_view_acknowledges_workflow_action_notifications(app_client):
+    base_food_id = create_base_food(item_name="Workflow Ack Oil")
+    recipe_response = app_client.post(
+        "/api/recipes",
+        json={
+            "item_name": "Workflow Ack Recipe",
+            "yield_quantity": 1,
+            "yield_unit": "each",
+            "primary_cooking_method_code": "bake",
+            "instruction_steps": ["Mix", "Bake"],
+            "ingredients": [
+                {
+                    "component_item_id": base_food_id,
+                    "component_quantity": 1,
+                    "component_unit": "oz",
+                }
+            ],
+        },
+    )
+    recipe_id = recipe_response.get_json()["recipe_item_id"]
+
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "reviewer_001"},
+        follow_redirects=False,
+    )
+    app_client.post(
+        f"/workflow/items/{recipe_id}/transition",
+        data={
+            "portal_name": "reviewer",
+            "action_code": "return_to_submitter",
+            "target_status": "submitted",
+            "reason_text": "Please clarify the final plating step.",
+        },
+        follow_redirects=False,
+    )
+
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "dev_user_001"},
+        follow_redirects=False,
+    )
+    response = app_client.get(f"/items/{recipe_id}")
+    notifications_response = app_client.get("/notifications")
+
+    assert response.status_code == 200
+    assert "Recipe returned to submitter." in response.get_data(as_text=True)
+    assert "No open notifications" in notifications_response.get_data(as_text=True)
+
+
+def test_login_create_user_updates_session(app_client):
+    response = app_client.post(
+        "/login/create-user",
+        data={
+            "display_name": "Taylor West",
+            "role": "reviewer",
+        },
+        follow_redirects=True,
+    )
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Taylor West" in page
+    assert "Reviewer" in page
+
+
+def test_login_select_changes_current_session_user(app_client):
+    response = app_client.post(
+        "/login/select",
+        data={"selected_user_id": "dietitian_001"},
+        follow_redirects=True,
+    )
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Dana Reed" in page
+    assert "Dietitian" in page
+
+
+def test_login_debug_override_affects_recipe_authorship(app_client, isolated_db):
+    app_client.post(
+        "/login/debug-override",
+        data={
+            "override_user_id": "admin_001",
+            "override_role": "super_user",
+            "override_display_name": "Morgan Debug",
+        },
+        follow_redirects=False,
+    )
+
+    base_food_id = create_base_food(item_name="Debug Dressing")
+    create_response = app_client.post(
+        "/api/recipes",
+        json={
+            "item_name": "Override Recipe",
+            "yield_quantity": 1,
+            "yield_unit": "each",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Mix"],
+            "ingredients": [
+                {
+                    "component_item_id": base_food_id,
+                    "component_quantity": 1,
+                    "component_unit": "oz",
+                }
+            ],
+        },
+    )
+
+    recipe_id = create_response.get_json()["recipe_item_id"]
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT author_user_id, author_display_name FROM item WHERE item_id = ?",
+        (recipe_id,),
+    )
+    row = cursor.fetchone()
+    conn.close()
+
+    assert row == ("admin_001", "Morgan Debug")
+
+
+def test_my_recipes_uses_current_mock_user_scope(app_client):
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "dietitian_001"},
+        follow_redirects=False,
+    )
+
+    response = app_client.get("/my-recipes")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Dana Reed" in page
+    assert "No recipes found" in page
+
+
+def test_reviewer_workflow_portal_requires_access(app_client):
+    response = app_client.get("/workflow/reviewer", follow_redirects=False)
+
+    assert response.status_code == 302
+
+
+def test_reviewer_workflow_portal_lists_submitted_items(app_client):
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "reviewer_001"},
+        follow_redirects=False,
+    )
+    item_id = create_base_food(item_name="Pending Carrots")
+
+    response = app_client.get("/workflow/reviewer")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Reviewer Portal" in page
+    assert "Pending Carrots" in page
+    assert f"Item ID {item_id}" in page
+
+
+def test_workflow_portal_note_post_preserves_filters(app_client, isolated_db):
+    item_id = create_base_food(item_name="Portal Notes Item")
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = ? WHERE item_id = ?", ("approved", item_id))
+    conn.commit()
+    conn.close()
+
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "dietitian_001"},
+        follow_redirects=False,
+    )
+
+    response = app_client.get("/workflow/dietitian?status=approved&item_type=base_food&sort=name_asc")
+
+    assert response.status_code == 200
+    assert "Post Note" not in response.get_data(as_text=True)
+
+
+def test_workflow_transition_route_updates_status(app_client, isolated_db):
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "reviewer_001"},
+        follow_redirects=False,
+    )
+    item_id = create_base_food(item_name="Review Transition Item")
+
+    response = app_client.post(
+        f"/workflow/items/{item_id}/transition",
+        data={
+            "portal_name": "reviewer",
+            "action_code": "advance_reviewed",
+            "target_status": "reviewed",
+        },
+        follow_redirects=False,
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT status FROM item WHERE item_id = ?", (item_id,))
+    row = cursor.fetchone()
+    conn.close()
+
+    assert response.status_code == 302
+    assert row == ("reviewed",)
+
+
+def test_workflow_transition_route_requires_reason_for_return_to_submitter(app_client, isolated_db):
+    base_food_id = create_base_food(item_name="Reason Prompt Oil")
+    recipe_response = app_client.post(
+        "/api/recipes",
+        json={
+            "item_name": "Reason Prompt Recipe",
+            "yield_quantity": 1,
+            "yield_unit": "each",
+            "primary_cooking_method_code": "bake",
+            "instruction_steps": ["Mix", "Bake"],
+            "ingredients": [
+                {
+                    "component_item_id": base_food_id,
+                    "component_quantity": 1,
+                    "component_unit": "oz",
+                }
+            ],
+        },
+    )
+    recipe_id = recipe_response.get_json()["recipe_item_id"]
+
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "reviewer_001"},
+        follow_redirects=False,
+    )
+
+    response = app_client.post(
+        f"/workflow/items/{recipe_id}/transition",
+        data={
+            "portal_name": "reviewer",
+            "action_code": "return_to_submitter",
+            "target_status": "submitted",
+            "reason_text": "",
+        },
+        follow_redirects=True,
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT requires_resubmission FROM item WHERE item_id = ?", (recipe_id,))
+    row = cursor.fetchone()
+    conn.close()
+
+    assert response.status_code == 200
+    assert "Revision request is required." in response.get_data(as_text=True)
+    assert row == (0,)
+
+
+def test_workflow_transition_preserves_portal_filters_and_sort(app_client):
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "reviewer_001"},
+        follow_redirects=False,
+    )
+    item_id = create_base_food(item_name="Filtered Celery")
+
+    response = app_client.post(
+        f"/workflow/items/{item_id}/transition",
+        data={
+            "portal_name": "reviewer",
+            "action_code": "advance_reviewed",
+            "target_status": "reviewed",
+            "selected_status": "submitted",
+            "selected_item_type": "base_food",
+            "selected_sort": "name_asc",
+        },
+        follow_redirects=False,
+    )
+
+    location = response.headers["Location"]
+
+    assert response.status_code == 302
+    assert "/workflow/reviewer" in location
+    assert "status=submitted" in location
+    assert "item_type=base_food" in location
+    assert "sort=name_asc" in location
+
+
+def test_dietitian_workflow_portal_lists_approved_items_only(app_client, isolated_db):
+    item_id = create_base_food(item_name="Approved Spinach")
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = ? WHERE item_id = ?", ("approved", item_id))
+    conn.commit()
+    conn.close()
+
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "dietitian_001"},
+        follow_redirects=False,
+    )
+
+    response = app_client.get("/workflow/dietitian")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Dietitian Portal" in page
+    assert "Approved Spinach" in page
+
+
+def test_admin_portal_can_view_rejected_items(app_client, isolated_db):
+    item_id = create_base_food(item_name="Rejected Lettuce")
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = ? WHERE item_id = ?", ("rejected", item_id))
+    conn.commit()
+    conn.close()
+
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "admin_001"},
+        follow_redirects=False,
+    )
+
+    response = app_client.get("/workflow/admin?status=rejected")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Admin Workflow Portal" in page
+    assert "Rejected Lettuce" in page
+
+
+def test_edit_item_route_requires_allowed_role(app_client):
+    item_id = create_base_food(item_name="Protected Item")
+
+    response = app_client.get(f"/items/{item_id}/edit", follow_redirects=False)
+
+    assert response.status_code == 302
+
+
+def test_item_detail_page_shows_note_form_when_recipient_is_available(app_client, isolated_db):
+    base_food_id = create_base_food(item_name="Detail Notes Base")
+    recipe_response = app_client.post(
+        "/api/recipes",
+        json={
+            "item_name": "Detail Notes Recipe",
+            "yield_quantity": 1,
+            "yield_unit": "each",
+            "primary_cooking_method_code": "bake",
+            "instruction_steps": ["Mix", "Bake"],
+            "ingredients": [
+                {
+                    "component_item_id": base_food_id,
+                    "component_quantity": 1,
+                    "component_unit": "oz",
+                }
+            ],
+        },
+    )
+    recipe_id = recipe_response.get_json()["recipe_item_id"]
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "reviewer_001"},
+        follow_redirects=False,
+    )
+
+    response = app_client.get(f"/items/{recipe_id}")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Workflow Notes" in page
+    assert "Post note to Plato Choi" in page
+    assert "Recipe created." in page
+
+
+def test_live_item_detail_hides_workflow_notes(app_client, isolated_db):
+    base_food_id = create_base_food(item_name="Live Notes Base")
+    recipe_response = app_client.post(
+        "/api/recipes",
+        json={
+            "item_name": "Live Notes Recipe",
+            "yield_quantity": 1,
+            "yield_unit": "each",
+            "primary_cooking_method_code": "bake",
+            "instruction_steps": ["Mix", "Bake"],
+            "ingredients": [
+                {
+                    "component_item_id": base_food_id,
+                    "component_quantity": 1,
+                    "component_unit": "oz",
+                }
+            ],
+        },
+    )
+    recipe_id = recipe_response.get_json()["recipe_item_id"]
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = ? WHERE item_id = ?", ("live", recipe_id))
+    conn.commit()
+    conn.close()
+
+    response = app_client.get(f"/items/{recipe_id}")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Workflow Notes" not in page
+    assert "Post Note" not in page
+    assert "Workflow History" not in page
+
+
+def test_live_item_detail_shows_advanced_workflow_toggle_for_reviewer(app_client, isolated_db):
+    base_food_id = create_base_food(item_name="Live Toggle Base")
+    recipe_response = app_client.post(
+        "/api/recipes",
+        json={
+            "item_name": "Live Toggle Recipe",
+            "yield_quantity": 1,
+            "yield_unit": "each",
+            "primary_cooking_method_code": "bake",
+            "instruction_steps": ["Mix", "Bake"],
+            "ingredients": [
+                {
+                    "component_item_id": base_food_id,
+                    "component_quantity": 1,
+                    "component_unit": "oz",
+                }
+            ],
+        },
+    )
+    recipe_id = recipe_response.get_json()["recipe_item_id"]
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = ? WHERE item_id = ?", ("live", recipe_id))
+    conn.commit()
+    conn.close()
+
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "reviewer_001"},
+        follow_redirects=False,
+    )
+
+    response = app_client.get(f"/items/{recipe_id}")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Show Advanced Workflow" in page
+    assert "Workflow History" not in page
+    assert "Workflow Notes" not in page
+
+
+def test_live_item_detail_advanced_view_reveals_workflow_history_and_notes_for_reviewer(app_client, isolated_db):
+    base_food_id = create_base_food(item_name="Live Advanced Base")
+    recipe_response = app_client.post(
+        "/api/recipes",
+        json={
+            "item_name": "Live Advanced Recipe",
+            "yield_quantity": 1,
+            "yield_unit": "each",
+            "primary_cooking_method_code": "bake",
+            "instruction_steps": ["Mix", "Bake"],
+            "ingredients": [
+                {
+                    "component_item_id": base_food_id,
+                    "component_quantity": 1,
+                    "component_unit": "oz",
+                }
+            ],
+        },
+    )
+    recipe_id = recipe_response.get_json()["recipe_item_id"]
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = ? WHERE item_id = ?", ("live", recipe_id))
+    conn.commit()
+    conn.close()
+
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "reviewer_001"},
+        follow_redirects=False,
+    )
+
+    response = app_client.get(f"/items/{recipe_id}?workflow_view=advanced")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Hide Advanced Workflow" in page
+    assert "Workflow History" in page
+    assert "Workflow Notes" in page
+
+
+def test_live_item_detail_standard_user_cannot_enable_advanced_workflow(app_client, isolated_db):
+    base_food_id = create_base_food(item_name="Live Standard Base")
+    recipe_response = app_client.post(
+        "/api/recipes",
+        json={
+            "item_name": "Live Standard Recipe",
+            "yield_quantity": 1,
+            "yield_unit": "each",
+            "primary_cooking_method_code": "bake",
+            "instruction_steps": ["Mix", "Bake"],
+            "ingredients": [
+                {
+                    "component_item_id": base_food_id,
+                    "component_quantity": 1,
+                    "component_unit": "oz",
+                }
+            ],
+        },
+    )
+    recipe_id = recipe_response.get_json()["recipe_item_id"]
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = ? WHERE item_id = ?", ("live", recipe_id))
+    conn.commit()
+    conn.close()
+
+    response = app_client.get(f"/items/{recipe_id}?workflow_view=advanced")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Show Advanced Workflow" not in page
+    assert "Workflow History" not in page
+    assert "Workflow Notes" not in page
+
+
+def test_edit_base_food_route_updates_item(app_client, isolated_db):
+    item_id = create_base_food(item_name="Old Celery", notes="Old note")
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "reviewer_001"},
+        follow_redirects=False,
+    )
+
+    response = app_client.post(
+        f"/items/{item_id}/edit",
+        data={
+            "item_name": "New Celery",
+            "notes": "Updated note",
+        },
+        follow_redirects=False,
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT item_name, notes FROM item WHERE item_id = ?", (item_id,))
+    row = cursor.fetchone()
+    conn.close()
+
+    assert response.status_code == 302
+    assert row == ("New Celery", "Updated note")
+
+
+def test_edit_recipe_route_renders_for_allowed_role(app_client):
+    base_food_id = create_base_food(item_name="Edit Dressing")
+    recipe_response = app_client.post(
+        "/api/recipes",
+        json={
+            "item_name": "Edit Recipe",
+            "yield_quantity": 1,
+            "yield_unit": "each",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Mix"],
+            "ingredients": [
+                {
+                    "component_item_id": base_food_id,
+                    "component_quantity": 1,
+                    "component_unit": "oz",
+                }
+            ],
+        },
+    )
+    recipe_id = recipe_response.get_json()["recipe_item_id"]
+
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "admin_001"},
+        follow_redirects=False,
+    )
+
+    response = app_client.get(f"/items/{recipe_id}/edit")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Edit Recipe" in page
+    assert "Edit Recipe" in page
+
+
+def test_api_update_recipe_updates_existing_recipe(app_client, isolated_db):
+    base_food_id = create_base_food(item_name="Edit Oil")
+    create_response = app_client.post(
+        "/api/recipes",
+        json={
+            "item_name": "Editable Recipe",
+            "yield_quantity": 1,
+            "yield_unit": "each",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Mix"],
+            "ingredients": [
+                {
+                    "component_item_id": base_food_id,
+                    "component_quantity": 1,
+                    "component_unit": "oz",
+                }
+            ],
+        },
+    )
+    recipe_id = create_response.get_json()["recipe_item_id"]
+
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "dietitian_001"},
+        follow_redirects=False,
+    )
+
+    response = app_client.put(
+        f"/api/recipes/{recipe_id}",
+        json={
+            "item_name": "Updated Editable Recipe",
+            "yield_quantity": 2,
+            "yield_unit": "each",
+            "notes": "Updated by dietitian",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Mix", "Plate"],
+            "ingredients": [
+                {
+                    "component_item_id": base_food_id,
+                    "component_quantity": 2,
+                    "component_unit": "oz",
+                }
+            ],
+            "meal_classification": "Lunch",
+        },
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT item_name, notes, meal_classification, author_display_name FROM item WHERE item_id = ?",
+        (recipe_id,),
+    )
+    row = cursor.fetchone()
+    conn.close()
+
+    assert response.status_code == 200
+    assert row == (
+        "Updated Editable Recipe",
+        "Updated by dietitian",
+        "Lunch",
+        "Plato Choi",
+    )
+
+
+def test_returned_recipe_can_be_edited_by_author_and_clears_resubmission_flag(app_client, isolated_db):
+    base_food_id = create_base_food(item_name="Resubmit Detail Oil")
+    create_response = app_client.post(
+        "/api/recipes",
+        json={
+            "item_name": "Returned Recipe",
+            "yield_quantity": 1,
+            "yield_unit": "each",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Mix"],
+            "ingredients": [
+                {
+                    "component_item_id": base_food_id,
+                    "component_quantity": 1,
+                    "component_unit": "oz",
+                }
+            ],
+        },
+    )
+    recipe_id = create_response.get_json()["recipe_item_id"]
+
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "reviewer_001"},
+        follow_redirects=False,
+    )
+    app_client.post(
+        f"/workflow/items/{recipe_id}/transition",
+        data={
+            "portal_name": "reviewer",
+            "action_code": "return_to_submitter",
+            "target_status": "submitted",
+            "reason_text": "Please add a clearer final step.",
+        },
+        follow_redirects=False,
+    )
+
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "dev_user_001"},
+        follow_redirects=False,
+    )
+
+    edit_page = app_client.get(f"/items/{recipe_id}/edit")
+    update_response = app_client.put(
+        f"/api/recipes/{recipe_id}",
+        json={
+            "item_name": "Returned Recipe Revised",
+            "yield_quantity": 1,
+            "yield_unit": "each",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Mix", "Serve"],
+            "ingredients": [
+                {
+                    "component_item_id": base_food_id,
+                    "component_quantity": 1,
+                    "component_unit": "oz",
+                }
+            ],
+        },
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT item_name, requires_resubmission FROM item WHERE item_id = ?",
+        (recipe_id,),
+    )
+    row = cursor.fetchone()
+    conn.close()
+
+    assert edit_page.status_code == 200
+    assert update_response.status_code == 200
+    assert row == ("Returned Recipe Revised", 0)
+
+
+def test_item_detail_history_shows_transition_reason_and_note_event(app_client, isolated_db):
+    base_food_id = create_base_food(item_name="History Detail Oil")
+    recipe_response = app_client.post(
+        "/api/recipes",
+        json={
+            "item_name": "History Detail Recipe",
+            "yield_quantity": 1,
+            "yield_unit": "each",
+            "primary_cooking_method_code": "bake",
+            "instruction_steps": ["Mix", "Bake"],
+            "ingredients": [
+                {
+                    "component_item_id": base_food_id,
+                    "component_quantity": 1,
+                    "component_unit": "oz",
+                }
+            ],
+        },
+    )
+    recipe_id = recipe_response.get_json()["recipe_item_id"]
+
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "reviewer_001"},
+        follow_redirects=False,
+    )
+    app_client.post(
+        f"/items/{recipe_id}/notes",
+        data={"note_text": "Please check the seasoning wording."},
+        follow_redirects=False,
+    )
+    app_client.post(
+        f"/workflow/items/{recipe_id}/transition",
+        data={
+            "portal_name": "reviewer",
+            "action_code": "return_to_submitter",
+            "target_status": "submitted",
+            "reason_text": "Clarify the final plating step.",
+        },
+        follow_redirects=False,
+    )
+
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "dev_user_001"},
+        follow_redirects=False,
+    )
+    response = app_client.get(f"/items/{recipe_id}")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Workflow History" in page
+    assert "Workflow note posted to Plato Choi." in page
+    assert "Recipe returned to submitter." in page
+    assert "Reason:" in page
+    assert "Clarify the final plating step." in page

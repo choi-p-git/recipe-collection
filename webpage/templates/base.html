@@ -8,7 +8,26 @@
 </head>
 <body>
     <main class="container">
-        <h1>Recipe Collection</h1>
+        <header class="site-header">
+            <div>
+                <h1>Recipe Collection</h1>
+                <p class="site-session">
+                    Current Session:
+                    <strong>{{ current_mock_user.display_name }}</strong>
+                    ({{ current_mock_user_role_label }})
+                </p>
+            </div>
+
+            <nav class="site-nav">
+                <a href="{{ url_for('index') }}">Home</a>
+                <a href="{{ url_for('my_recipes') }}">My Recipes</a>
+                <a href="{{ url_for('login_shell') }}">Mock Login</a>
+                <a href="{{ url_for('notifications') }}">Notifications{% if notification_count %} ({{ notification_count }}){% endif %}</a>
+                {% for portal in available_workflow_portals %}
+                    <a href="{{ url_for('workflow_portal', portal_name=portal.name) }}">{{ portal.label }}</a>
+                {% endfor %}
+            </nav>
+        </header>
 
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}

@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}Mock Login{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <div>
+            <h2>Mock Login Shell</h2>
+            <p class="page-subtitle">
+                Session-backed mock auth for MVP development, user switching, and role testing.
+            </p>
+        </div>
+    </div>
+
+    <section class="auth-shell-grid">
+        <article class="auth-panel">
+            <h3>Sign In</h3>
+            <p class="auth-panel-copy">Choose an existing mock account for this browser session.</p>
+            <form method="post" action="{{ url_for('login_select') }}">
+                <label for="selected_user_id">Account</label>
+                <select id="selected_user_id" name="selected_user_id">
+                    {% for user in auth_context.mock_users %}
+                        <option
+                            value="{{ user.user_id }}"
+                            {% if auth_context.current_user.user_id == user.user_id %}selected{% endif %}
+                        >
+                            {{ user.display_name }} | {{ user.role }}
+                        </option>
+                    {% endfor %}
+                </select>
+                <button type="submit">Sign In</button>
+            </form>
+        </article>
+
+        <article class="auth-panel">
+            <h3>Create User</h3>
+            <p class="auth-panel-copy">Create a new mock account and immediately switch into it.</p>
+            <form method="post" action="{{ url_for('login_create_user') }}">
+                <label for="display_name">Display Name</label>
+                <input type="text" id="display_name" name="display_name" placeholder="New mock user">
+
+                <label for="role">Role</label>
+                <select id="role" name="role">
+                    {% for role in auth_context.available_roles %}
+                        <option value="{{ role.value }}">{{ role.label }}</option>
+                    {% endfor %}
+                </select>
+
+                <button type="submit">Create User</button>
+            </form>
+        </article>
+
+        <article class="auth-panel">
+            <h3>Debug Override</h3>
+            <p class="auth-panel-copy">
+                Override the active account, role, or display name without changing the saved user list.
+            </p>
+            <form method="post" action="{{ url_for('login_debug_override') }}">
+                <label for="override_user_id">Base Account</label>
+                <select id="override_user_id" name="override_user_id">
+                    {% for user in auth_context.mock_users %}
+                        <option
+                            value="{{ user.user_id }}"
+                            {% if auth_context.current_user.user_id == user.user_id %}selected{% endif %}
+                        >
+                            {{ user.display_name }} | {{ user.role }}
+                        </option>
+                    {% endfor %}
+                </select>
+
+                <label for="override_role">Override Role</label>
+                <select id="override_role" name="override_role">
+                    {% for role in auth_context.available_roles %}
+                        <option
+                            value="{{ role.value }}"
+                            {% if auth_context.current_user.role == role.value %}selected{% endif %}
+                        >
+                            {{ role.label }}
+                        </option>
+                    {% endfor %}
+                </select>
+
+                <label for="override_display_name">Override Display Name</label>
+                <input
+                    type="text"
+                    id="override_display_name"
+                    name="override_display_name"
+                    value="{{ auth_context.current_user.display_name }}"
+                >
+
+                <button type="submit">Apply Override</button>
+            </form>
+        </article>
+    </section>
+
+    <section class="auth-session-card">
+        <h3>Current Session</h3>
+        <p><strong>User ID:</strong> {{ auth_context.current_user.user_id }}</p>
+        <p><strong>Display Name:</strong> {{ auth_context.current_user.display_name }}</p>
+        <p><strong>Role:</strong> {{ current_mock_user_role_label }}</p>
+    </section>
+{% endblock %}

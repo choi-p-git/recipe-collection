@@ -4,6 +4,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const recipeForm = document.getElementById("recipe-editor-form");
     const submitRecipeButton = document.getElementById("submit-recipe-button");
+    const editorMode = recipeForm?.dataset.editorMode || "create";
+    const submitUrl = recipeForm?.dataset.submitUrl || "/api/recipes";
 
     const recipeItemName = document.getElementById("recipe_item_name");
     const recipeYieldQuantity = document.getElementById("recipe_yield_quantity");
@@ -79,8 +81,8 @@ document.addEventListener("DOMContentLoaded", () => {
             </select>
 
             <div class="row-actions">
-                <button type="button" class="move-up">↑</button>
-                <button type="button" class="move-down">↓</button>
+                <button type="button" class="move-up" aria-label="Move Up">&#8593;</button>
+                <button type="button" class="move-down" aria-label="Move Down">&#8595;</button>
                 <button type="button" class="delete-row">X</button>
             </div>
         `;
@@ -102,8 +104,8 @@ document.addEventListener("DOMContentLoaded", () => {
             <textarea rows="4" placeholder="Enter recipe step" class="method-step-text"></textarea>
 
             <div class="row-actions">
-                <button type="button" class="move-up">↑</button>
-                <button type="button" class="move-down">↓</button>
+                <button type="button" class="move-up" aria-label="Move Up">&#8593;</button>
+                <button type="button" class="move-down" aria-label="Move Down">&#8595;</button>
                 <button type="button" class="delete-row">X</button>
             </div>
         `;
@@ -394,10 +396,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
 async function submitRecipe() {
     const payload = collectRecipePayload();
+    const requestMethod = editorMode === "edit" ? "PUT" : "POST";
 
     try {
-        const response = await fetch("/api/recipes", {
-            method: "POST",
+        const response = await fetch(submitUrl, {
+            method: requestMethod,
             headers: {
                 "Content-Type": "application/json",
             },
@@ -416,8 +419,7 @@ async function submitRecipe() {
             return;
         }
 
-        alert(`Recipe created successfully. New recipe ID: ${result.recipe_item_id}`);
-        window.location.href = "/";
+        window.location.href = `/items/${result.recipe_item_id}`;
     } catch (error) {
         console.error("Recipe submit failed:", error);
         alert("Unexpected error while submitting recipe.");

@@ -25,3 +25,5 @@ APPROVED_COOKING_METHODS = [
     ("stir_fry", "stir fry"),
     ("sweat", "sweat"),
 ]
+
+COOKING_METHOD_LABELS = dict(APPROVED_COOKING_METHODS)
