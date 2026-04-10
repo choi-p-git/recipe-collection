@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block title %}Home - Recipe Collection{% endblock %}
+
+{% block content %}
+    <p>Select an action:</p>
+
+    <ul>
+        <li><a href="{{ url_for('new_base_food') }}">New Base Food</a></li>
+        <li><a href="{{ url_for('new_recipe') }}">New Recipe</a></li>
+    </ul>
+{% endblock %}

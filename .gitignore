@@ -4,6 +4,7 @@
 # Python cache
 __pycache__/
 *.py[cod]
+*.pyc
 
 # test / tooling
 .pytest_cache/
@@ -13,6 +14,7 @@ __pycache__/
 .env
 
 # local database
+database/*.db
 *.db
 *.sqlite
 *.sqlite3

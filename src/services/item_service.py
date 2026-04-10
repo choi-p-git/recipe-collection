@@ -1,0 +1,159 @@
+import re
+import sqlite3
+
+from db import get_connection, initialize_database
+
+
+SYSTEM_BASE_FOOD_USER_ID = "system_base_food"
+SYSTEM_BASE_FOOD_DISPLAY_NAME = "Base Food Submission"
+
+
+class DuplicateItemNameError(ValueError):
+    """Raised when an item_name already exists in the database."""
+
+    def __init__(self, message: str, suggested_name: str | None = None) -> None:
+        super().__init__(message)
+        self.suggested_name = suggested_name
+
+class InvalidItemNameError(ValueError):
+    """Raised when item_name is invalid after normalization."""
+
+class InvalidNumericValueError(ValueError):
+    """Raised when a numeric field is valid syntax but violates business rules."""
+
+
+def normalize_item_name(name: str) -> str:
+    """
+    Normalize item names by:
+    - trimming leading/trailing whitespace
+    - collapsing repeated internal whitespace to a single space
+    """
+    return " ".join(name.split())
+
+
+def get_next_available_item_name(base_name: str) -> str:
+    """
+    Return the next available unique item name using the pattern:
+    'Name', 'Name (1)', 'Name (2)', etc.
+
+    Rule used:
+    - if exact base_name exists (case-insensitive), suggest highest existing suffix + 1
+    - do not try to fill gaps
+    """
+    initialize_database()
+
+    base_name = normalize_item_name(base_name)
+
+    pattern = re.compile(rf"^{re.escape(base_name)} \((\d+)\)$", re.IGNORECASE)
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT item_name
+            FROM item
+            WHERE item_name = ?
+               OR item_name LIKE ?
+            COLLATE NOCASE
+            """,
+            (base_name, f"{base_name} (%)"),
+        )
+
+        existing_names = [row[0] for row in cursor.fetchall()]
+
+    existing_names_lower = {name.lower() for name in existing_names}
+
+    if base_name.lower() not in existing_names_lower:
+        return base_name
+
+    max_suffix = 0
+
+    for name in existing_names:
+        match = pattern.match(name)
+        if match:
+            suffix = int(match.group(1))
+            if suffix > max_suffix:
+                max_suffix = suffix
+
+    return f"{base_name} ({max_suffix + 1})"
+
+
+def create_base_food(
+    item_name: str,
+    yield_quantity: float,
+    yield_unit: str,
+    serving_size_quantity: float | None = None,
+    serving_size_unit: str | None = None,
+    serving_count: float | None = None,
+    notes: str | None = None,
+) -> None:
+    """Insert a new base food item."""
+    initialize_database()
+
+    item_name = normalize_item_name(item_name)
+
+    if not item_name:
+        raise InvalidItemNameError("Item name cannot be empty or only whitespace.")
+
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute(
+                """
+                INSERT INTO item (
+                    item_name,
+                    item_type,
+                    author_user_id,
+                    author_display_name,
+                    yield_quantity,
+                    yield_unit,
+                    serving_size_quantity,
+                    serving_size_unit,
+                    serving_count,
+                    instructions_text,
+                    primary_cooking_method_code,
+                    status,
+                    notes,
+                    concept_classification,
+                    meal_classification,
+                    haccp_process_classification,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+                """,
+                (
+                    item_name,
+                    "base_food",
+                    SYSTEM_BASE_FOOD_USER_ID,
+                    SYSTEM_BASE_FOOD_DISPLAY_NAME,
+                    yield_quantity,
+                    yield_unit,
+                    serving_size_quantity,
+                    serving_size_unit,
+                    serving_count,
+                    None,
+                    None,
+                    "submitted",
+                    notes,
+                    None,
+                    None,
+                    None,
+                ),
+            )
+
+            conn.commit()
+
+    except sqlite3.IntegrityError as exc:
+        error_text = str(exc).lower()
+
+        if "unique constraint failed: item.item_name" in error_text:
+            suggested_name = get_next_available_item_name(item_name)
+            raise DuplicateItemNameError(
+                "Item name already exists. Please enter a unique item name.",
+                suggested_name=suggested_name,
+            ) from exc
+
+        raise

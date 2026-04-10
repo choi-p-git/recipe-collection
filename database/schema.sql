@@ -1,0 +1,83 @@
+CREATE TABLE IF NOT EXISTS item (
+    item_id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    item_name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    item_type TEXT NOT NULL,
+
+    author_user_id TEXT NOT NULL,
+    author_display_name TEXT NOT NULL,
+
+    yield_quantity REAL NOT NULL CHECK (yield_quantity > 0),
+    yield_unit TEXT NOT NULL,
+
+    serving_size_quantity REAL,
+    serving_size_unit TEXT,
+    serving_count REAL,
+
+    instructions_text TEXT,
+    primary_cooking_method_code TEXT,
+
+    status TEXT NOT NULL,
+
+    notes TEXT,
+    concept_classification TEXT,
+    meal_classification TEXT,
+    haccp_process_classification TEXT,
+
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+
+    CHECK (item_type IN ('base_food', 'recipe')),
+
+    CHECK (status IN ('submitted', 'reviewed', 'approved', 'analyzed', 'live')),
+
+    CHECK (
+        (item_type = 'recipe' AND instructions_text IS NOT NULL AND primary_cooking_method_code IS NOT NULL)
+        OR
+        (item_type = 'base_food')
+    ),
+
+    CHECK (
+        serving_size_quantity IS NULL OR serving_size_quantity > 0
+    ),
+
+    CHECK (
+        serving_count IS NULL OR serving_count > 0
+    )
+);
+
+CREATE TABLE IF NOT EXISTS recipe_component (
+    recipe_component_id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    parent_recipe_item_id INTEGER NOT NULL,
+    component_item_id INTEGER NOT NULL,
+
+    component_quantity REAL NOT NULL CHECK (component_quantity > 0),
+    component_unit TEXT NOT NULL,
+
+    component_sequence INTEGER,
+    component_notes TEXT,
+
+    FOREIGN KEY (parent_recipe_item_id) REFERENCES item(item_id) ON DELETE CASCADE,
+    FOREIGN KEY (component_item_id) REFERENCES item(item_id),
+
+    CHECK (parent_recipe_item_id != component_item_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_item_type
+ON item(item_type);
+
+CREATE INDEX IF NOT EXISTS idx_item_status
+ON item(status);
+
+CREATE INDEX IF NOT EXISTS idx_item_author_user_id
+ON item(author_user_id);
+
+CREATE INDEX IF NOT EXISTS idx_item_primary_cooking_method_code
+ON item(primary_cooking_method_code);
+
+CREATE INDEX IF NOT EXISTS idx_recipe_component_parent
+ON recipe_component(parent_recipe_item_id);
+
+CREATE INDEX IF NOT EXISTS idx_recipe_component_component
+ON recipe_component(component_item_id);

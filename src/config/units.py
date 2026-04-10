@@ -1,0 +1,15 @@
+APPROVED_UNITS = [
+    "g",
+    "kg",
+    "ml",
+    "l",
+    "oz",
+    "lb",
+    "tsp",
+    "tbs",
+    "cup",
+    "pt",
+    "qt",
+    "gal",
+    "each",
+]
