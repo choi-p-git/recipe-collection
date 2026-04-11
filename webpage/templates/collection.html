@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block title %}Live Collection{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <div>
+            <h2>Live Collection</h2>
+            <p class="page-subtitle">
+                Browse all live recipes and base foods available in the shared collection.
+            </p>
+        </div>
+    </div>
+
+    <section class="my-recipes-toolbar">
+        <form method="get" class="filter-form">
+            <div class="filter-row collection-search-row">
+                <label for="q">Search</label>
+                <input
+                    id="q"
+                    name="q"
+                    type="text"
+                    value="{{ page_data.search_term }}"
+                    placeholder="Search live items by name or ID"
+                >
+            </div>
+
+            <div class="filter-row">
+                <label for="item_type">Item Type</label>
+                <select id="item_type" name="item_type">
+                    <option value="">All Item Types</option>
+                    {% for item_type in page_data.available_item_types %}
+                        <option
+                            value="{{ item_type.value }}"
+                            {% if page_data.selected_item_type == item_type.value %}selected{% endif %}
+                        >
+                            {{ item_type.label }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="filter-row">
+                <label for="sort">Sort</label>
+                <select id="sort" name="sort">
+                    {% for sort_option in page_data.available_sorts %}
+                        <option
+                            value="{{ sort_option.value }}"
+                            {% if page_data.selected_sort == sort_option.value %}selected{% endif %}
+                        >
+                            {{ sort_option.label }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <button type="submit">Apply</button>
+            <a class="text-link" href="{{ url_for('live_collection') }}">Reset</a>
+        </form>
+
+        <p class="muted collection-helper-text">
+            Only items in the <strong>Live</strong> state are searchable and browseable here.
+        </p>
+    </section>
+
+    <section class="my-recipes-list">
+        {% if not page_data.minimum_query_met %}
+            <div class="empty-state">
+                <h3>Search needs a little more text</h3>
+                <p>Enter at least {{ page_data.minimum_query_length }} characters, or search by numeric ID.</p>
+            </div>
+        {% elif page_data["items"] %}
+            {% for item in page_data["items"] %}
+                <article class="recipe-card">
+                    <div class="recipe-card-main">
+                        <div class="recipe-card-header">
+                            <h3>
+                                <a href="{{ url_for('item_detail', item_id=item.item_id) }}">
+                                    {{ item.item_name }}
+                                </a>
+                            </h3>
+                            <div class="collection-card-badges">
+                                <span class="collection-type-badge">
+                                    {{ item.item_type_label }}
+                                </span>
+                                <span class="status-badge status-badge-live">
+                                    Live
+                                </span>
+                            </div>
+                        </div>
+
+                        <p class="recipe-card-meta">
+                            Item ID {{ item.item_id }}
+                            {% if item.primary_cooking_method_code %}
+                                | Method: {{ item.primary_cooking_method_code }}
+                            {% endif %}
+                        </p>
+
+                        <p class="recipe-card-dates">
+                            Updated: {{ item.updated_at }} | Created: {{ item.created_at }}
+                        </p>
+                    </div>
+
+                    <div class="recipe-card-actions">
+                        <a class="page-action-link secondary" href="{{ url_for('item_detail', item_id=item.item_id) }}">
+                            View Details
+                        </a>
+                    </div>
+                </article>
+            {% endfor %}
+
+            <nav class="pagination-bar" aria-label="Live collection pagination">
+                {% if page_data.has_previous %}
+                    <a
+                        class="page-action-link secondary"
+                        href="{{ url_for('live_collection', q=page_data.search_term, item_type=page_data.selected_item_type, sort=page_data.selected_sort, offset=page_data.previous_offset) }}"
+                    >
+                        Previous
+                    </a>
+                {% else %}
+                    <span class="page-action-link secondary is-disabled">Previous</span>
+                {% endif %}
+
+                <span class="muted">Showing {{ page_data.offset + 1 }}-{{ page_data.offset + page_data["items"]|length }}</span>
+
+                {% if page_data.has_more %}
+                    <a
+                        class="page-action-link secondary"
+                        href="{{ url_for('live_collection', q=page_data.search_term, item_type=page_data.selected_item_type, sort=page_data.selected_sort, offset=page_data.next_offset) }}"
+                    >
+                        Next
+                    </a>
+                {% else %}
+                    <span class="page-action-link secondary is-disabled">Next</span>
+                {% endif %}
+            </nav>
+        {% else %}
+            <div class="empty-state">
+                <h3>No live items found</h3>
+                <p>
+                    {% if page_data.search_term or page_data.selected_item_type %}
+                        No live items match the current search and filter combination.
+                    {% else %}
+                        No live items are available in the shared collection yet.
+                    {% endif %}
+                </p>
+            </div>
+        {% endif %}
+    </section>
+{% endblock %}

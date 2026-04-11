@@ -1,4 +1,9 @@
 document.addEventListener("DOMContentLoaded", () => {
+    const SEARCH_DEBOUNCE_MS = 150;
+    const SEARCH_MIN_LENGTH = 2;
+    const RELAXED_SHORT_QUERY_DELAY_MS = 450;
+    const RELAXED_SHORT_QUERY_LENGTH = 4;
+
     const navButtons = document.querySelectorAll(".editor-nav-button");
     const sections = document.querySelectorAll(".editor-section");
 
@@ -174,33 +179,78 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!searchInput || !hiddenIdInput || !resultsBox) return;
 
         let debounceTimer = null;
+        const searchState = {
+            query: "",
+            nextOffset: 0,
+            hasMore: false,
+            isLoading: false,
+            requestToken: 0,
+            relaxedRetryTimer: null,
+            relaxedShortQueryEnabled: false,
+        };
+
+        resultsBox.addEventListener("scroll", () => {
+            if (
+                !searchState.hasMore ||
+                searchState.isLoading ||
+                resultsBox.classList.contains("hidden")
+            ) {
+                return;
+            }
+
+            const remainingScroll =
+                resultsBox.scrollHeight - resultsBox.scrollTop - resultsBox.clientHeight;
+
+            if (remainingScroll <= 24) {
+                fetchIngredientResults({
+                    query: searchState.query,
+                    resultsBox,
+                    searchInput,
+                    hiddenIdInput,
+                    searchState,
+                    appendResults: true,
+                });
+            }
+        });
 
         searchInput.addEventListener("input", () => {
             hiddenIdInput.value = "";
             validateEditor();
 
             const query = searchInput.value.trim();
+            searchState.query = query;
+            searchState.nextOffset = 0;
+            searchState.hasMore = false;
+            searchState.relaxedShortQueryEnabled = false;
+            clearTimeout(searchState.relaxedRetryTimer);
 
             clearTimeout(debounceTimer);
 
             if (!query) {
-                resultsBox.innerHTML = "";
+                clearSearchResults(resultsBox);
                 resultsBox.classList.add("hidden");
                 return;
             }
 
-            debounceTimer = setTimeout(async () => {
-                try {
-                    const response = await fetch(`/api/items/search?q=${encodeURIComponent(query)}`);
-                    const results = await response.json();
+            if (query.length < SEARCH_MIN_LENGTH) {
+                renderIngredientSearchMessage(
+                    resultsBox,
+                    `Type at least ${SEARCH_MIN_LENGTH} characters to search.`,
+                );
+                return;
+            }
 
-                    renderIngredientSearchResults(resultsBox, results, searchInput, hiddenIdInput);
-                } catch (error) {
-                    console.error("Ingredient search failed:", error);
-                    resultsBox.innerHTML = "";
-                    resultsBox.classList.add("hidden");
-                }
-            }, 100);
+            debounceTimer = setTimeout(async () => {
+                fetchIngredientResults({
+                    query,
+                    resultsBox,
+                    searchInput,
+                    hiddenIdInput,
+                    searchState,
+                    appendResults: false,
+                    relaxedShortQuery: false,
+                });
+            }, SEARCH_DEBOUNCE_MS);
         });
 
         searchInput.addEventListener("blur", () => {
@@ -216,11 +266,104 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    function renderIngredientSearchResults(resultsBox, results, searchInput, hiddenIdInput) {
-        resultsBox.innerHTML = "";
+    async function fetchIngredientResults({
+        query,
+        resultsBox,
+        searchInput,
+        hiddenIdInput,
+        searchState,
+        appendResults,
+        relaxedShortQuery = false,
+    }) {
+        const requestToken = searchState.requestToken + 1;
+        searchState.requestToken = requestToken;
+        searchState.isLoading = true;
 
-        if (!results.length) {
-            resultsBox.classList.add("hidden");
+        if (!appendResults) {
+            clearSearchResults(resultsBox);
+            renderIngredientSearchLoading(resultsBox);
+        } else {
+            renderIngredientSearchLoading(resultsBox, true);
+        }
+
+        try {
+            const params = new URLSearchParams({
+                q: query,
+                offset: String(searchState.nextOffset),
+            });
+            if (relaxedShortQuery) {
+                params.set("relax_short_query", "1");
+            }
+            const response = await fetch(
+                `/api/items/search?${params.toString()}`,
+            );
+            const payload = await response.json();
+
+            if (requestToken !== searchState.requestToken || query !== searchState.query) {
+                return;
+            }
+
+            renderIngredientSearchResults(
+                resultsBox,
+                payload.items || [],
+                searchInput,
+                hiddenIdInput,
+                appendResults,
+            );
+
+            searchState.nextOffset = payload.next_offset || 0;
+            searchState.hasMore = Boolean(payload.has_more);
+            searchState.isLoading = false;
+            searchState.relaxedShortQueryEnabled = relaxedShortQuery;
+            syncIngredientSearchFooter(resultsBox, searchState);
+
+            if (
+                !appendResults &&
+                !relaxedShortQuery &&
+                !payload.items?.length &&
+                query.length <= RELAXED_SHORT_QUERY_LENGTH
+            ) {
+                clearTimeout(searchState.relaxedRetryTimer);
+                searchState.relaxedRetryTimer = setTimeout(() => {
+                    if (query !== searchState.query || hiddenIdInput.value) {
+                        return;
+                    }
+
+                    searchState.nextOffset = 0;
+                    fetchIngredientResults({
+                        query,
+                        resultsBox,
+                        searchInput,
+                        hiddenIdInput,
+                        searchState,
+                        appendResults: false,
+                        relaxedShortQuery: true,
+                    });
+                }, RELAXED_SHORT_QUERY_DELAY_MS);
+            }
+        } catch (error) {
+            console.error("Ingredient search failed:", error);
+            searchState.hasMore = false;
+            searchState.isLoading = false;
+            renderIngredientSearchMessage(resultsBox, "Search failed. Try again.");
+        }
+    }
+
+    function renderIngredientSearchResults(
+        resultsBox,
+        results,
+        searchInput,
+        hiddenIdInput,
+        appendResults,
+    ) {
+        if (!appendResults) {
+            clearSearchResults(resultsBox);
+        } else {
+            removeIngredientSearchFooter(resultsBox);
+        }
+
+        if (!results.length && !appendResults) {
+            renderIngredientSearchMessage(resultsBox, "No matching items found.");
             return;
         }
 
@@ -241,6 +384,59 @@ document.addEventListener("DOMContentLoaded", () => {
             resultsBox.appendChild(option);
         });
 
+        resultsBox.classList.remove("hidden");
+    }
+
+    function renderIngredientSearchLoading(resultsBox, appendResults = false) {
+        if (!appendResults) {
+            clearSearchResults(resultsBox);
+        } else {
+            removeIngredientSearchFooter(resultsBox);
+        }
+
+        const messageNode = document.createElement("div");
+        messageNode.className = "ingredient-search-message ingredient-search-footer";
+        messageNode.dataset.role = "search-footer";
+        messageNode.textContent = "Loading more results...";
+        resultsBox.appendChild(messageNode);
+        resultsBox.classList.remove("hidden");
+    }
+
+    function renderIngredientSearchMessage(resultsBox, message) {
+        clearSearchResults(resultsBox);
+
+        const messageNode = document.createElement("div");
+        messageNode.className = "ingredient-search-message";
+        messageNode.textContent = message;
+        resultsBox.appendChild(messageNode);
+        resultsBox.classList.remove("hidden");
+    }
+
+    function clearSearchResults(resultsBox) {
+        resultsBox.innerHTML = "";
+    }
+
+    function removeIngredientSearchFooter(resultsBox) {
+        resultsBox.querySelector('[data-role="search-footer"]')?.remove();
+    }
+
+    function syncIngredientSearchFooter(resultsBox, searchState) {
+        removeIngredientSearchFooter(resultsBox);
+
+        if (searchState.isLoading) {
+            renderIngredientSearchLoading(resultsBox, true);
+            return;
+        }
+
+        if (!searchState.hasMore) {
+            return;
+        }
+
+        const footer = document.createElement("div");
+        footer.className = "ingredient-search-message ingredient-search-footer";
+        footer.dataset.role = "search-footer";
+        footer.textContent = "Scroll for more results...";
+        resultsBox.appendChild(footer);
         resultsBox.classList.remove("hidden");
     }
 

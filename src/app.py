@@ -45,10 +45,11 @@ from services.workflow_service import (
     get_available_workflow_portals,
     transition_item_status,
 )
-from queries.item_search import search_items
+from queries.item_search import search_items_page
 from queries.item_detail import get_item_detail
 from queries.item_edit import get_item_edit_payload
 from queries.item_events import get_item_events
+from queries.live_collection import get_live_collection_page
 from queries.my_recipes import get_my_recipes
 from queries.workflow_items import get_workflow_portal_items
 
@@ -260,6 +261,17 @@ def my_recipes():
     )
 
 
+@app.route("/collection")
+def live_collection():
+    page_data = get_live_collection_page(
+        search_term=request.args.get("q", ""),
+        item_type=request.args.get("item_type", ""),
+        sort=request.args.get("sort", "updated_desc"),
+        offset=request.args.get("offset", 0),
+    )
+    return render_template("collection.html", page_data=page_data)
+
+
 @app.route("/workflow/<portal_name>")
 def workflow_portal(portal_name: str):
     current_user = get_current_mock_user(session)
@@ -407,11 +419,13 @@ def edit_item(item_id: int):
 @app.route("/api/items/search")
 def api_search_items():
     query = request.args.get("q", "").strip()
-
-    if not query:
-        return jsonify([])
-
-    results = search_items(query)
+    results = search_items_page(
+        search_term=query,
+        limit=request.args.get("limit", 15),
+        offset=request.args.get("offset", 0),
+        item_type=request.args.get("item_type", ""),
+        relaxed_short_query=request.args.get("relax_short_query", ""),
+    )
     return jsonify(results)
 
 @app.route("/api/recipes", methods=["POST"])

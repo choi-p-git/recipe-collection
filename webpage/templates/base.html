@@ -20,6 +20,7 @@
 
             <nav class="site-nav">
                 <a href="{{ url_for('index') }}">Home</a>
+                <a href="{{ url_for('live_collection') }}">Live Collection</a>
                 <a href="{{ url_for('my_recipes') }}">My Recipes</a>
                 <a href="{{ url_for('login_shell') }}">Mock Login</a>
                 <a href="{{ url_for('notifications') }}">Notifications{% if notification_count %} ({{ notification_count }}){% endif %}</a>

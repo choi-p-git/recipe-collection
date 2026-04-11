@@ -43,6 +43,7 @@ Successful submit redirects to shared item detail page
 Single-page multi-section recipe editor
 Client-side validation with section warnings
 Database-backed ingredient search
+Shared live-only search stack with ranking, pagination, collection browsing, and fuzzy fallback
 Recipe submit flow inserts item row and component rows
 Recipe authorship follows the active mock session user
 Instruction codec stores ordered method steps as numbered text
@@ -74,6 +75,13 @@ Database migration/versioning note
 - `src/db.py` applies pending migrations and records them in the `schema_migration` table
 - `database/schema.sql` remains the latest full snapshot for rebuild/reference use
 - Existing local databases without migration history are stamped forward the first time the migration runner sees them
+
+Search stack note
+
+- Search results are limited to `live` items only
+- Search behavior is shared so future modules such as Menu Builder or Inventory can reuse the same ranking and filtering path
+- Current search stack supports exact match, prefix match, substring match, paged loading, collection browsing, and fuzzy fallback
+- Very short fuzzy fallbacks stay strict by default and only relax after an initial zero-result response in the recipe editor picker
 
 MVP validation checklist
 

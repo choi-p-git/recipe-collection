@@ -6,17 +6,32 @@
     <div class="item-detail">
         <header class="item-detail-header">
             <div class="item-detail-header-main">
-                <p class="item-detail-kicker">{{ item.item_type_label }}</p>
+                <div class="item-detail-title-row">
+                    <p class="item-detail-kicker">{{ item.item_type_label }}</p>
+                    <span class="status-badge status-badge-{{ item.status }}">{{ item.status_label }}</span>
+                </div>
                 <h2>{{ item.item_name }}</h2>
+                <div class="item-detail-hero-meta">
+                    <span class="detail-pill">Item ID {{ item.item_id }}</span>
+                    <span class="detail-pill">Author {{ item.author_display_name }}</span>
+                    {% if item.item_type == "recipe" %}
+                        <span class="detail-pill">{{ item.ingredients|length }} Ingredients</span>
+                        <span class="detail-pill">{{ item.instruction_steps|length }} Steps</span>
+                    {% endif %}
+                </div>
                 {% if can_edit_item_for_current_user %}
                     <p><a class="page-action-link secondary" href="{{ url_for('edit_item', item_id=item.item_id) }}">Edit Item</a></p>
                 {% endif %}
             </div>
 
             <div class="item-detail-meta">
-                <p><strong>Item ID:</strong> {{ item.item_id }}</p>
-                <p><strong>Status:</strong> {{ item.status_label }}</p>
-                <p><strong>Author:</strong> {{ item.author_display_name }}</p>
+                <div class="detail-meta-grid">
+                    <p><strong>Item ID:</strong> {{ item.item_id }}</p>
+                    <p><strong>Status:</strong> {{ item.status_label }}</p>
+                    <p><strong>Author:</strong> {{ item.author_display_name }}</p>
+                    <p><strong>Created:</strong> {{ item.created_at }}</p>
+                    <p><strong>Updated:</strong> {{ item.updated_at }}</p>
+                </div>
                 {% if item.status == "live" and can_use_advanced_workflow %}
                     <p>
                         <a
@@ -37,41 +52,92 @@
             </section>
         {% endif %}
 
+        <section class="item-detail-section">
+            <h3>{{ "Recipe Snapshot" if item.item_type == "recipe" else "Base Food Snapshot" }}</h3>
+            <div class="detail-stat-grid">
+                {% if item.item_type == "recipe" %}
+                    <article class="detail-stat-card">
+                        <p class="detail-stat-label">Yield</p>
+                        <p class="detail-stat-value">{{ item.yield_quantity }} {{ item.yield_unit }}</p>
+                    </article>
+                    <article class="detail-stat-card">
+                        <p class="detail-stat-label">Primary Method</p>
+                        <p class="detail-stat-value">{{ item.primary_cooking_method_label }}</p>
+                    </article>
+                    <article class="detail-stat-card">
+                        <p class="detail-stat-label">Serving Size</p>
+                        <p class="detail-stat-value">
+                            {% if item.serving_size_quantity and item.serving_size_unit %}
+                                {{ item.serving_size_quantity }} {{ item.serving_size_unit }}
+                            {% else %}
+                                Optional / Not Set
+                            {% endif %}
+                        </p>
+                    </article>
+                    <article class="detail-stat-card">
+                        <p class="detail-stat-label">Serving Count</p>
+                        <p class="detail-stat-value">{{ item.serving_count or "Optional / Not Set" }}</p>
+                    </article>
+                {% else %}
+                    <article class="detail-stat-card">
+                        <p class="detail-stat-label">Usage Type</p>
+                        <p class="detail-stat-value">Shared Base Food</p>
+                    </article>
+                    <article class="detail-stat-card">
+                        <p class="detail-stat-label">Workflow State</p>
+                        <p class="detail-stat-value">{{ item.status_label }}</p>
+                    </article>
+                    <article class="detail-stat-card">
+                        <p class="detail-stat-label">Detail Scope</p>
+                        <p class="detail-stat-value">Ingredient Record</p>
+                    </article>
+                {% endif %}
+            </div>
+        </section>
+
         {% if item.item_type == "recipe" %}
-            <section class="item-detail-section">
+            <section class="item-detail-section detail-section-split">
                 <h3>Yield</h3>
-                <p><strong>Yield:</strong> {{ item.yield_quantity }} {{ item.yield_unit }}</p>
+                <div class="detail-copy-stack">
+                    <p><strong>Yield:</strong> {{ item.yield_quantity }} {{ item.yield_unit }}</p>
 
-                {% if item.serving_size_quantity and item.serving_size_unit %}
-                    <p><strong>Serving Size:</strong> {{ item.serving_size_quantity }} {{ item.serving_size_unit }}</p>
-                {% endif %}
+                    {% if item.serving_size_quantity and item.serving_size_unit %}
+                        <p><strong>Serving Size:</strong> {{ item.serving_size_quantity }} {{ item.serving_size_unit }}</p>
+                    {% endif %}
 
-                {% if item.serving_count %}
-                    <p><strong>Serving Count:</strong> {{ item.serving_count }}</p>
-                {% endif %}
+                    {% if item.serving_count %}
+                        <p><strong>Serving Count:</strong> {{ item.serving_count }}</p>
+                    {% endif %}
+                </div>
             </section>
 
-            <section class="item-detail-section">
+            <section class="item-detail-section detail-section-split">
                 <h3>Preparation</h3>
-                <p>
-                    <strong>Primary Cooking Method:</strong>
-                    {{ item.primary_cooking_method_label }}
-                </p>
+                <div class="detail-copy-stack">
+                    <p>
+                        <strong>Primary Cooking Method:</strong>
+                        {{ item.primary_cooking_method_label }}
+                    </p>
+                </div>
             </section>
 
             <section class="item-detail-section">
                 <h3>Ingredients</h3>
 
                 {% if item.ingredients %}
-                    <ul class="item-detail-list">
+                    <div class="ingredient-detail-grid">
                         {% for ingredient in item.ingredients %}
-                            <li>
-                                {{ ingredient.component_quantity }} {{ ingredient.component_unit }}
-                                - {{ ingredient.component_item_name }}
-                                <span class="muted">[{{ ingredient.component_item_type_label }} | ID {{ ingredient.component_item_id }}]</span>
-                            </li>
+                            <article class="ingredient-detail-card">
+                                <p class="ingredient-detail-quantity">{{ ingredient.component_quantity }} {{ ingredient.component_unit }}</p>
+                                <h4>
+                                    <a class="text-link" href="{{ url_for('item_detail', item_id=ingredient.component_item_id) }}">
+                                        {{ ingredient.component_item_name }}
+                                    </a>
+                                </h4>
+                                <p class="muted">{{ ingredient.component_item_type_label }} | ID {{ ingredient.component_item_id }}</p>
+                            </article>
                         {% endfor %}
-                    </ul>
+                    </div>
                 {% else %}
                     <p>No ingredients found.</p>
                 {% endif %}
@@ -81,9 +147,9 @@
                 <h3>Method Steps</h3>
 
                 {% if item.instruction_steps %}
-                    <ol class="item-detail-list">
+                    <ol class="item-detail-list method-step-list">
                         {% for step in item.instruction_steps %}
-                            <li>{{ step }}</li>
+                            <li class="method-step-card">{{ step }}</li>
                         {% endfor %}
                     </ol>
                 {% else %}
@@ -95,23 +161,38 @@
         {% if item.notes %}
             <section class="item-detail-section">
                 <h3>Notes</h3>
-                <p>{{ item.notes }}</p>
+                <div class="detail-note-block">
+                    <p>{{ item.notes }}</p>
+                </div>
             </section>
         {% endif %}
 
         {% if item.item_type == "recipe" %}
             <section class="item-detail-section">
                 <h3>Classification</h3>
-                <p><strong>Concept:</strong> {{ item.concept_classification or "-" }}</p>
-                <p><strong>Meal:</strong> {{ item.meal_classification or "-" }}</p>
-                <p><strong>HACCP Process:</strong> {{ item.haccp_process_classification or "-" }}</p>
+                <div class="classification-grid">
+                    <article class="detail-stat-card">
+                        <p class="detail-stat-label">Concept</p>
+                        <p class="detail-stat-value">{{ item.concept_classification or "-" }}</p>
+                    </article>
+                    <article class="detail-stat-card">
+                        <p class="detail-stat-label">Meal</p>
+                        <p class="detail-stat-value">{{ item.meal_classification or "-" }}</p>
+                    </article>
+                    <article class="detail-stat-card">
+                        <p class="detail-stat-label">HACCP Process</p>
+                        <p class="detail-stat-value">{{ item.haccp_process_classification or "-" }}</p>
+                    </article>
+                </div>
             </section>
         {% endif %}
 
         <section class="item-detail-section">
             <h3>Audit</h3>
-            <p><strong>Created At:</strong> {{ item.created_at }}</p>
-            <p><strong>Updated At:</strong> {{ item.updated_at }}</p>
+            <div class="detail-copy-stack">
+                <p><strong>Created At:</strong> {{ item.created_at }}</p>
+                <p><strong>Updated At:</strong> {{ item.updated_at }}</p>
+            </div>
         </section>
 
         {% if show_workflow_panels %}

@@ -1,6 +1,7 @@
 import sqlite3
 
 from services.item_service import create_base_food
+from services.recipe_service import create_recipe
 
 
 def test_index_and_form_routes_render(app_client):
@@ -107,15 +108,116 @@ def test_recipe_legacy_route_redirects_to_item_detail(app_client):
     assert response.headers["Location"].endswith(f"/items/{item_id}")
 
 
-def test_api_search_items_returns_json_results(app_client):
-    create_base_food(item_name="Liquid Egg")
+def test_api_search_items_returns_json_results(app_client, isolated_db):
+    item_id = create_base_food(item_name="Liquid Egg")
+
+    # Route search is restricted to live items only.
+    # Direct sqlite use keeps this aligned with the current workflow rule.
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id = ?", (item_id,))
+    conn.commit()
+    conn.close()
 
     response = app_client.get("/api/items/search?q=egg")
     payload = response.get_json()
 
     assert response.status_code == 200
-    assert payload
-    assert payload[0]["item_name"] == "Liquid Egg"
+    assert payload["items"]
+    assert payload["items"][0]["item_name"] == "Liquid Egg"
+    assert payload["has_more"] is False
+
+
+def test_api_search_items_returns_empty_results_for_short_queries(app_client):
+    create_base_food(item_name="Table Salt")
+
+    response = app_client.get("/api/items/search?q=s")
+
+    assert response.status_code == 200
+    assert response.get_json()["items"] == []
+
+
+def test_api_search_items_excludes_non_live_results(app_client, isolated_db):
+    live_item_id = create_base_food(item_name="Live Pepper")
+    create_base_food(item_name="Submitted Pepper")
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id = ?", (live_item_id,))
+    conn.commit()
+    conn.close()
+
+    response = app_client.get("/api/items/search?q=pepper")
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert any(result["item_name"] == "Live Pepper" for result in payload["items"])
+    assert all(result["status"] == "live" for result in payload["items"])
+
+
+def test_api_search_items_supports_offset_pagination(app_client, isolated_db):
+    created_ids = []
+    for index in range(18):
+        created_ids.append(create_base_food(item_name=f"Offset Search Item {index:02d}"))
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE item SET status = 'live' WHERE item_id IN ({})".format(
+            ", ".join("?" for _ in created_ids)
+        ),
+        created_ids,
+    )
+    conn.commit()
+    conn.close()
+
+    response = app_client.get("/api/items/search?q=offset&limit=10&offset=10")
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert len(payload["items"]) == 8
+    assert payload["has_more"] is False
+    assert payload["next_offset"] == 18
+
+
+def test_api_search_items_supports_fuzzy_typo_matches(app_client, isolated_db):
+    chicken_id = create_base_food(item_name="Chicken Soup Base")
+    celery_id = create_base_food(item_name="Celery Soup Base")
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE item SET status = 'live' WHERE item_id IN (?, ?)",
+        (chicken_id, celery_id),
+    )
+    conn.commit()
+    conn.close()
+
+    response = app_client.get("/api/items/search?q=chikcen")
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert payload["items"]
+    assert payload["items"][0]["item_name"] == "Chicken Soup Base"
+
+
+def test_api_search_items_supports_relaxed_short_query_fallback(app_client, isolated_db):
+    mayo_id = create_base_food(item_name="Mayo")
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id = ?", (mayo_id,))
+    conn.commit()
+    conn.close()
+
+    default_response = app_client.get("/api/items/search?q=nayo")
+    relaxed_response = app_client.get("/api/items/search?q=nayo&relax_short_query=1")
+
+    assert default_response.status_code == 200
+    assert default_response.get_json()["items"] == []
+    assert relaxed_response.status_code == 200
+    assert relaxed_response.get_json()["items"]
+    assert relaxed_response.get_json()["items"][0]["item_name"] == "Mayo"
 
 
 def test_item_detail_returns_404_for_missing_item(app_client):
@@ -190,6 +292,100 @@ def test_my_recipes_route_shows_empty_state(app_client):
 
     assert response.status_code == 200
     assert "No recipes found" in page
+
+
+def test_live_collection_route_lists_live_items_only(app_client, isolated_db):
+    live_item_id = create_base_food(item_name="Collection Celery")
+    create_base_food(item_name="Collection Draft Celery")
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id = ?", (live_item_id,))
+    conn.commit()
+    conn.close()
+
+    response = app_client.get("/collection")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Live Collection" in page
+    assert "Collection Celery" in page
+    assert "Collection Draft Celery" not in page
+
+
+def test_live_collection_route_supports_filters_and_pagination(app_client, isolated_db):
+    recipe_component_id = create_base_food(item_name="Collection Search Oil")
+    created_ids = [recipe_component_id]
+
+    for index in range(18):
+        created_ids.append(create_base_food(item_name=f"Browse Chicken {index:02d}"))
+
+    recipe_id = create_recipe(
+        {
+            "item_name": "Collection Recipe Placeholder",
+            "yield_quantity": 1,
+            "yield_unit": "each",
+            "primary_cooking_method_code": "bake",
+            "instruction_steps": ["Mix", "Bake"],
+            "ingredients": [
+                {
+                    "component_item_id": recipe_component_id,
+                    "component_quantity": 1,
+                    "component_unit": "oz",
+                }
+            ],
+        }
+    )
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    created_ids.append(recipe_id)
+    cursor.execute(
+        "UPDATE item SET status = 'live' WHERE item_id IN ({})".format(
+            ", ".join("?" for _ in created_ids)
+        ),
+        created_ids,
+    )
+    conn.commit()
+    conn.close()
+
+    filtered_response = app_client.get("/collection?q=Browse&item_type=base_food&sort=name_asc&offset=15")
+    filtered_page = filtered_response.get_data(as_text=True)
+    recipe_only_response = app_client.get("/collection?item_type=recipe")
+    recipe_only_page = recipe_only_response.get_data(as_text=True)
+
+    assert filtered_response.status_code == 200
+    assert "Browse Chicken 15" in filtered_page
+    assert "Previous" in filtered_page
+    assert "Next" not in filtered_page or "is-disabled\">Next" in filtered_page
+    assert recipe_only_response.status_code == 200
+    assert "Collection Recipe Placeholder" in recipe_only_page
+
+
+def test_live_collection_route_shows_minimum_query_message(app_client):
+    response = app_client.get("/collection?q=c")
+
+    assert response.status_code == 200
+    assert "Enter at least 2 characters" in response.get_data(as_text=True)
+
+
+def test_live_collection_route_supports_fuzzy_query_matches(app_client, isolated_db):
+    chicken_id = create_base_food(item_name="Chicken Rice Bowl")
+    celery_id = create_base_food(item_name="Celery Rice Bowl")
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE item SET status = 'live' WHERE item_id IN (?, ?)",
+        (chicken_id, celery_id),
+    )
+    conn.commit()
+    conn.close()
+
+    response = app_client.get("/collection?q=chikcen")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Chicken Rice Bowl" in page
 
 
 def test_notifications_page_shows_note_notifications(app_client, isolated_db):

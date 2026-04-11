@@ -384,6 +384,11 @@ Current search behavior:
 * DB-backed
 * attached results panel
 * actual selected item ID required for validation
+* `live` items only
+* offset-based pagination / scroll loading
+* broader live collection search page
+* fuzzy fallback available after exact/prefix/substring matching
+* shared search path should remain reusable for future Menu Builder / Inventory modules
 
 ### Methods Editor
 
@@ -484,6 +489,7 @@ Locked future design direction:
 * richer rendered recipe page
 * cleaner styled recipe layout
 * continue improving non-recipe/base-food detail presentation
+* preserve current shared item-detail route while improving presentation
 
 ### 2. Menu Builder Integration
 
@@ -537,12 +543,8 @@ Post-MVP requirement:
 
 Post-MVP:
 
-* fuzzy match
-* refined filters
-* better ranking
-* paginated/scroll loading
-* broader collection search
-* `My Recipes` page
+* search behavior should stay centralized for reuse by future modules
+* future module-specific filters can layer on top of the shared search core
 
 ### 7. Workflow / Auth Expansion
 
