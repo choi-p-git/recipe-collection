@@ -83,6 +83,13 @@ Search stack note
 - Current search stack supports exact match, prefix match, substring match, paged loading, collection browsing, and fuzzy fallback
 - Very short fuzzy fallbacks stay strict by default and only relax after an initial zero-result response in the recipe editor picker
 
+Scaling foundation note
+
+- Sub-recipes can already be flattened at render time for `live` recipes in a first-pass read-only view
+- Unit compatibility is moving into a dedicated scaling foundation layer instead of editor-side enforcement
+- Approved units now serve as the basis for future mass / volume / count awareness and later conversion services
+- Same-unit sub-recipe scaling is ratio-ready today, and same-family unit conversion is now modeled through a shared conversion service
+
 MVP validation checklist
 
 1. Run `.\.venv\Scripts\python.exe .\src\db.py`

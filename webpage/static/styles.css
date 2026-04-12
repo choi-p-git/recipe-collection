@@ -446,6 +446,51 @@ button:disabled {
     margin: 0;
 }
 
+.detail-toggle-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.is-current-toggle {
+    background: #2563eb;
+    color: #fff;
+}
+
+.detail-warning-block {
+    border: 1px solid #fde68a;
+    background: #fffbeb;
+    border-radius: 10px;
+    padding: 0.9rem;
+    margin-bottom: 1rem;
+}
+
+.detail-warning-block p {
+    margin-top: 0;
+}
+
+.flattened-tree {
+    display: grid;
+    gap: 0.85rem;
+}
+
+.flattened-tree-row {
+    margin-left: calc(var(--flatten-depth, 0) * 1.5rem);
+}
+
+.flattened-tree-row-sub-recipe {
+    background: #eef4ff;
+    border-color: #bfd5ff;
+}
+
+.scaling-foundation-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.85rem;
+    margin-top: 1rem;
+    margin-bottom: 1rem;
+}
+
 .item-detail-list {
     padding-left: 1.5rem;
 }

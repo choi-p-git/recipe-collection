@@ -539,6 +539,100 @@ Post-MVP requirement:
 * mass-to-volume conversion
 * unconventional operational scaling such as hotel pans
 
+### 5A. Sub-Recipe Flattening and Scaling Spec v0.1
+
+Locked direction for the first post-MVP implementation slice:
+
+* flattening is read-only and render-time only in the first implementation
+* flattening is available for `live` recipes only
+* users should be able to toggle between hierarchical and flattened ingredient views
+* first scaling target is recipe yield
+* future scaling must eventually support:
+
+  * mass
+  * volume
+  * mass-to-volume
+  * volume-to-mass
+  * unconventional operational units
+  * user-defined portion scaling
+  * dietitian-defined portion scaling
+
+* submitted portion-related values are provisional
+* final analyzed/live recipe should eventually store official dietitian-defined portion fields
+* user-defined portion calculation will live in a separate later service layer
+* first flattening pass preserves original units rather than converting units
+* child recipe expansion uses ratio math:
+
+  * parent requested child quantity divided by child recipe yield quantity
+
+* first flattening pass only fully expands child recipes when same-unit ratio math is directly available
+* same-family unit conversion should be handled by a dedicated shared conversion service
+* conversion-aware flattening beyond same-family support remains deferred until broader conversion logic exists
+* quantities that round below `0.001` should render as `according to taste`
+* indirect recipe-cycle detection should exist
+* cycle detection should surface warnings in rendering rather than hard-stopping the user-facing page
+* flattened render should preserve the original parent recipe component order
+* flattened sub-recipes should render as their own visible sub-tree block inside that parent order
+* ingredients inside each flattened sub-recipe should preserve their original component order
+* shared ingredients across parent and child branches must remain separate rows in flattened view and must not be merged
+* future unit-conversion work should likely introduce:
+
+  * explicit mass / volume awareness on units
+  * mathematical relationships between approved units
+  * likely density-aware base food data
+  * recipe-level mass yield and volume yield
+* do not enforce sub-recipe selected units in the editor based on child recipe yield unit
+* unit compatibility belongs to the future measurement / conversion service layer
+
+### 5B. Scaling Foundation Layer
+
+Current post-MVP foundation direction:
+
+* approved units now conceptually map to measurement types:
+
+  * mass
+  * volume
+  * count
+
+* scaling foundation should classify units even before conversion is fully enabled
+* same-unit child recipe calls are direct-ratio ready
+* same-measurement-type child recipe calls should use the shared same-family conversion service
+* cross-measurement-type relationships should be recognized as incompatible until richer conversion logic exists
+* flattening may still skip non-direct conversions until flattening is explicitly upgraded to apply shared conversion results
+* dietitian-defined official portion fields remain a later schema/model step
+
+### 5C. Conversion Model Spec v0.1
+
+Locked direction for the first conversion implementation:
+
+* unit conversion must be centralized in a shared service, not duplicated across modules
+* each approved unit belongs to one measurement family:
+
+  * mass
+  * volume
+  * count
+
+* each family has a canonical base:
+
+  * mass -> `g`
+  * volume -> `ml`
+  * count -> `each`
+
+* same-family conversion is supported in the first service slice
+* cross-family conversion is not supported in the first service slice
+* cross-family conversion will later require richer metadata such as density or recipe-level measurement definitions
+* conversion service calls should return structured status, not just a number
+* expected statuses currently include:
+
+  * `direct_ratio`
+  * `same_family_conversion`
+  * `incompatible`
+  * `unknown`
+  * `missing`
+
+* display rounding remains separate from conversion math
+* the `according to taste` rule remains a render-layer behavior for tiny scaled values
+
 ### 6. Search Enhancements
 
 Post-MVP:

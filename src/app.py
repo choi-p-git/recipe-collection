@@ -39,6 +39,8 @@ from services.notification_service import (
     get_notification_rows,
 )
 from services.policy_service import can_edit_item, can_edit_items, can_view_advanced_workflow
+from services.recipe_flattening_service import build_flattened_recipe_view
+from services.recipe_scaling_service import build_recipe_scaling_foundation
 from services.workflow_service import (
     WorkflowPermissionError,
     ensure_portal_access,
@@ -533,6 +535,23 @@ def item_detail(item_id: int):
         and request.args.get("workflow_view", "").strip() == "advanced"
     )
     show_workflow_panels = item["status"] != "live" or advanced_workflow_enabled
+    ingredient_view_mode = (
+        "flattened"
+        if item["item_type"] == "recipe"
+        and item["status"] == "live"
+        and request.args.get("ingredient_view", "").strip() == "flattened"
+        else "hierarchical"
+    )
+    flattened_recipe_view = (
+        build_flattened_recipe_view(item_id)
+        if item["item_type"] == "recipe" and item["status"] == "live"
+        else None
+    )
+    scaling_foundation = (
+        build_recipe_scaling_foundation(item_id)
+        if item["item_type"] == "recipe"
+        else None
+    )
     note_recipient = (
         resolve_note_recipient(item, current_user)
         if show_workflow_panels
@@ -549,6 +568,9 @@ def item_detail(item_id: int):
         can_use_advanced_workflow=can_use_advanced_workflow,
         advanced_workflow_enabled=advanced_workflow_enabled,
         show_workflow_panels=show_workflow_panels,
+        ingredient_view_mode=ingredient_view_mode,
+        flattened_recipe_view=flattened_recipe_view,
+        scaling_foundation=scaling_foundation,
     )
 
 

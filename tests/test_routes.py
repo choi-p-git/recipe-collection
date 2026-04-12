@@ -1023,6 +1023,231 @@ def test_live_item_detail_shows_advanced_workflow_toggle_for_reviewer(app_client
     assert "Workflow Notes" not in page
 
 
+def test_live_recipe_detail_supports_flattened_ingredient_toggle(app_client, isolated_db):
+    salt_id = create_base_food(item_name="Flatten Salt")
+    oil_id = create_base_food(item_name="Flatten Oil")
+    sauce_id = create_recipe(
+        {
+            "item_name": "Flatten Sauce",
+            "yield_quantity": 2,
+            "yield_unit": "cup",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Whisk"],
+            "ingredients": [
+                {
+                    "component_item_id": oil_id,
+                    "component_quantity": 2,
+                    "component_unit": "oz",
+                },
+                {
+                    "component_item_id": salt_id,
+                    "component_quantity": 0.0008,
+                    "component_unit": "tsp",
+                },
+            ],
+        }
+    )
+    recipe_id = create_recipe(
+        {
+            "item_name": "Flatten Parent Recipe",
+            "yield_quantity": 1,
+            "yield_unit": "each",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Assemble"],
+            "ingredients": [
+                {
+                    "component_item_id": sauce_id,
+                    "component_quantity": 1,
+                    "component_unit": "cup",
+                },
+                {
+                    "component_item_id": oil_id,
+                    "component_quantity": 1,
+                    "component_unit": "oz",
+                },
+            ],
+        }
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE item SET status = 'live' WHERE item_id IN (?, ?, ?, ?)",
+        (salt_id, oil_id, sauce_id, recipe_id),
+    )
+    conn.commit()
+    conn.close()
+
+    default_response = app_client.get(f"/items/{recipe_id}")
+    flattened_response = app_client.get(f"/items/{recipe_id}?ingredient_view=flattened")
+    default_page = default_response.get_data(as_text=True)
+    flattened_page = flattened_response.get_data(as_text=True)
+
+    assert default_response.status_code == 200
+    assert "Hierarchical Ingredients" in default_page
+    assert "Flattened Ingredients" in default_page
+    assert flattened_response.status_code == 200
+    assert "Flattened Ingredients" in flattened_page
+    assert "according to taste" in flattened_page
+    assert "Flattened Sub-Recipe | ID" in flattened_page
+    assert "Called from Flatten Parent Recipe" in flattened_page
+    assert "From Flatten Sauce" in flattened_page
+
+
+def test_live_recipe_flattened_view_applies_same_family_conversion(app_client, isolated_db):
+    oil_id = create_base_food(item_name="Mismatch Oil")
+    sauce_id = create_recipe(
+        {
+            "item_name": "Mismatch Sauce",
+            "yield_quantity": 2,
+            "yield_unit": "qt",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Mix"],
+            "ingredients": [
+                {
+                    "component_item_id": oil_id,
+                    "component_quantity": 8,
+                    "component_unit": "oz",
+                }
+            ],
+        }
+    )
+    recipe_id = create_recipe(
+        {
+            "item_name": "Mismatch Parent Recipe",
+            "yield_quantity": 1,
+            "yield_unit": "each",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Build"],
+            "ingredients": [
+                {
+                    "component_item_id": sauce_id,
+                    "component_quantity": 2,
+                    "component_unit": "cup",
+                }
+            ],
+        }
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE item SET status = 'live' WHERE item_id IN (?, ?, ?)",
+        (oil_id, sauce_id, recipe_id),
+    )
+    conn.commit()
+    conn.close()
+
+    response = app_client.get(f"/items/{recipe_id}?ingredient_view=flattened")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Flattening warnings" not in page
+    assert "Mismatch Oil" in page
+    assert "Called from Mismatch Parent Recipe" in page
+    assert "From Mismatch Sauce" in page
+
+
+def test_recipe_detail_shows_scaling_foundation_summary(app_client, isolated_db):
+    oil_id = create_base_food(item_name="Scaling Oil")
+    child_recipe_id = create_recipe(
+        {
+            "item_name": "Scaling Child",
+            "yield_quantity": 2,
+            "yield_unit": "qt",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Mix"],
+            "ingredients": [
+                {
+                    "component_item_id": oil_id,
+                    "component_quantity": 2,
+                    "component_unit": "oz",
+                }
+            ],
+        }
+    )
+    recipe_id = create_recipe(
+        {
+            "item_name": "Scaling Parent",
+            "yield_quantity": 1,
+            "yield_unit": "gal",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Build"],
+            "ingredients": [
+                {
+                    "component_item_id": child_recipe_id,
+                    "component_quantity": 1,
+                    "component_unit": "cup",
+                }
+            ],
+        }
+    )
+
+    response = app_client.get(f"/items/{recipe_id}")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Scaling Foundation" in page
+    assert "Same-Family Conversion" in page
+    assert "Same-family conversion ready" in page
+
+
+def test_live_recipe_flattened_view_warns_on_cycle_detection(app_client, isolated_db):
+    base_id = create_base_food(item_name="Cycle Base")
+    recipe_a_id = create_recipe(
+        {
+            "item_name": "Cycle Recipe A",
+            "yield_quantity": 1,
+            "yield_unit": "cup",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Mix A"],
+            "ingredients": [
+                {
+                    "component_item_id": base_id,
+                    "component_quantity": 1,
+                    "component_unit": "oz",
+                }
+            ],
+        }
+    )
+    recipe_b_id = create_recipe(
+        {
+            "item_name": "Cycle Recipe B",
+            "yield_quantity": 1,
+            "yield_unit": "cup",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Mix B"],
+            "ingredients": [
+                {
+                    "component_item_id": recipe_a_id,
+                    "component_quantity": 1,
+                    "component_unit": "cup",
+                }
+            ],
+        }
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE recipe_component SET component_item_id = ?, component_unit = 'cup' WHERE parent_recipe_item_id = ?",
+        (recipe_b_id, recipe_a_id),
+    )
+    cursor.execute(
+        "UPDATE item SET status = 'live' WHERE item_id IN (?, ?, ?)",
+        (base_id, recipe_a_id, recipe_b_id),
+    )
+    conn.commit()
+    conn.close()
+
+    response = app_client.get(f"/items/{recipe_a_id}?ingredient_view=flattened")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Flattening warnings" in page
+    assert "Cycle detected while flattening" in page
+
+
 def test_live_item_detail_advanced_view_reveals_workflow_history_and_notes_for_reviewer(app_client, isolated_db):
     base_food_id = create_base_food(item_name="Live Advanced Base")
     recipe_response = app_client.post(
