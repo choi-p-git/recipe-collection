@@ -28,6 +28,7 @@ def isolated_db(monkeypatch):
     monkeypatch.setattr(db, "DB_PATH", db_path)
     monkeypatch.setattr(db, "MIGRATIONS_DIR", PROJECT_ROOT / "database" / "migrations")
     monkeypatch.setattr(db, "SCHEMA_PATH", PROJECT_ROOT / "database" / "schema.sql")
+    monkeypatch.setattr(db, "AUTO_SEED_ENABLED", False)
 
     db.initialize_database()
     try:

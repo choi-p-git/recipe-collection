@@ -15,6 +15,7 @@ This project is being built as a staged MVP with deliberate business-analysis-fi
 * latest schema snapshot stored in `database/schema.sql`
 * Frontend assets live under `webpage/`
 * Core Python logic lives under `src/`
+* reusable seed catalog bootstrap lives in `src/seed_catalog.py`
 
 ## Current Folder Structure
 
@@ -320,6 +321,20 @@ Implemented:
 * debug override panel for account, role, and display name
 * current recipe authorship follows the active mock session user
 * `My Recipes` uses the active mock session user for filtering
+
+### Database Bootstrap Seed Catalog
+
+Implemented:
+
+* empty real databases auto-load a reusable seed catalog
+* seed catalog currently includes:
+
+  * 20 base foods
+  * 5 simple recipes using only base foods
+  * 3 complex recipes using both base foods and recipes
+
+* seed loading is idempotent and only runs when the `item` table is empty
+* isolated test databases should continue using `initialize_database(seed=False)` unless a test explicitly needs seeded data
 
 ### Workflow Tooling
 
@@ -678,7 +693,9 @@ Locked current direction:
 
 * scaled flattened view should reuse the existing ordered sub-tree render contract
 * display rounding remains render-layer behavior, including `according to taste` for values below `0.001`
-* cross-family conversion remains deferred until density / richer conversion metadata is introduced
+* same-family scaling should be attempted first
+* if same-family conversion fails and the target/request pair is mass<->volume, live recipe scaling may use the recipe's own authoritative mass and volume fields as a bridge
+* broader cross-family conversion beyond recipe-level bridging remains deferred until density / richer conversion metadata is introduced
 
 ### 5F. Technical Detail Visibility
 

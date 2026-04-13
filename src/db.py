@@ -8,6 +8,7 @@ DB_PATH = DB_DIR / "recipe_collection.db"
 MIGRATIONS_DIR = DB_DIR / "migrations"
 SCHEMA_PATH = DB_DIR / "schema.sql"
 MIGRATION_TABLE = "schema_migration"
+AUTO_SEED_ENABLED = True
 
 
 def get_connection() -> sqlite3.Connection:
@@ -91,9 +92,23 @@ def apply_migrations() -> None:
         conn.commit()
 
 
-def initialize_database() -> None:
-    """Create the database and apply pending SQL migrations."""
+def load_seed_catalog_if_needed() -> bool:
+    from seed_catalog import seed_database_if_empty
+
+    with get_connection() as conn:
+        did_seed = seed_database_if_empty(conn)
+        conn.commit()
+        return did_seed
+
+
+def initialize_database(seed: bool | None = None) -> None:
+    """Create the database, apply pending SQL migrations, and optionally seed items."""
+    if seed is None:
+        seed = AUTO_SEED_ENABLED
+
     apply_migrations()
+    if seed:
+        load_seed_catalog_if_needed()
 
 if __name__ == "__main__":
     initialize_database()

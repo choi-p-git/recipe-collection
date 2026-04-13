@@ -27,6 +27,10 @@ SQLite migrations stored in `database/migrations/`
 Latest full schema snapshot stored in `database/schema.sql`
 Unified `item` table plus `recipe_component` table
 Database initialization and pending migration application handled by `src/db.py`
+Automatic seed catalog bootstrap on empty real databases:
+- 20 base foods
+- 5 simple recipes
+- 3 complex recipes
 
 2. Mock auth shell
 Session-backed mock login page
@@ -78,8 +82,19 @@ Database migration/versioning note
 - Add future schema changes as a new numbered SQL file in `database/migrations/`
 - Keep migration filenames ordered, for example `0002_add_workflow_event.sql`
 - `src/db.py` applies pending migrations and records them in the `schema_migration` table
+- `src/db.py` also loads the built-in seed catalog when the database is empty
 - `database/schema.sql` remains the latest full snapshot for rebuild/reference use
 - Existing local databases without migration history are stamped forward the first time the migration runner sees them
+
+Seed catalog note
+
+- Empty real databases bootstrap with a reusable seed catalog stored in `src/seed_catalog.py`
+- The seed catalog includes:
+  - 20 base foods
+  - 5 simple recipes that use only base foods
+  - 3 complex recipes that use both base foods and sub-recipes
+- The loader is idempotent and only runs when the `item` table is empty
+- Tests use `initialize_database(seed=False)` so isolated DB fixtures stay clean unless a test explicitly wants seeded data
 
 Search stack note
 
@@ -97,6 +112,7 @@ Scaling foundation note
 - Recipes now carry mass and volume measurement fields that are required by the main recipe editor flow and required before a recipe can go live
 - Base foods keep a default serving count of `1`, with official mass/volume basis data managed through privileged edit flow
 - Live recipe detail pages now support same-family target scaling by requested batch quantity/unit
+- Live recipe detail pages now support recipe-level mass<->volume bridge scaling using the recipe's own authoritative mass and volume fields
 - Scaling currently supports hierarchical and flattened output modes with warning-based fallback for unsupported target units
 - Scaling Foundation and Audit panels are now hidden behind a privileged technical-details toggle on the item detail page
 

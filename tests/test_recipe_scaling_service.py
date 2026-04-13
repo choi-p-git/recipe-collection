@@ -1,6 +1,7 @@
 from services.recipe_scaling_service import build_recipe_scaling_foundation, build_scaled_recipe_view
 from services.unit_conversion_service import (
     convert_unit_value,
+    convert_with_mass_volume_bridge,
     describe_unit_conversion,
     get_unit_measurement_profile,
 )
@@ -34,6 +35,34 @@ def test_convert_unit_value_rejects_cross_family_conversion():
 
     assert result["ok"] is False
     assert result["status"] == "incompatible"
+
+
+def test_convert_with_mass_volume_bridge_supports_recipe_level_cross_family_conversion():
+    mass_to_volume = convert_with_mass_volume_bridge(
+        500,
+        "g",
+        "cup",
+        mass_quantity=1000,
+        mass_unit="g",
+        volume_quantity=1,
+        volume_unit="qt",
+    )
+    volume_to_mass = convert_with_mass_volume_bridge(
+        1,
+        "cup",
+        "g",
+        mass_quantity=1000,
+        mass_unit="g",
+        volume_quantity=1,
+        volume_unit="qt",
+    )
+
+    assert mass_to_volume["ok"] is True
+    assert mass_to_volume["status"] == "recipe_bridge_conversion"
+    assert round(mass_to_volume["quantity"], 3) == 2.0
+    assert volume_to_mass["ok"] is True
+    assert volume_to_mass["status"] == "recipe_bridge_conversion"
+    assert round(volume_to_mass["quantity"], 3) == 250.0
 
 
 def test_build_recipe_scaling_foundation_uses_same_family_relationship_label(isolated_db):
@@ -218,8 +247,46 @@ def test_build_scaled_recipe_view_warns_when_target_unit_is_not_convertible(isol
     conn.commit()
     conn.close()
 
-    scaled_view = build_scaled_recipe_view(recipe_id, 1, "lb", ingredient_view="hierarchical")
+    scaled_view = build_scaled_recipe_view(recipe_id, 1, "each", ingredient_view="hierarchical")
 
     assert scaled_view is not None
     assert scaled_view["is_scaled"] is False
     assert "not convertible" in scaled_view["warnings"][0]
+
+
+def test_build_scaled_recipe_view_supports_recipe_mass_volume_bridge(isolated_db):
+    import sqlite3
+
+    from services.item_service import create_base_food
+    from services.recipe_service import create_recipe
+
+    oil_id = create_base_food(item_name="Scaled Bridge Oil")
+    recipe_id = create_recipe(
+        {
+            "item_name": "Scaled Bridge Recipe",
+            "yield_quantity": 2,
+            "yield_unit": "qt",
+            "mass_quantity": 2000,
+            "mass_unit": "g",
+            "volume_quantity": 2,
+            "volume_unit": "qt",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Mix"],
+            "ingredients": [
+                {"component_item_id": oil_id, "component_quantity": 8, "component_unit": "oz"},
+            ],
+        }
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id IN (?, ?)", (oil_id, recipe_id))
+    conn.commit()
+    conn.close()
+
+    scaled_view = build_scaled_recipe_view(recipe_id, 1, "kg", ingredient_view="hierarchical")
+
+    assert scaled_view is not None
+    assert scaled_view["is_scaled"] is True
+    assert scaled_view["conversion_status"] == "recipe_bridge_conversion"
+    assert scaled_view["rows"][0]["quantity_display"] == "4"

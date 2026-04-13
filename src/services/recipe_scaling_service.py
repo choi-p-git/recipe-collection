@@ -1,6 +1,7 @@
 from db import get_connection
 from services.unit_conversion_service import (
     convert_unit_value,
+    convert_with_mass_volume_bridge,
     describe_unit_conversion,
     get_unit_measurement_profile,
 )
@@ -33,7 +34,11 @@ def build_scaled_recipe_view(
                 item_type,
                 status,
                 yield_quantity,
-                yield_unit
+                yield_unit,
+                mass_quantity,
+                mass_unit,
+                volume_quantity,
+                volume_unit
             FROM item
             WHERE item_id = ?
             """,
@@ -96,6 +101,16 @@ def build_scaled_recipe_view(
         to_unit=recipe_row[5],
     )
     if not conversion_result["ok"]:
+        conversion_result = convert_with_mass_volume_bridge(
+            quantity=normalized_target_quantity,
+            from_unit=normalized_target_unit,
+            to_unit=recipe_row[5],
+            mass_quantity=recipe_row[6],
+            mass_unit=recipe_row[7],
+            volume_quantity=recipe_row[8],
+            volume_unit=recipe_row[9],
+        )
+    if not conversion_result["ok"]:
         return {
             "available": True,
             "is_scaled": False,
@@ -117,6 +132,7 @@ def build_scaled_recipe_view(
             "target_unit": normalized_target_unit,
             "recipe_yield_quantity": recipe_row[4],
             "recipe_yield_unit": recipe_row[5],
+            "conversion_status": conversion_result["status"],
             "warnings": flattened_view["warnings"],
             "rows": flattened_view["rows"],
             "row_mode": "flattened",
@@ -130,6 +146,7 @@ def build_scaled_recipe_view(
         "target_unit": normalized_target_unit,
         "recipe_yield_quantity": recipe_row[4],
         "recipe_yield_unit": recipe_row[5],
+        "conversion_status": conversion_result["status"],
         "warnings": [],
         "row_mode": "hierarchical",
         "rows": [
@@ -241,6 +258,7 @@ def build_recipe_scaling_foundation(recipe_item_id: int) -> dict | None:
         "future_notes": [
             "Direct same-unit scaling is ready for ratio math.",
             "Same-family unit conversion is now modeled through the shared unit conversion service.",
-            "Cross-type scaling such as mass-to-volume will require richer measurement metadata and likely density-aware base foods.",
+            "Recipe-level mass-to-volume scaling can use authoritative recipe measurement fields during live scaling.",
+            "Base-food density-aware and broader cross-type scaling remains a later step.",
         ],
     }

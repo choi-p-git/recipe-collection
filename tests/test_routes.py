@@ -1520,11 +1520,45 @@ def test_live_recipe_detail_shows_scaling_warning_for_incompatible_target_unit(a
     conn.commit()
     conn.close()
 
-    response = app_client.get(f"/items/{recipe_id}?scale_quantity=1&scale_unit=lb")
+    response = app_client.get(f"/items/{recipe_id}?scale_quantity=1&scale_unit=each")
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert "Scale target unit &#39;lb&#39; is not convertible to recipe yield unit &#39;qt&#39;." in page
+    assert "Scale target unit &#39;each&#39; is not convertible to recipe yield unit &#39;qt&#39;." in page
+
+
+def test_live_recipe_detail_supports_recipe_bridge_scaling(app_client, isolated_db):
+    oil_id = create_base_food(item_name="Route Bridge Oil")
+    recipe_id = create_recipe(
+        {
+            "item_name": "Route Bridge Recipe",
+            "yield_quantity": 2,
+            "yield_unit": "qt",
+            "mass_quantity": 2000,
+            "mass_unit": "g",
+            "volume_quantity": 2,
+            "volume_unit": "qt",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Mix"],
+            "ingredients": [
+                {"component_item_id": oil_id, "component_quantity": 8, "component_unit": "oz"},
+            ],
+        }
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id IN (?, ?)", (oil_id, recipe_id))
+    conn.commit()
+    conn.close()
+
+    response = app_client.get(f"/items/{recipe_id}?scale_quantity=1&scale_unit=kg")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Scaling to 1.0 kg" in page
+    assert "base yield 2.0 qt." in page
+    assert "Scaled Ingredients" in page
 
 
 def test_live_item_detail_advanced_view_reveals_workflow_history_and_notes_for_reviewer(app_client, isolated_db):
