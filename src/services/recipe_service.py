@@ -15,7 +15,9 @@ from services.item_event_service import (
     build_update_summary,
     record_item_event,
 )
+from services.notification_service import create_post_live_edit_notifications
 from services.recipe_instruction_codec import encode_instruction_steps_to_text
+from services.unit_conversion_service import convert_unit_value, get_unit_measurement_profile
 
 
 MOCK_RECIPE_AUTHOR_USER_ID = "dev_user_001"
@@ -31,19 +33,87 @@ def _validate_recipe_payload(payload: dict[str, Any]) -> dict[str, Any]:
     if not recipe_name:
         raise InvalidItemNameError("Recipe name cannot be empty or only whitespace.")
 
-    yield_quantity = payload.get("yield_quantity")
     yield_unit = str(payload.get("yield_unit", "")).strip()
-
-    try:
-        yield_quantity = float(yield_quantity)
-    except (TypeError, ValueError):
-        raise InvalidNumericValueError("Yield quantity must be a valid number.")
-
-    if yield_quantity <= 0:
-        raise InvalidNumericValueError("Yield quantity must be greater than 0.")
 
     if not yield_unit:
         raise InvalidRecipePayloadError("Yield unit is required.")
+
+    mass_quantity = payload.get("mass_quantity")
+    if mass_quantity not in (None, ""):
+        try:
+            mass_quantity = float(mass_quantity)
+        except (TypeError, ValueError):
+            raise InvalidNumericValueError("Mass quantity must be a valid number.")
+
+        if mass_quantity <= 0:
+            raise InvalidNumericValueError("Mass quantity must be greater than 0.")
+    else:
+        mass_quantity = None
+
+    mass_unit = str(payload.get("mass_unit", "")).strip() or None
+
+    volume_quantity = payload.get("volume_quantity")
+    if volume_quantity not in (None, ""):
+        try:
+            volume_quantity = float(volume_quantity)
+        except (TypeError, ValueError):
+            raise InvalidNumericValueError("Volume quantity must be a valid number.")
+
+        if volume_quantity <= 0:
+            raise InvalidNumericValueError("Volume quantity must be greater than 0.")
+    else:
+        volume_quantity = None
+
+    volume_unit = str(payload.get("volume_unit", "")).strip() or None
+
+    yield_quantity = payload.get("yield_quantity")
+    yield_profile = get_unit_measurement_profile(yield_unit)
+
+    if yield_quantity not in (None, ""):
+        try:
+            explicit_yield_quantity = float(yield_quantity)
+        except (TypeError, ValueError):
+            raise InvalidNumericValueError("Yield quantity must be a valid number.")
+    else:
+        explicit_yield_quantity = None
+
+    if yield_unit == "each":
+        if explicit_yield_quantity is None:
+            raise InvalidNumericValueError("Yield quantity must be a valid number.")
+
+        if explicit_yield_quantity <= 0:
+            raise InvalidNumericValueError("Yield quantity must be greater than 0.")
+        yield_quantity = explicit_yield_quantity
+    elif yield_profile and yield_profile["measurement_type"] == "mass":
+        if mass_quantity is not None and mass_unit:
+            derived_yield = convert_unit_value(mass_quantity, mass_unit, yield_unit)
+            if not derived_yield["ok"]:
+                raise InvalidRecipePayloadError(
+                    f"Yield unit '{yield_unit}' is not convertible from the provided yield mass unit '{mass_unit}'."
+                )
+            yield_quantity = float(derived_yield["quantity"])
+        elif explicit_yield_quantity is not None and explicit_yield_quantity > 0:
+            yield_quantity = explicit_yield_quantity
+        else:
+            raise InvalidRecipePayloadError(
+                "Yield mass quantity and unit are required when the yield unit is mass-based."
+            )
+    elif yield_profile and yield_profile["measurement_type"] == "volume":
+        if volume_quantity is not None and volume_unit:
+            derived_yield = convert_unit_value(volume_quantity, volume_unit, yield_unit)
+            if not derived_yield["ok"]:
+                raise InvalidRecipePayloadError(
+                    f"Yield unit '{yield_unit}' is not convertible from the provided yield volume unit '{volume_unit}'."
+                )
+            yield_quantity = float(derived_yield["quantity"])
+        elif explicit_yield_quantity is not None and explicit_yield_quantity > 0:
+            yield_quantity = explicit_yield_quantity
+        else:
+            raise InvalidRecipePayloadError(
+                "Yield volume quantity and unit are required when the yield unit is volume-based."
+            )
+    else:
+        raise InvalidRecipePayloadError("Yield unit must be a supported count, mass, or volume unit.")
 
     serving_size_quantity = payload.get("serving_size_quantity")
     if serving_size_quantity not in (None, ""):
@@ -135,6 +205,10 @@ def _validate_recipe_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "recipe_name": recipe_name,
         "yield_quantity": yield_quantity,
         "yield_unit": yield_unit,
+        "mass_quantity": mass_quantity,
+        "mass_unit": mass_unit,
+        "volume_quantity": volume_quantity,
+        "volume_unit": volume_unit,
         "serving_size_quantity": serving_size_quantity,
         "serving_size_unit": serving_size_unit,
         "serving_count": serving_count,
@@ -176,6 +250,10 @@ def create_recipe(
                     author_display_name,
                     yield_quantity,
                     yield_unit,
+                    mass_quantity,
+                    mass_unit,
+                    volume_quantity,
+                    volume_unit,
                     serving_size_quantity,
                     serving_size_unit,
                     serving_count,
@@ -189,7 +267,7 @@ def create_recipe(
                     created_at,
                     updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
                 """,
                 (
                     validated["recipe_name"],
@@ -198,6 +276,10 @@ def create_recipe(
                     author_display_name,
                     validated["yield_quantity"],
                     validated["yield_unit"],
+                    validated["mass_quantity"],
+                    validated["mass_unit"],
+                    validated["volume_quantity"],
+                    validated["volume_unit"],
                     validated["serving_size_quantity"],
                     validated["serving_size_unit"],
                     validated["serving_count"],
@@ -280,10 +362,27 @@ def update_recipe(
             cursor = conn.cursor()
             cursor.execute(
                 """
+                SELECT author_user_id, status
+                FROM item
+                WHERE item_id = ?
+                  AND item_type = 'recipe'
+                """,
+                (item_id,),
+            )
+            existing_row = cursor.fetchone()
+            if existing_row is None:
+                raise InvalidRecipePayloadError("Recipe not found.")
+
+            cursor.execute(
+                """
                 UPDATE item
                 SET item_name = ?,
                     yield_quantity = ?,
                     yield_unit = ?,
+                    mass_quantity = ?,
+                    mass_unit = ?,
+                    volume_quantity = ?,
+                    volume_unit = ?,
                     serving_size_quantity = ?,
                     serving_size_unit = ?,
                     serving_count = ?,
@@ -305,6 +404,10 @@ def update_recipe(
                     validated["recipe_name"],
                     validated["yield_quantity"],
                     validated["yield_unit"],
+                    validated["mass_quantity"],
+                    validated["mass_unit"],
+                    validated["volume_quantity"],
+                    validated["volume_unit"],
                     validated["serving_size_quantity"],
                     validated["serving_size_unit"],
                     validated["serving_count"],
@@ -318,9 +421,6 @@ def update_recipe(
                     item_id,
                 ),
             )
-
-            if cursor.rowcount == 0:
-                raise InvalidRecipePayloadError("Recipe not found.")
 
             cursor.execute(
                 "DELETE FROM recipe_component WHERE parent_recipe_item_id = ?",
@@ -363,6 +463,18 @@ def update_recipe(
                 ),
                 conn=conn,
             )
+            if existing_row[1] == "live":
+                create_post_live_edit_notifications(
+                    item={
+                        "item_id": item_id,
+                        "author_user_id": existing_row[0],
+                    },
+                    actor_user_id=actor_user_id,
+                    actor_display_name=actor_display_name,
+                    actor_role=actor_role,
+                    message_text="Live recipe updated.",
+                    conn=conn,
+                )
 
             conn.commit()
 

@@ -1,6 +1,7 @@
 from services.policy_service import (
     can_edit_item,
     can_edit_items,
+    can_manage_official_measurements,
     can_view_advanced_workflow,
     is_dietitian_domain_role,
     is_reviewer_domain_role,
@@ -39,6 +40,12 @@ def test_editor_and_advanced_workflow_capabilities_align():
     assert can_view_advanced_workflow("dietitian")
     assert can_view_advanced_workflow("admin")
     assert can_view_advanced_workflow("super_user")
+
+    assert not can_manage_official_measurements("standard_user")
+    assert not can_manage_official_measurements("reviewer")
+    assert can_manage_official_measurements("dietitian")
+    assert can_manage_official_measurements("admin")
+    assert can_manage_official_measurements("super_user")
 
 
 def test_can_edit_item_allows_workflow_staff_and_returned_submitter():

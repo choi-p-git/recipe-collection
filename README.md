@@ -5,12 +5,13 @@ The Recipe Collection System is a modular, database-driven application for manag
 
 Current MVP behavior
 
-- Recipes are structured records with yield, optional serving data, ingredients, methods, and a primary cooking method.
+- Recipes are structured records with batch yield, measurement data, ingredients, methods, and a primary cooking method.
 - Base foods are lightweight approval submissions with only an item name and optional notes.
 - A shared item detail page supports both recipes and base foods.
 - Mock auth/login is session-backed for MVP development and role testing.
 - Reviewer, dietitian, and admin workflow portals support status movement across the MVP lifecycle.
 - Workflow history, note threads, and notifications are active across the review lifecycle.
+- Dietitian-owned official serving fields are separated from submitter-facing recipe entry.
 
 System priorities
 
@@ -47,6 +48,9 @@ Shared live-only search stack with ranking, pagination, collection browsing, and
 Recipe submit flow inserts item row and component rows
 Recipe authorship follows the active mock session user
 Instruction codec stores ordered method steps as numbered text
+Recipe submit flow now captures yield mass and yield volume fields
+Official serving fields are reserved for privileged dietitian/admin/super-user editing
+When recipe yield unit is not `each`, the generic yield quantity is derived from the matching authoritative mass or volume basis instead of being user-entered directly
 
 5. Item viewing
 Shared item detail route at `/items/<item_id>`
@@ -67,6 +71,7 @@ Returned-to-submitter recipe flow with resubmission unlock
 Workflow note threads hidden on `live` item detail pages
 Workflow history timeline with reason capture on send-back and reject actions
 Automatic workflow-action notifications for affected users/roles even without a note
+Post-live item edits notify recipe authors plus reviewer and dietitian roles
 
 Database migration/versioning note
 
@@ -89,6 +94,11 @@ Scaling foundation note
 - Unit compatibility is moving into a dedicated scaling foundation layer instead of editor-side enforcement
 - Approved units now serve as the basis for future mass / volume / count awareness and later conversion services
 - Same-unit sub-recipe scaling is ratio-ready today, and same-family unit conversion is now modeled through a shared conversion service
+- Recipes now carry mass and volume measurement fields that are required by the main recipe editor flow and required before a recipe can go live
+- Base foods keep a default serving count of `1`, with official mass/volume basis data managed through privileged edit flow
+- Live recipe detail pages now support same-family target scaling by requested batch quantity/unit
+- Scaling currently supports hierarchical and flattened output modes with warning-based fallback for unsupported target units
+- Scaling Foundation and Audit panels are now hidden behind a privileged technical-details toggle on the item detail page
 
 MVP validation checklist
 

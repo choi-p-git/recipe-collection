@@ -1,4 +1,4 @@
-from services.recipe_scaling_service import build_recipe_scaling_foundation
+from services.recipe_scaling_service import build_recipe_scaling_foundation, build_scaled_recipe_view
 from services.unit_conversion_service import (
     convert_unit_value,
     describe_unit_conversion,
@@ -90,3 +90,136 @@ def test_build_recipe_scaling_foundation_uses_same_family_relationship_label(iso
     assert foundation is not None
     assert foundation["relationship_counts"]["same_family_conversion"] == 1
     assert foundation["sub_recipe_rows"][0]["relationship_label"] == "Same-family conversion ready"
+
+
+def test_build_scaled_recipe_view_returns_scaled_hierarchical_rows(isolated_db):
+    import sqlite3
+
+    from services.item_service import create_base_food
+    from services.recipe_service import create_recipe
+
+    oil_id = create_base_food(item_name="Scaled Hierarchy Oil")
+    spice_id = create_base_food(item_name="Scaled Hierarchy Spice")
+    recipe_id = create_recipe(
+        {
+            "item_name": "Scaled Hierarchy Recipe",
+            "yield_quantity": 2,
+            "yield_unit": "qt",
+            "mass_quantity": 1000,
+            "mass_unit": "g",
+            "volume_quantity": 2,
+            "volume_unit": "qt",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Mix"],
+            "ingredients": [
+                {"component_item_id": oil_id, "component_quantity": 8, "component_unit": "oz"},
+                {"component_item_id": spice_id, "component_quantity": 0.0008, "component_unit": "tsp"},
+            ],
+        }
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id IN (?, ?, ?)", (oil_id, spice_id, recipe_id))
+    conn.commit()
+    conn.close()
+
+    scaled_view = build_scaled_recipe_view(recipe_id, 1, "qt", ingredient_view="hierarchical")
+
+    assert scaled_view is not None
+    assert scaled_view["is_scaled"] is True
+    assert scaled_view["row_mode"] == "hierarchical"
+    assert scaled_view["rows"][0]["quantity_display"] == "4"
+    assert scaled_view["rows"][1]["quantity_display"] == "according to taste"
+
+
+def test_build_scaled_recipe_view_returns_scaled_flattened_rows(isolated_db):
+    import sqlite3
+
+    from services.item_service import create_base_food
+    from services.recipe_service import create_recipe
+
+    oil_id = create_base_food(item_name="Scaled Flat Oil")
+    sauce_id = create_recipe(
+        {
+            "item_name": "Scaled Flat Sauce",
+            "yield_quantity": 2,
+            "yield_unit": "cup",
+            "mass_quantity": 500,
+            "mass_unit": "g",
+            "volume_quantity": 2,
+            "volume_unit": "cup",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Whisk"],
+            "ingredients": [
+                {"component_item_id": oil_id, "component_quantity": 4, "component_unit": "oz"},
+            ],
+        }
+    )
+    recipe_id = create_recipe(
+        {
+            "item_name": "Scaled Flat Parent",
+            "yield_quantity": 1,
+            "yield_unit": "each",
+            "mass_quantity": 300,
+            "mass_unit": "g",
+            "volume_quantity": 1,
+            "volume_unit": "each",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Assemble"],
+            "ingredients": [
+                {"component_item_id": sauce_id, "component_quantity": 1, "component_unit": "cup"},
+            ],
+        }
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id IN (?, ?, ?)", (oil_id, sauce_id, recipe_id))
+    conn.commit()
+    conn.close()
+
+    scaled_view = build_scaled_recipe_view(recipe_id, 2, "each", ingredient_view="flattened")
+
+    assert scaled_view is not None
+    assert scaled_view["is_scaled"] is True
+    assert scaled_view["row_mode"] == "flattened"
+    assert scaled_view["rows"][0]["row_type"] == "sub_recipe"
+    assert scaled_view["rows"][1]["quantity_display"] == "4"
+
+
+def test_build_scaled_recipe_view_warns_when_target_unit_is_not_convertible(isolated_db):
+    import sqlite3
+
+    from services.item_service import create_base_food
+    from services.recipe_service import create_recipe
+
+    oil_id = create_base_food(item_name="Scaled Warning Oil")
+    recipe_id = create_recipe(
+        {
+            "item_name": "Scaled Warning Recipe",
+            "yield_quantity": 2,
+            "yield_unit": "qt",
+            "mass_quantity": 1000,
+            "mass_unit": "g",
+            "volume_quantity": 2,
+            "volume_unit": "qt",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Mix"],
+            "ingredients": [
+                {"component_item_id": oil_id, "component_quantity": 8, "component_unit": "oz"},
+            ],
+        }
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id IN (?, ?)", (oil_id, recipe_id))
+    conn.commit()
+    conn.close()
+
+    scaled_view = build_scaled_recipe_view(recipe_id, 1, "lb", ingredient_view="hierarchical")
+
+    assert scaled_view is not None
+    assert scaled_view["is_scaled"] is False
+    assert "not convertible" in scaled_view["warnings"][0]

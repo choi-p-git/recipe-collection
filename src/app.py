@@ -38,9 +38,14 @@ from services.notification_service import (
     get_notification_count,
     get_notification_rows,
 )
-from services.policy_service import can_edit_item, can_edit_items, can_view_advanced_workflow
+from services.policy_service import (
+    can_edit_item,
+    can_edit_items,
+    can_manage_official_measurements,
+    can_view_advanced_workflow,
+)
 from services.recipe_flattening_service import build_flattened_recipe_view
-from services.recipe_scaling_service import build_recipe_scaling_foundation
+from services.recipe_scaling_service import build_recipe_scaling_foundation, build_scaled_recipe_view
 from services.workflow_service import (
     WorkflowPermissionError,
     ensure_portal_access,
@@ -75,6 +80,10 @@ def get_base_food_form_data() -> dict:
     return {
         "item_name": request.form.get("item_name", "").strip(),
         "notes": request.form.get("notes", "").strip(),
+        "mass_quantity": request.form.get("mass_quantity", "").strip(),
+        "mass_unit": request.form.get("mass_unit", "").strip(),
+        "volume_quantity": request.form.get("volume_quantity", "").strip(),
+        "volume_unit": request.form.get("volume_unit", "").strip(),
     }
 
 
@@ -112,6 +121,10 @@ def new_base_food():
     form_data = {
         "item_name": "",
         "notes": "",
+        "mass_quantity": "",
+        "mass_unit": "",
+        "volume_quantity": "",
+        "volume_unit": "",
     }
 
     if request.method == "POST":
@@ -157,16 +170,22 @@ def new_base_food():
         "new_base_food.html",
         form_data=form_data,
         form_mode="create",
+        approved_units=APPROVED_UNITS,
+        can_manage_official_measurements_for_current_user=False,
     )
 
 @app.route("/new/recipe")
 def new_recipe():
+    current_user = get_current_mock_user(session)
     return render_template(
         "new_recipe.html",
         approved_units=APPROVED_UNITS,
         approved_cooking_methods=APPROVED_COOKING_METHODS,
         editor_mode="create",
         recipe=None,
+        can_manage_official_measurements_for_current_user=can_manage_official_measurements(
+            current_user["role"]
+        ),
     )
 
 
@@ -368,7 +387,12 @@ def edit_item(item_id: int):
         form_data = {
             "item_name": item["item_name"],
             "notes": item["notes"] or "",
+            "mass_quantity": item.get("mass_quantity") or "",
+            "mass_unit": item.get("mass_unit") or "",
+            "volume_quantity": item.get("volume_quantity") or "",
+            "volume_unit": item.get("volume_unit") or "",
         }
+        can_manage_measurements = can_manage_official_measurements(current_user["role"])
 
         if request.method == "POST":
             form_data = get_base_food_form_data()
@@ -384,6 +408,20 @@ def edit_item(item_id: int):
                     item_id=item_id,
                     item_name=item_name,
                     notes=form_data["notes"] or None,
+                    mass_quantity=form_data["mass_quantity"] if can_manage_measurements else item.get("mass_quantity"),
+                    mass_unit=(
+                        form_data["mass_unit"] or None
+                        if can_manage_measurements
+                        else item.get("mass_unit")
+                    ),
+                    volume_quantity=(
+                        form_data["volume_quantity"] if can_manage_measurements else item.get("volume_quantity")
+                    ),
+                    volume_unit=(
+                        form_data["volume_unit"] or None
+                        if can_manage_measurements
+                        else item.get("volume_unit")
+                    ),
                     actor_user_id=current_user["user_id"],
                     actor_display_name=current_user["display_name"],
                     actor_role=current_user["role"],
@@ -401,12 +439,16 @@ def edit_item(item_id: int):
                     flash(str(exc), "error")
             except InvalidItemNameError as exc:
                 flash(str(exc), "error")
+            except InvalidNumericValueError as exc:
+                flash(str(exc), "error")
 
         return render_template(
             "new_base_food.html",
             form_data=form_data,
             form_mode="edit",
             item_id=item_id,
+            approved_units=APPROVED_UNITS,
+            can_manage_official_measurements_for_current_user=can_manage_measurements,
         )
 
     return render_template(
@@ -416,6 +458,9 @@ def edit_item(item_id: int):
         editor_mode="edit",
         recipe=item,
         submit_url=url_for("api_update_recipe", recipe_id=item_id),
+        can_manage_official_measurements_for_current_user=can_manage_official_measurements(
+            current_user["role"]
+        ),
     )
 
 @app.route("/api/items/search")
@@ -439,6 +484,10 @@ def api_create_recipe():
             return jsonify({"ok": False, "error": "Missing JSON payload."}), 400
 
         current_user = get_current_recipe_author()
+        if not can_manage_official_measurements(current_user["author_role"]):
+            payload["serving_size_quantity"] = None
+            payload["serving_size_unit"] = None
+            payload["serving_count"] = None
         recipe_item_id = create_recipe(
             payload,
             author_user_id=current_user["author_user_id"],
@@ -486,6 +535,11 @@ def api_update_recipe(recipe_id: int):
         if not payload:
             return jsonify({"ok": False, "error": "Missing JSON payload."}), 400
 
+        if not can_manage_official_measurements(current_user["role"]):
+            payload["serving_size_quantity"] = None
+            payload["serving_size_unit"] = None
+            payload["serving_count"] = None
+
         update_recipe(
             recipe_id,
             payload,
@@ -529,6 +583,10 @@ def item_detail(item_id: int):
     acknowledge_item_notifications_for_viewer(item_id, current_user)
     editable = can_edit_item(current_user, item)
     can_use_advanced_workflow = can_view_advanced_workflow(current_user["role"])
+    technical_details_enabled = (
+        can_use_advanced_workflow
+        and request.args.get("technical_view", "").strip() == "advanced"
+    )
     advanced_workflow_enabled = (
         item["status"] == "live"
         and can_use_advanced_workflow
@@ -542,9 +600,21 @@ def item_detail(item_id: int):
         and request.args.get("ingredient_view", "").strip() == "flattened"
         else "hierarchical"
     )
+    scale_quantity = request.args.get("scale_quantity", "").strip()
+    scale_unit = request.args.get("scale_unit", "").strip()
+    scaled_recipe_view = (
+        build_scaled_recipe_view(
+            item_id,
+            target_quantity=scale_quantity,
+            target_unit=scale_unit,
+            ingredient_view=ingredient_view_mode,
+        )
+        if item["item_type"] == "recipe" and item["status"] == "live" and (scale_quantity or scale_unit)
+        else None
+    )
     flattened_recipe_view = (
         build_flattened_recipe_view(item_id)
-        if item["item_type"] == "recipe" and item["status"] == "live"
+        if item["item_type"] == "recipe" and item["status"] == "live" and not scaled_recipe_view
         else None
     )
     scaling_foundation = (
@@ -566,11 +636,16 @@ def item_detail(item_id: int):
         note_recipient=note_recipient,
         can_edit_item_for_current_user=editable,
         can_use_advanced_workflow=can_use_advanced_workflow,
+        technical_details_enabled=technical_details_enabled,
         advanced_workflow_enabled=advanced_workflow_enabled,
         show_workflow_panels=show_workflow_panels,
         ingredient_view_mode=ingredient_view_mode,
+        scale_quantity=scale_quantity,
+        scale_unit=scale_unit,
+        scaled_recipe_view=scaled_recipe_view,
         flattened_recipe_view=flattened_recipe_view,
         scaling_foundation=scaling_foundation,
+        approved_units=APPROVED_UNITS,
     )
 
 

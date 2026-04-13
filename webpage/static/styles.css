@@ -452,6 +452,19 @@ button:disabled {
     gap: 0.75rem;
 }
 
+.scale-form {
+    display: block;
+}
+
+.scale-form-row {
+    align-items: center;
+}
+
+.scale-form-row input,
+.scale-form-row select {
+    width: 180px;
+}
+
 .is-current-toggle {
     background: #2563eb;
     color: #fff;

@@ -102,6 +102,37 @@ def create_workflow_action_notifications(
         )
 
 
+def create_post_live_edit_notifications(
+    *,
+    item: dict,
+    actor_user_id: str,
+    actor_display_name: str,
+    actor_role: str,
+    message_text: str,
+    conn=None,
+) -> None:
+    recipients: list[dict[str, str | None]] = [
+        {"recipient_user_id": None, "recipient_role": "reviewer"},
+        {"recipient_user_id": None, "recipient_role": "dietitian"},
+    ]
+
+    if item.get("author_user_id") and item["author_user_id"] != "system_base_food":
+        recipients.append({"recipient_user_id": item["author_user_id"], "recipient_role": None})
+
+    for recipient in recipients:
+        create_notification(
+            item_id=item["item_id"],
+            notification_type="post_live_edit",
+            actor_user_id=actor_user_id,
+            actor_display_name=actor_display_name,
+            actor_role=actor_role,
+            message_text=message_text,
+            recipient_user_id=recipient["recipient_user_id"],
+            recipient_role=recipient["recipient_role"],
+            conn=conn,
+        )
+
+
 def acknowledge_item_notifications_for_viewer(item_id: int, current_user: dict) -> int:
     with get_connection() as conn:
         cursor = conn.cursor()

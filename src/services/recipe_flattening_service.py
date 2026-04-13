@@ -12,7 +12,7 @@ def _format_flattened_quantity(quantity: float) -> str:
     return f"{rounded_quantity:g}"
 
 
-def build_flattened_recipe_view(recipe_item_id: int) -> dict:
+def build_flattened_recipe_view(recipe_item_id: int, scale_factor: float = 1.0) -> dict:
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -158,7 +158,7 @@ def build_flattened_recipe_view(recipe_item_id: int) -> dict:
         flatten_branch(
             current_recipe_id=int(root_row[0]),
             current_recipe_name=root_row[1],
-            scale_factor=1.0,
+            scale_factor=scale_factor,
             path_ids=[int(root_row[0])],
             path_names=[root_row[1]],
             depth=0,

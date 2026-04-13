@@ -9,7 +9,10 @@ def test_index_and_form_routes_render(app_client):
     base_food_page = app_client.get("/new/base-food")
     assert base_food_page.status_code == 200
     assert "Yield Quantity" not in base_food_page.get_data(as_text=True)
-    assert app_client.get("/new/recipe").status_code == 200
+    recipe_page = app_client.get("/new/recipe")
+    assert recipe_page.status_code == 200
+    assert "Yield Mass Quantity" in recipe_page.get_data(as_text=True)
+    assert "Official Serving Count" not in recipe_page.get_data(as_text=True)
     assert app_client.get("/login").status_code == 200
 
 
@@ -525,6 +528,128 @@ def test_reviewer_return_to_submitter_notifies_author(app_client):
     assert "Recipe returned to submitter." in page
 
 
+def test_go_live_requires_recipe_mass_and_volume_measurements(app_client, isolated_db):
+    base_food_id = create_base_food(item_name="Go Live Measurement Oil")
+    recipe_response = app_client.post(
+        "/api/recipes",
+        json={
+            "item_name": "Go Live Measurement Recipe",
+            "yield_quantity": 1,
+            "yield_unit": "each",
+            "primary_cooking_method_code": "bake",
+            "instruction_steps": ["Mix", "Bake"],
+            "ingredients": [
+                {
+                    "component_item_id": base_food_id,
+                    "component_quantity": 1,
+                    "component_unit": "oz",
+                }
+            ],
+        },
+    )
+    recipe_id = recipe_response.get_json()["recipe_item_id"]
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = ? WHERE item_id = ?", ("analyzed", recipe_id))
+    conn.commit()
+    conn.close()
+
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "reviewer_001"},
+        follow_redirects=False,
+    )
+    response = app_client.post(
+        f"/workflow/items/{recipe_id}/transition",
+        data={
+            "portal_name": "reviewer",
+            "action_code": "go_live",
+            "target_status": "live",
+        },
+        follow_redirects=True,
+    )
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Recipes must have both mass and volume yield data before they can go live." in page
+
+
+def test_live_recipe_edit_notifies_author(app_client, isolated_db):
+    base_food_id = create_base_food(item_name="Live Edit Notify Oil")
+    recipe_response = app_client.post(
+        "/api/recipes",
+        json={
+            "item_name": "Live Edit Notify Recipe",
+            "yield_quantity": 1,
+            "yield_unit": "each",
+            "mass_quantity": 250,
+            "mass_unit": "g",
+            "volume_quantity": 2,
+            "volume_unit": "cup",
+            "primary_cooking_method_code": "bake",
+            "instruction_steps": ["Mix", "Bake"],
+            "ingredients": [
+                {
+                    "component_item_id": base_food_id,
+                    "component_quantity": 1,
+                    "component_unit": "oz",
+                }
+            ],
+        },
+    )
+    recipe_id = recipe_response.get_json()["recipe_item_id"]
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = ? WHERE item_id = ?", ("live", recipe_id))
+    conn.commit()
+    conn.close()
+
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "dietitian_001"},
+        follow_redirects=False,
+    )
+    update_response = app_client.put(
+        f"/api/recipes/{recipe_id}",
+        json={
+            "item_name": "Live Edit Notify Recipe",
+            "yield_quantity": 1,
+            "yield_unit": "each",
+            "mass_quantity": 300,
+            "mass_unit": "g",
+            "volume_quantity": 2.5,
+            "volume_unit": "cup",
+            "serving_size_quantity": 0.5,
+            "serving_size_unit": "cup",
+            "serving_count": 5,
+            "primary_cooking_method_code": "bake",
+            "instruction_steps": ["Mix", "Bake"],
+            "ingredients": [
+                {
+                    "component_item_id": base_food_id,
+                    "component_quantity": 1,
+                    "component_unit": "oz",
+                }
+            ],
+        },
+    )
+    assert update_response.status_code == 200
+
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "dev_user_001"},
+        follow_redirects=False,
+    )
+    response = app_client.get("/notifications")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Live Edit Notify Recipe" in page
+    assert "Live recipe updated." in page
+
+
 def test_item_detail_view_acknowledges_open_notifications(app_client, isolated_db):
     base_food_id = create_base_food(item_name="Viewed Notification Base")
     recipe_response = app_client.post(
@@ -1019,8 +1144,11 @@ def test_live_item_detail_shows_advanced_workflow_toggle_for_reviewer(app_client
 
     assert response.status_code == 200
     assert "Show Advanced Workflow" in page
+    assert "Show Technical Details" in page
     assert "Workflow History" not in page
     assert "Workflow Notes" not in page
+    assert "Scaling Foundation" not in page
+    assert "Audit" not in page
 
 
 def test_live_recipe_detail_supports_flattened_ingredient_toggle(app_client, isolated_db):
@@ -1183,13 +1311,46 @@ def test_recipe_detail_shows_scaling_foundation_summary(app_client, isolated_db)
         }
     )
 
-    response = app_client.get(f"/items/{recipe_id}")
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "reviewer_001"},
+        follow_redirects=False,
+    )
+    response = app_client.get(f"/items/{recipe_id}?technical_view=advanced")
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200
     assert "Scaling Foundation" in page
     assert "Same-Family Conversion" in page
     assert "Same-family conversion ready" in page
+
+
+def test_standard_user_does_not_see_technical_details_toggle(app_client):
+    oil_id = create_base_food(item_name="No Technical Toggle Oil")
+    recipe_id = create_recipe(
+        {
+            "item_name": "No Technical Toggle Recipe",
+            "yield_quantity": 1,
+            "yield_unit": "each",
+            "mass_quantity": 300,
+            "mass_unit": "g",
+            "volume_quantity": 1,
+            "volume_unit": "qt",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Mix"],
+            "ingredients": [
+                {"component_item_id": oil_id, "component_quantity": 1, "component_unit": "oz"},
+            ],
+        }
+    )
+
+    response = app_client.get(f"/items/{recipe_id}")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Show Technical Details" not in page
+    assert "Scaling Foundation" not in page
+    assert "Audit" not in page
 
 
 def test_live_recipe_flattened_view_warns_on_cycle_detection(app_client, isolated_db):
@@ -1246,6 +1407,124 @@ def test_live_recipe_flattened_view_warns_on_cycle_detection(app_client, isolate
     assert response.status_code == 200
     assert "Flattening warnings" in page
     assert "Cycle detected while flattening" in page
+
+
+def test_live_recipe_detail_supports_scaled_hierarchical_view(app_client, isolated_db):
+    oil_id = create_base_food(item_name="Route Scaled Oil")
+    recipe_id = create_recipe(
+        {
+            "item_name": "Route Scaled Recipe",
+            "yield_quantity": 2,
+            "yield_unit": "qt",
+            "mass_quantity": 1000,
+            "mass_unit": "g",
+            "volume_quantity": 2,
+            "volume_unit": "qt",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Mix"],
+            "ingredients": [
+                {"component_item_id": oil_id, "component_quantity": 8, "component_unit": "oz"},
+            ],
+        }
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id IN (?, ?)", (oil_id, recipe_id))
+    conn.commit()
+    conn.close()
+
+    response = app_client.get(f"/items/{recipe_id}?scale_quantity=1&scale_unit=qt")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Scale Recipe" in page
+    assert "Scaling to 1.0 qt" in page
+    assert "base yield 2.0 qt." in page
+    assert "Scaled Ingredients" in page
+
+
+def test_live_recipe_detail_supports_scaled_flattened_view(app_client, isolated_db):
+    oil_id = create_base_food(item_name="Route Flat Oil")
+    sauce_id = create_recipe(
+        {
+            "item_name": "Route Flat Sauce",
+            "yield_quantity": 2,
+            "yield_unit": "cup",
+            "mass_quantity": 500,
+            "mass_unit": "g",
+            "volume_quantity": 2,
+            "volume_unit": "cup",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Whisk"],
+            "ingredients": [
+                {"component_item_id": oil_id, "component_quantity": 4, "component_unit": "oz"},
+            ],
+        }
+    )
+    recipe_id = create_recipe(
+        {
+            "item_name": "Route Flat Parent",
+            "yield_quantity": 1,
+            "yield_unit": "each",
+            "mass_quantity": 300,
+            "mass_unit": "g",
+            "volume_quantity": 1,
+            "volume_unit": "each",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Assemble"],
+            "ingredients": [
+                {"component_item_id": sauce_id, "component_quantity": 1, "component_unit": "cup"},
+            ],
+        }
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id IN (?, ?, ?)", (oil_id, sauce_id, recipe_id))
+    conn.commit()
+    conn.close()
+
+    response = app_client.get(f"/items/{recipe_id}?ingredient_view=flattened&scale_quantity=2&scale_unit=each")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Scaled Flattened Ingredients" in page
+    assert "Scaling to 2.0 each" in page
+    assert "base yield 1.0 each." in page
+    assert "Route Flat Sauce" in page
+
+
+def test_live_recipe_detail_shows_scaling_warning_for_incompatible_target_unit(app_client, isolated_db):
+    oil_id = create_base_food(item_name="Route Warning Oil")
+    recipe_id = create_recipe(
+        {
+            "item_name": "Route Warning Recipe",
+            "yield_quantity": 2,
+            "yield_unit": "qt",
+            "mass_quantity": 1000,
+            "mass_unit": "g",
+            "volume_quantity": 2,
+            "volume_unit": "qt",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Mix"],
+            "ingredients": [
+                {"component_item_id": oil_id, "component_quantity": 8, "component_unit": "oz"},
+            ],
+        }
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id IN (?, ?)", (oil_id, recipe_id))
+    conn.commit()
+    conn.close()
+
+    response = app_client.get(f"/items/{recipe_id}?scale_quantity=1&scale_unit=lb")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Scale target unit &#39;lb&#39; is not convertible to recipe yield unit &#39;qt&#39;." in page
 
 
 def test_live_item_detail_advanced_view_reveals_workflow_history_and_notes_for_reviewer(app_client, isolated_db):

@@ -15,9 +15,10 @@ def test_create_recipe_inserts_recipe_and_components(isolated_db):
             "item_name": "Spinach Salad",
             "yield_quantity": 4,
             "yield_unit": "each",
-            "serving_size_quantity": 1,
-            "serving_size_unit": "cup",
-            "serving_count": 4,
+            "mass_quantity": 907,
+            "mass_unit": "g",
+            "volume_quantity": 8,
+            "volume_unit": "cup",
             "notes": "Serve chilled.",
             "primary_cooking_method_code": "no_cooking",
             "instruction_steps": ["Wash spinach", "Toss with mayonnaise"],
@@ -41,7 +42,7 @@ def test_create_recipe_inserts_recipe_and_components(isolated_db):
 
     cursor.execute(
         """
-        SELECT item_name, item_type, primary_cooking_method_code, instructions_text
+        SELECT item_name, item_type, mass_quantity, mass_unit, volume_quantity, volume_unit, primary_cooking_method_code, instructions_text
         FROM item
         WHERE item_id = ?
         """,
@@ -64,6 +65,10 @@ def test_create_recipe_inserts_recipe_and_components(isolated_db):
     assert recipe_row == (
         "Spinach Salad",
         "recipe",
+        907.0,
+        "g",
+        8.0,
+        "cup",
         "no_cooking",
         "1. Wash spinach\n2. Toss with mayonnaise",
     )
@@ -82,6 +87,10 @@ def test_update_recipe_replaces_fields_and_components(isolated_db):
             "item_name": "Initial Salad",
             "yield_quantity": 2,
             "yield_unit": "each",
+            "mass_quantity": 400,
+            "mass_unit": "g",
+            "volume_quantity": 4,
+            "volume_unit": "cup",
             "primary_cooking_method_code": "no_cooking",
             "instruction_steps": ["Mix"],
             "ingredients": [
@@ -100,6 +109,10 @@ def test_update_recipe_replaces_fields_and_components(isolated_db):
             "item_name": "Updated Salad",
             "yield_quantity": 4,
             "yield_unit": "each",
+            "mass_quantity": 800,
+            "mass_unit": "g",
+            "volume_quantity": 8,
+            "volume_unit": "cup",
             "notes": "Updated note",
             "primary_cooking_method_code": "no_cooking",
             "instruction_steps": ["Mix greens", "Add mayo"],
@@ -122,7 +135,7 @@ def test_update_recipe_replaces_fields_and_components(isolated_db):
     conn = sqlite3.connect(isolated_db)
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT item_name, notes, concept_classification, instructions_text FROM item WHERE item_id = ?",
+        "SELECT item_name, notes, concept_classification, mass_quantity, mass_unit, volume_quantity, volume_unit, instructions_text FROM item WHERE item_id = ?",
         (recipe_id,),
     )
     recipe_row = cursor.fetchone()
@@ -142,12 +155,75 @@ def test_update_recipe_replaces_fields_and_components(isolated_db):
         "Updated Salad",
         "Updated note",
         "Salads",
+        800.0,
+        "g",
+        8.0,
+        "cup",
         "1. Mix greens\n2. Add mayo",
     )
     assert component_rows == [
         (greens_id, 2.0, "lb"),
         (mayo_id, 3.0, "oz"),
     ]
+
+
+def test_create_recipe_derives_non_each_yield_quantity_from_mass_or_volume(isolated_db):
+    greens_id = create_base_food(item_name="Derived Yield Greens")
+
+    mass_recipe_id = create_recipe(
+        {
+            "item_name": "Derived Mass Yield Recipe",
+            "yield_quantity": "",
+            "yield_unit": "lb",
+            "mass_quantity": 907.184,
+            "mass_unit": "g",
+            "volume_quantity": 8,
+            "volume_unit": "cup",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Mix"],
+            "ingredients": [
+                {
+                    "component_item_id": greens_id,
+                    "component_quantity": 1,
+                    "component_unit": "lb",
+                }
+            ],
+        }
+    )
+    volume_recipe_id = create_recipe(
+        {
+            "item_name": "Derived Volume Yield Recipe",
+            "yield_quantity": "",
+            "yield_unit": "qt",
+            "mass_quantity": 500,
+            "mass_unit": "g",
+            "volume_quantity": 8,
+            "volume_unit": "cup",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Mix"],
+            "ingredients": [
+                {
+                    "component_item_id": greens_id,
+                    "component_quantity": 1,
+                    "component_unit": "lb",
+                }
+            ],
+        }
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT item_name, yield_quantity, yield_unit FROM item WHERE item_id IN (?, ?) ORDER BY item_id",
+        (mass_recipe_id, volume_recipe_id),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+
+    assert rows[0] == ("Derived Mass Yield Recipe", 2.0, "lb")
+    assert rows[1][0] == "Derived Volume Yield Recipe"
+    assert round(rows[1][1], 3) == 2.0
+    assert rows[1][2] == "qt"
 
 
 @pytest.mark.parametrize(

@@ -14,7 +14,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const recipeItemName = document.getElementById("recipe_item_name");
     const recipeYieldQuantity = document.getElementById("recipe_yield_quantity");
+    const recipeYieldQuantityRow = document.getElementById("recipe_yield_quantity_row");
+    const recipeYieldDerivedHelper = document.getElementById("recipe_yield_derived_helper");
     const recipeYieldUnit = document.getElementById("recipe_yield_unit");
+    const recipeMassQuantity = document.getElementById("recipe_mass_quantity");
+    const recipeMassUnit = document.getElementById("recipe_mass_unit");
+    const recipeVolumeQuantity = document.getElementById("recipe_volume_quantity");
+    const recipeVolumeUnit = document.getElementById("recipe_volume_unit");
     const recipePrimaryCookingMethod = document.getElementById("recipe_primary_cooking_method");
 
     const ingredientList = document.getElementById("ingredient-list");
@@ -33,9 +39,28 @@ document.addEventListener("DOMContentLoaded", () => {
     const finishCheckIngredients = document.getElementById("finish-check-ingredients");
     const finishCheckMethods = document.getElementById("finish-check-methods");
     const finishCheckClassification = document.getElementById("finish-check-classification");
+    const MASS_UNITS = new Set(["g", "kg", "oz", "lb"]);
+    const VOLUME_UNITS = new Set(["ml", "l", "tsp", "tbs", "cup", "pt", "qt", "gal"]);
 
     function normalizeName(value) {
         return value.trim().replace(/\s+/g, " ");
+    }
+
+    function syncYieldInputMode() {
+        const yieldUnit = recipeYieldUnit?.value || "";
+        const usesManualYieldQuantity = yieldUnit === "each" || !yieldUnit;
+
+        if (recipeYieldQuantityRow) {
+            recipeYieldQuantityRow.classList.toggle("hidden", !usesManualYieldQuantity);
+        }
+
+        if (recipeYieldDerivedHelper) {
+            recipeYieldDerivedHelper.classList.toggle("hidden", usesManualYieldQuantity);
+        }
+
+        if (!usesManualYieldQuantity && recipeYieldQuantity) {
+            recipeYieldQuantity.value = "";
+        }
     }
 
     function showSection(sectionName) {
@@ -64,6 +89,11 @@ document.addEventListener("DOMContentLoaded", () => {
             const sectionName = button.dataset.section;
             showSection(sectionName);
         });
+    });
+
+    recipeYieldUnit?.addEventListener("change", () => {
+        syncYieldInputMode();
+        validateEditor();
     });
 
     addIngredientButton?.addEventListener("click", () => {
@@ -457,12 +487,28 @@ document.addEventListener("DOMContentLoaded", () => {
         const itemName = normalizeName(recipeItemName.value);
         const yieldQuantity = parseFloat(recipeYieldQuantity.value);
         const yieldUnit = recipeYieldUnit.value;
+        const massQuantity = parseFloat(recipeMassQuantity?.value || "");
+        const massUnit = recipeMassUnit?.value || "";
+        const volumeQuantity = parseFloat(recipeVolumeQuantity?.value || "");
+        const volumeUnit = recipeVolumeUnit?.value || "";
+        const yieldUsesManualQuantity = yieldUnit === "each";
+        const yieldUsesMassAuthority = MASS_UNITS.has(yieldUnit);
+        const yieldUsesVolumeAuthority = VOLUME_UNITS.has(yieldUnit);
 
         return (
             itemName.length > 0 &&
-            !Number.isNaN(yieldQuantity) &&
-            yieldQuantity > 0 &&
-            yieldUnit.length > 0
+            yieldUnit.length > 0 &&
+            !Number.isNaN(massQuantity) &&
+            massQuantity > 0 &&
+            massUnit.length > 0 &&
+            !Number.isNaN(volumeQuantity) &&
+            volumeQuantity > 0 &&
+            volumeUnit.length > 0 &&
+            (
+                (yieldUsesManualQuantity && !Number.isNaN(yieldQuantity) && yieldQuantity > 0) ||
+                (yieldUsesMassAuthority && massUnit.length > 0) ||
+                (yieldUsesVolumeAuthority && volumeUnit.length > 0)
+            )
         );
     }
 
@@ -578,8 +624,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     return {
         item_name: recipeItemName.value,
-        yield_quantity: recipeYieldQuantity.value,
+        yield_quantity: recipeYieldUnit.value === "each" ? recipeYieldQuantity.value : "",
         yield_unit: recipeYieldUnit.value,
+        mass_quantity: recipeMassQuantity?.value || "",
+        mass_unit: recipeMassUnit?.value || "",
+        volume_quantity: recipeVolumeQuantity?.value || "",
+        volume_unit: recipeVolumeUnit?.value || "",
         serving_size_quantity: document.getElementById("recipe_serving_size_quantity")?.value || "",
         serving_size_unit: document.getElementById("recipe_serving_size_unit")?.value || "",
         serving_count: document.getElementById("recipe_serving_count")?.value || "",
@@ -632,6 +682,7 @@ async function submitRecipe() {
 
     wireExistingRows();
     wireValidationInputs(recipeForm);
+    syncYieldInputMode();
     validateEditor();
 
 });

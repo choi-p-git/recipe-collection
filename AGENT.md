@@ -132,8 +132,10 @@ This enables nested recipes.
 * recipe `yield_quantity` must be > 0
 * recipes require `yield_unit`
 * base foods do not require yield fields in MVP
-* serving fields are optional in MVP
+* recipe submitter-facing serving fields are removed from the main recipe entry flow
+* official serving fields are dietitian-owned and may be edited by dietitian/admin/super user roles
 * serving values must be > 0 if present
+* base foods default to serving count `1` for future scaling compatibility
 
 ### Workflow Rules
 
@@ -160,6 +162,7 @@ Other workflow rules:
 * unsaved revision edits are session-only and discarded if user leaves before resubmitting
 * `rejected` is a terminal global workflow status
 * dietitian send-back returns an item to `reviewed`
+* recipes cannot go `live` without both mass and volume measurement data present
 
 ### Time Rules
 
@@ -266,6 +269,10 @@ Key fields include:
 * `author_display_name`
 * `yield_quantity`
 * `yield_unit`
+* `mass_quantity`
+* `mass_unit`
+* `volume_quantity`
+* `volume_unit`
 * `serving_size_quantity`
 * `serving_size_unit`
 * `serving_count`
@@ -331,6 +338,7 @@ Implemented:
 * note threads plus auto workflow-action notifications
 * workflow notes and history hidden by default once an item is `live`
 * advanced workflow toggle for reviewer, dietitian, admin, and super user roles on live items
+* post-live item edits notify the recipe author plus reviewer/dietitian roles, excluding admin
 
 ### Base Food Flow
 
@@ -632,6 +640,54 @@ Locked direction for the first conversion implementation:
 
 * display rounding remains separate from conversion math
 * the `according to taste` rule remains a render-layer behavior for tiny scaled values
+
+### 5D. Measurement Authority Model v0.1
+
+Locked current direction:
+
+* recipes keep batch `yield_quantity` / `yield_unit` plus measurement authority fields:
+
+  * `mass_quantity`
+  * `mass_unit`
+  * `volume_quantity`
+  * `volume_unit`
+
+* recipe submitters should provide mass and volume yield data in the main recipe entry flow
+* recipe submitters no longer provide serving fields in the main submit flow
+* if recipe `yield_unit` is not `each`, the stored `yield_quantity` should be derived from the matching mass or volume basis rather than manually entered
+* serving fields are reserved for dietitian-owned official portion data
+* dietitian, admin, and super user roles may edit official serving data
+* dietitian, admin, and super user roles may adjust recipe mass/volume data after submission
+* base foods remain lightweight at submit time, but privileged edit flow may add official mass/volume basis data later
+* base foods default `serving_count` to `1`
+* recipes cannot go live until both mass and volume measurement fields are present
+* future cross-family conversion work will build on these measurement authority fields
+
+### 5E. Recipe Scaling Request Spec v0.1
+
+Locked current direction:
+
+* live recipe detail pages may accept a requested target quantity and target unit for scaling
+* first scaling target is batch yield only
+* target scaling uses same-family conversion into the recipe's stored batch yield unit
+* unsupported target-unit relationships should return warnings rather than crashing the page
+* scaled output should support both:
+
+  * hierarchical direct-component view
+  * flattened ordered sub-recipe view
+
+* scaled flattened view should reuse the existing ordered sub-tree render contract
+* display rounding remains render-layer behavior, including `according to taste` for values below `0.001`
+* cross-family conversion remains deferred until density / richer conversion metadata is introduced
+
+### 5F. Technical Detail Visibility
+
+Locked current direction:
+
+* item detail pages should default to a cleaner operational view
+* technical/debug-oriented panels such as `Scaling Foundation` and `Audit` should be hidden by default
+* reviewer, dietitian, admin, and super user roles may reveal those sections with a dedicated technical-details toggle
+* workflow advanced view remains separate from technical-details visibility
 
 ### 6. Search Enhancements
 

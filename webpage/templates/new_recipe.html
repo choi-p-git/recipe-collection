@@ -48,7 +48,7 @@
                             <input type="text" id="recipe_item_name" name="recipe_item_name" value="{{ recipe.item_name if recipe else '' }}">
                         </div>
 
-                        <div class="form-row">
+                        <div class="form-row" id="recipe_yield_quantity_row">
                             <label for="recipe_yield_quantity">Yield Quantity</label>
                             <input type="number" step="0.01" id="recipe_yield_quantity" name="recipe_yield_quantity" value="{{ recipe.yield_quantity if recipe and recipe.yield_quantity is not none else '' }}">
                         </div>
@@ -63,30 +63,66 @@
                             </select>
                         </div>
 
+                        <p class="muted hidden" id="recipe_yield_derived_helper">
+                            Yield quantity is derived from the authoritative yield mass or yield volume when the yield unit is not <code>each</code>.
+                        </p>
+
                         <div class="form-row">
-                            <label for="recipe_serving_size_quantity">Serving Size Quantity (optional)</label>
-                            <input type="number" step="0.01" id="recipe_serving_size_quantity" name="recipe_serving_size_quantity" value="{{ recipe.serving_size_quantity if recipe and recipe.serving_size_quantity is not none else '' }}">
+                            <label for="recipe_mass_quantity">Yield Mass Quantity</label>
+                            <input type="number" step="0.01" id="recipe_mass_quantity" name="recipe_mass_quantity" value="{{ recipe.mass_quantity if recipe and recipe.mass_quantity is not none else '' }}">
                         </div>
 
                         <div class="form-row">
-                            <label for="recipe_serving_size_unit">Serving Size Unit (optional)</label>
-                            <select id="recipe_serving_size_unit" name="recipe_serving_size_unit">
+                            <label for="recipe_mass_unit">Yield Mass Unit</label>
+                            <select id="recipe_mass_unit" name="recipe_mass_unit">
                                 <option value="">-- Select Unit --</option>
                                 {% for unit in approved_units %}
-                                    <option value="{{ unit }}" {% if recipe and recipe.serving_size_unit == unit %}selected{% endif %}>{{ unit }}</option>
+                                    <option value="{{ unit }}" {% if recipe and recipe.mass_unit == unit %}selected{% endif %}>{{ unit }}</option>
                                 {% endfor %}
                             </select>
                         </div>
 
                         <div class="form-row">
-                            <label for="recipe_serving_count">Serving Count (optional)</label>
-                            <input type="number" step="0.01" id="recipe_serving_count" name="recipe_serving_count" value="{{ recipe.serving_count if recipe and recipe.serving_count is not none else '' }}">
+                            <label for="recipe_volume_quantity">Yield Volume Quantity</label>
+                            <input type="number" step="0.01" id="recipe_volume_quantity" name="recipe_volume_quantity" value="{{ recipe.volume_quantity if recipe and recipe.volume_quantity is not none else '' }}">
+                        </div>
+
+                        <div class="form-row">
+                            <label for="recipe_volume_unit">Yield Volume Unit</label>
+                            <select id="recipe_volume_unit" name="recipe_volume_unit">
+                                <option value="">-- Select Unit --</option>
+                                {% for unit in approved_units %}
+                                    <option value="{{ unit }}" {% if recipe and recipe.volume_unit == unit %}selected{% endif %}>{{ unit }}</option>
+                                {% endfor %}
+                            </select>
                         </div>
 
                         <div class="form-row form-row-textarea">
                             <label for="recipe_notes">Notes (optional)</label>
                             <textarea id="recipe_notes" name="recipe_notes" rows="4">{{ recipe.notes if recipe and recipe.notes else '' }}</textarea>
                         </div>
+
+                        {% if editor_mode == "edit" and can_manage_official_measurements_for_current_user %}
+                            <div class="form-row">
+                                <label for="recipe_serving_size_quantity">Official Serving Size Quantity (optional)</label>
+                                <input type="number" step="0.01" id="recipe_serving_size_quantity" name="recipe_serving_size_quantity" value="{{ recipe.serving_size_quantity if recipe and recipe.serving_size_quantity is not none else '' }}">
+                            </div>
+
+                            <div class="form-row">
+                                <label for="recipe_serving_size_unit">Official Serving Size Unit (optional)</label>
+                                <select id="recipe_serving_size_unit" name="recipe_serving_size_unit">
+                                    <option value="">-- Select Unit --</option>
+                                    {% for unit in approved_units %}
+                                        <option value="{{ unit }}" {% if recipe and recipe.serving_size_unit == unit %}selected{% endif %}>{{ unit }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <div class="form-row">
+                                <label for="recipe_serving_count">Official Serving Count (optional)</label>
+                                <input type="number" step="0.01" id="recipe_serving_count" name="recipe_serving_count" value="{{ recipe.serving_count if recipe and recipe.serving_count is not none else '' }}">
+                            </div>
+                        {% endif %}
                     </div>
                 </div>
 

@@ -39,7 +39,12 @@ def test_initialize_database_records_applied_migration_versions(isolated_db):
     versions = [row[0] for row in cursor.fetchall()]
     conn.close()
 
-    assert versions == ["0001_initial_schema.sql", "0002_add_item_event.sql", "0003_add_item_notification.sql"]
+    assert versions == [
+        "0001_initial_schema.sql",
+        "0002_add_item_event.sql",
+        "0003_add_item_notification.sql",
+        "0004_add_measurement_authority_fields.sql",
+    ]
 
 
 def test_schema_allows_base_food_without_yield_but_requires_recipe_yield(isolated_db):

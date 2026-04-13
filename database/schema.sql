@@ -10,6 +10,11 @@ CREATE TABLE IF NOT EXISTS item (
     yield_quantity REAL,
     yield_unit TEXT,
 
+    mass_quantity REAL,
+    mass_unit TEXT,
+    volume_quantity REAL,
+    volume_unit TEXT,
+
     serving_size_quantity REAL,
     serving_size_unit TEXT,
     serving_count REAL,
@@ -52,6 +57,14 @@ CREATE TABLE IF NOT EXISTS item (
         (
             item_type = 'base_food'
         )
+    ),
+
+    CHECK (
+        mass_quantity IS NULL OR mass_quantity > 0
+    ),
+
+    CHECK (
+        volume_quantity IS NULL OR volume_quantity > 0
     ),
 
     CHECK (

@@ -36,9 +36,19 @@
                     <p>
                         <a
                             class="page-action-link secondary"
-                            href="{{ url_for('item_detail', item_id=item.item_id, workflow_view='default' if advanced_workflow_enabled else 'advanced') }}"
+                            href="{{ url_for('item_detail', item_id=item.item_id, workflow_view='default' if advanced_workflow_enabled else 'advanced', ingredient_view=ingredient_view_mode if item.item_type == 'recipe' else None, scale_quantity=scale_quantity or None, scale_unit=scale_unit or None, technical_view='advanced' if technical_details_enabled else 'default') }}"
                         >
                             {% if advanced_workflow_enabled %}Hide Advanced Workflow{% else %}Show Advanced Workflow{% endif %}
+                        </a>
+                    </p>
+                {% endif %}
+                {% if can_use_advanced_workflow %}
+                    <p>
+                        <a
+                            class="page-action-link secondary"
+                            href="{{ url_for('item_detail', item_id=item.item_id, technical_view='default' if technical_details_enabled else 'advanced', workflow_view='advanced' if advanced_workflow_enabled else 'default', ingredient_view=ingredient_view_mode if item.item_type == 'recipe' else None, scale_quantity=scale_quantity or None, scale_unit=scale_unit or None) }}"
+                        >
+                            {% if technical_details_enabled %}Hide Technical Details{% else %}Show Technical Details{% endif %}
                         </a>
                     </p>
                 {% endif %}
@@ -65,18 +75,24 @@
                         <p class="detail-stat-value">{{ item.primary_cooking_method_label }}</p>
                     </article>
                     <article class="detail-stat-card">
-                        <p class="detail-stat-label">Serving Size</p>
+                        <p class="detail-stat-label">Yield Mass</p>
                         <p class="detail-stat-value">
-                            {% if item.serving_size_quantity and item.serving_size_unit %}
-                                {{ item.serving_size_quantity }} {{ item.serving_size_unit }}
+                            {% if item.mass_quantity and item.mass_unit %}
+                                {{ item.mass_quantity }} {{ item.mass_unit }}
                             {% else %}
-                                Optional / Not Set
+                                Pending Measurement Review
                             {% endif %}
                         </p>
                     </article>
                     <article class="detail-stat-card">
-                        <p class="detail-stat-label">Serving Count</p>
-                        <p class="detail-stat-value">{{ item.serving_count or "Optional / Not Set" }}</p>
+                        <p class="detail-stat-label">Yield Volume</p>
+                        <p class="detail-stat-value">
+                            {% if item.volume_quantity and item.volume_unit %}
+                                {{ item.volume_quantity }} {{ item.volume_unit }}
+                            {% else %}
+                                Pending Measurement Review
+                            {% endif %}
+                        </p>
                     </article>
                 {% else %}
                     <article class="detail-stat-card">
@@ -102,21 +118,59 @@
                     <div class="detail-toggle-row">
                         <a
                             class="page-action-link secondary {% if ingredient_view_mode == 'hierarchical' %}is-current-toggle{% endif %}"
-                            href="{{ url_for('item_detail', item_id=item.item_id, ingredient_view='hierarchical', workflow_view='advanced' if advanced_workflow_enabled else 'default') }}"
+                            href="{{ url_for('item_detail', item_id=item.item_id, ingredient_view='hierarchical', workflow_view='advanced' if advanced_workflow_enabled else 'default', scale_quantity=scale_quantity or None, scale_unit=scale_unit or None) }}"
                         >
                             Hierarchical Ingredients
                         </a>
                         <a
                             class="page-action-link secondary {% if ingredient_view_mode == 'flattened' %}is-current-toggle{% endif %}"
-                            href="{{ url_for('item_detail', item_id=item.item_id, ingredient_view='flattened', workflow_view='advanced' if advanced_workflow_enabled else 'default') }}"
+                            href="{{ url_for('item_detail', item_id=item.item_id, ingredient_view='flattened', workflow_view='advanced' if advanced_workflow_enabled else 'default', scale_quantity=scale_quantity or None, scale_unit=scale_unit or None) }}"
                         >
                             Flattened Ingredients
                         </a>
                     </div>
                 </section>
+
+                <section class="item-detail-section">
+                    <h3>Scale Recipe</h3>
+                    <form method="get" class="scale-form">
+                        <input type="hidden" name="ingredient_view" value="{{ ingredient_view_mode }}">
+                        <input type="hidden" name="workflow_view" value="{{ 'advanced' if advanced_workflow_enabled else 'default' }}">
+                        <div class="detail-toggle-row scale-form-row">
+                            <input
+                                type="number"
+                                step="0.01"
+                                name="scale_quantity"
+                                placeholder="Target qty"
+                                value="{{ scale_quantity }}"
+                            >
+                            <select name="scale_unit">
+                                <option value="">-- Select Unit --</option>
+                                {% for unit in approved_units %}
+                                    <option value="{{ unit }}" {% if scale_unit == unit %}selected{% endif %}>{{ unit }}</option>
+                                {% endfor %}
+                            </select>
+                            <button type="submit">Apply Scaling</button>
+                            {% if scale_quantity or scale_unit %}
+                                <a
+                                    class="page-action-link secondary"
+                                    href="{{ url_for('item_detail', item_id=item.item_id, ingredient_view=ingredient_view_mode, workflow_view='advanced' if advanced_workflow_enabled else 'default') }}"
+                                >
+                                    Clear Scaling
+                                </a>
+                            {% endif %}
+                        </div>
+                    </form>
+                    {% if scaled_recipe_view and scaled_recipe_view.is_scaled %}
+                        <p class="muted">
+                            Scaling to {{ scaled_recipe_view.target_quantity }} {{ scaled_recipe_view.target_unit }}
+                            from base yield {{ scaled_recipe_view.recipe_yield_quantity }} {{ scaled_recipe_view.recipe_yield_unit }}.
+                        </p>
+                    {% endif %}
+                </section>
             {% endif %}
 
-            {% if scaling_foundation %}
+            {% if scaling_foundation and technical_details_enabled %}
                 <section class="item-detail-section">
                     <h3>Scaling Foundation</h3>
 
@@ -189,12 +243,20 @@
                 <div class="detail-copy-stack">
                     <p><strong>Yield:</strong> {{ item.yield_quantity }} {{ item.yield_unit }}</p>
 
-                    {% if item.serving_size_quantity and item.serving_size_unit %}
+                    {% if item.status == "live" and item.serving_size_quantity and item.serving_size_unit %}
                         <p><strong>Serving Size:</strong> {{ item.serving_size_quantity }} {{ item.serving_size_unit }}</p>
                     {% endif %}
 
-                    {% if item.serving_count %}
+                    {% if item.serving_count and item.status == "live" %}
                         <p><strong>Serving Count:</strong> {{ item.serving_count }}</p>
+                    {% endif %}
+
+                    {% if item.mass_quantity and item.mass_unit %}
+                        <p><strong>Yield Mass:</strong> {{ item.mass_quantity }} {{ item.mass_unit }}</p>
+                    {% endif %}
+
+                    {% if item.volume_quantity and item.volume_unit %}
+                        <p><strong>Yield Volume:</strong> {{ item.volume_quantity }} {{ item.volume_unit }}</p>
                     {% endif %}
                 </div>
             </section>
@@ -210,23 +272,41 @@
             </section>
 
             <section class="item-detail-section">
-                <h3>{{ "Flattened Ingredients" if ingredient_view_mode == "flattened" and item.status == "live" else "Ingredients" }}</h3>
+                <h3>
+                    {% if ingredient_view_mode == "flattened" and item.status == "live" %}
+                        {{ "Scaled Flattened Ingredients" if scaled_recipe_view and scaled_recipe_view.is_scaled else "Flattened Ingredients" }}
+                    {% else %}
+                        {{ "Scaled Ingredients" if scaled_recipe_view and scaled_recipe_view.is_scaled else "Ingredients" }}
+                    {% endif %}
+                </h3>
+
+                {% if scaled_recipe_view and scaled_recipe_view.warnings %}
+                    <div class="detail-warning-block">
+                        <p><strong>Scaling warnings</strong></p>
+                        <ul class="item-detail-list">
+                            {% for warning in scaled_recipe_view.warnings %}
+                                <li>{{ warning }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                {% endif %}
 
                 {% if ingredient_view_mode == "flattened" and item.status == "live" %}
-                    {% if flattened_recipe_view and flattened_recipe_view.warnings %}
+                    {% set active_flattened_view = scaled_recipe_view if scaled_recipe_view and scaled_recipe_view.row_mode == 'flattened' else flattened_recipe_view %}
+                    {% if active_flattened_view and active_flattened_view.warnings and not (scaled_recipe_view and scaled_recipe_view.warnings) %}
                         <div class="detail-warning-block">
                             <p><strong>Flattening warnings</strong></p>
                             <ul class="item-detail-list">
-                                {% for warning in flattened_recipe_view.warnings %}
+                                {% for warning in active_flattened_view.warnings %}
                                     <li>{{ warning }}</li>
                                 {% endfor %}
                             </ul>
                         </div>
                     {% endif %}
 
-                    {% if flattened_recipe_view and flattened_recipe_view.rows %}
+                    {% if active_flattened_view and active_flattened_view.rows %}
                         <div class="flattened-tree">
-                            {% for ingredient in flattened_recipe_view.rows %}
+                            {% for ingredient in active_flattened_view.rows %}
                                 <article
                                     class="ingredient-detail-card flattened-tree-row {% if ingredient.row_type == 'sub_recipe' %}flattened-tree-row-sub-recipe{% endif %}"
                                     style="--flatten-depth: {{ ingredient.depth }};"
@@ -263,17 +343,32 @@
                         <p>No flattened ingredients available.</p>
                     {% endif %}
                 {% else %}
-                    {% if item.ingredients %}
+                    {% set active_ingredient_rows = scaled_recipe_view.rows if scaled_recipe_view and scaled_recipe_view.row_mode == 'hierarchical' else item.ingredients %}
+                    {% set scaled_mode = scaled_recipe_view and scaled_recipe_view.row_mode == 'hierarchical' and scaled_recipe_view.is_scaled %}
+                    {% if active_ingredient_rows %}
                         <div class="ingredient-detail-grid">
-                            {% for ingredient in item.ingredients %}
+                            {% for ingredient in active_ingredient_rows %}
                                 <article class="ingredient-detail-card">
-                                    <p class="ingredient-detail-quantity">{{ ingredient.component_quantity }} {{ ingredient.component_unit }}</p>
+                                    <p class="ingredient-detail-quantity">
+                                        {% if scaled_mode %}
+                                            {{ ingredient.quantity_display }}
+                                        {% else %}
+                                            {{ ingredient.component_quantity }}
+                                        {% endif %}
+                                        {{ ingredient.component_unit }}
+                                    </p>
                                     <h4>
                                         <a class="text-link" href="{{ url_for('item_detail', item_id=ingredient.component_item_id) }}">
                                             {{ ingredient.component_item_name }}
                                         </a>
                                     </h4>
-                                    <p class="muted">{{ ingredient.component_item_type_label }} | ID {{ ingredient.component_item_id }}</p>
+                                    <p class="muted">
+                                        {% if scaled_mode %}
+                                            {{ ingredient.component_item_type|replace('_', ' ')|title }} | ID {{ ingredient.component_item_id }}
+                                        {% else %}
+                                            {{ ingredient.component_item_type_label }} | ID {{ ingredient.component_item_id }}
+                                        {% endif %}
+                                    </p>
                                 </article>
                             {% endfor %}
                         </div>
@@ -327,13 +422,15 @@
             </section>
         {% endif %}
 
-        <section class="item-detail-section">
-            <h3>Audit</h3>
-            <div class="detail-copy-stack">
-                <p><strong>Created At:</strong> {{ item.created_at }}</p>
-                <p><strong>Updated At:</strong> {{ item.updated_at }}</p>
-            </div>
-        </section>
+        {% if technical_details_enabled %}
+            <section class="item-detail-section">
+                <h3>Audit</h3>
+                <div class="detail-copy-stack">
+                    <p><strong>Created At:</strong> {{ item.created_at }}</p>
+                    <p><strong>Updated At:</strong> {{ item.updated_at }}</p>
+                </div>
+            </section>
+        {% endif %}
 
         {% if show_workflow_panels %}
             <section class="item-detail-section">

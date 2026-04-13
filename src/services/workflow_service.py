@@ -269,6 +269,12 @@ def transition_item_status(
     if matching_action.get("requires_reason") and not normalized_reason:
         raise WorkflowPermissionError(f"{matching_action['reason_label']} is required.")
 
+    if action_code == "go_live" and item["item_type"] == "recipe":
+        if not item["mass_quantity"] or not item["mass_unit"] or not item["volume_quantity"] or not item["volume_unit"]:
+            raise WorkflowPermissionError(
+                "Recipes must have both mass and volume yield data before they can go live."
+            )
+
     from_status = item["status"]
     requires_resubmission = 1 if matching_action.get("set_requires_resubmission") else 0
     with get_connection() as conn:
@@ -321,6 +327,7 @@ def _get_item_workflow_context(item_id: int) -> dict:
         cursor.execute(
             """
             SELECT item_id, item_type, author_user_id, author_display_name, status, requires_resubmission
+                 , mass_quantity, mass_unit, volume_quantity, volume_unit
             FROM item
             WHERE item_id = ?
             """,
@@ -338,6 +345,10 @@ def _get_item_workflow_context(item_id: int) -> dict:
         "author_display_name": row[3],
         "status": row[4],
         "requires_resubmission": bool(row[5]),
+        "mass_quantity": row[6],
+        "mass_unit": row[7],
+        "volume_quantity": row[8],
+        "volume_unit": row[9],
     }
 
 

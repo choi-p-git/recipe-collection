@@ -23,6 +23,10 @@ def get_item_detail(item_id: int) -> dict | None:
                 author_display_name,
                 yield_quantity,
                 yield_unit,
+                mass_quantity,
+                mass_unit,
+                volume_quantity,
+                volume_unit,
                 serving_size_quantity,
                 serving_size_unit,
                 serving_count,
@@ -71,8 +75,8 @@ def get_item_detail(item_id: int) -> dict | None:
 
             ingredient_rows = cursor.fetchall()
 
-    instructions_text = item_row[10] or ""
-    primary_cooking_method_code = item_row[11]
+    instructions_text = item_row[14] or ""
+    primary_cooking_method_code = item_row[15]
     item_type = item_row[2]
 
     return {
@@ -84,9 +88,13 @@ def get_item_detail(item_id: int) -> dict | None:
         "author_display_name": item_row[4],
         "yield_quantity": item_row[5],
         "yield_unit": item_row[6],
-        "serving_size_quantity": item_row[7],
-        "serving_size_unit": item_row[8],
-        "serving_count": item_row[9],
+        "mass_quantity": item_row[7],
+        "mass_unit": item_row[8],
+        "volume_quantity": item_row[9],
+        "volume_unit": item_row[10],
+        "serving_size_quantity": item_row[11],
+        "serving_size_unit": item_row[12],
+        "serving_count": item_row[13],
         "instructions_text": instructions_text,
         "instruction_steps": decode_instruction_text_to_steps(instructions_text),
         "primary_cooking_method_code": primary_cooking_method_code,
@@ -95,15 +103,15 @@ def get_item_detail(item_id: int) -> dict | None:
             if primary_cooking_method_code
             else None
         ),
-        "status": item_row[12],
-        "status_label": STATUS_LABELS.get(item_row[12], item_row[12]),
-        "requires_resubmission": bool(item_row[13]),
-        "notes": item_row[14],
-        "concept_classification": item_row[15],
-        "meal_classification": item_row[16],
-        "haccp_process_classification": item_row[17],
-        "created_at": item_row[18],
-        "updated_at": item_row[19],
+        "status": item_row[16],
+        "status_label": STATUS_LABELS.get(item_row[16], item_row[16]),
+        "requires_resubmission": bool(item_row[17]),
+        "notes": item_row[18],
+        "concept_classification": item_row[19],
+        "meal_classification": item_row[20],
+        "haccp_process_classification": item_row[21],
+        "created_at": item_row[22],
+        "updated_at": item_row[23],
         "ingredients": [
             {
                 "recipe_component_id": row[0],

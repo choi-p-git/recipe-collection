@@ -3,6 +3,7 @@ import sqlite3
 
 from db import get_connection, initialize_database
 from services.item_event_service import build_creation_summary, build_update_summary, record_item_event
+from services.notification_service import create_post_live_edit_notifications
 
 
 SYSTEM_BASE_FOOD_USER_ID = "system_base_food"
@@ -84,9 +85,13 @@ def create_base_food(
     item_name: str,
     yield_quantity: float | None = None,
     yield_unit: str | None = None,
+    mass_quantity: float | None = None,
+    mass_unit: str | None = None,
+    volume_quantity: float | None = None,
+    volume_unit: str | None = None,
     serving_size_quantity: float | None = None,
     serving_size_unit: str | None = None,
-    serving_count: float | None = None,
+    serving_count: float | None = 1,
     notes: str | None = None,
     actor_user_id: str = SYSTEM_BASE_FOOD_USER_ID,
     actor_display_name: str = SYSTEM_BASE_FOOD_DISPLAY_NAME,
@@ -113,6 +118,10 @@ def create_base_food(
                     author_display_name,
                     yield_quantity,
                     yield_unit,
+                    mass_quantity,
+                    mass_unit,
+                    volume_quantity,
+                    volume_unit,
                     serving_size_quantity,
                     serving_size_unit,
                     serving_count,
@@ -126,7 +135,7 @@ def create_base_food(
                     created_at,
                     updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
                 """,
                 (
                     item_name,
@@ -135,6 +144,10 @@ def create_base_food(
                     SYSTEM_BASE_FOOD_DISPLAY_NAME,
                     yield_quantity,
                     yield_unit,
+                    mass_quantity,
+                    mass_unit,
+                    volume_quantity,
+                    volume_unit,
                     serving_size_quantity,
                     serving_size_unit,
                     serving_count,
@@ -179,6 +192,10 @@ def update_base_food(
     item_id: int,
     item_name: str,
     notes: str | None = None,
+    mass_quantity: float | None = None,
+    mass_unit: str | None = None,
+    volume_quantity: float | None = None,
+    volume_unit: str | None = None,
     actor_user_id: str = SYSTEM_BASE_FOOD_USER_ID,
     actor_display_name: str = SYSTEM_BASE_FOOD_DISPLAY_NAME,
     actor_role: str = "standard_user",
@@ -191,13 +208,53 @@ def update_base_food(
     if not item_name:
         raise InvalidItemNameError("Item name cannot be empty or only whitespace.")
 
+    if mass_quantity in ("", None):
+        mass_quantity = None
+    elif not isinstance(mass_quantity, (int, float)):
+        try:
+            mass_quantity = float(mass_quantity)
+        except (TypeError, ValueError):
+            raise InvalidNumericValueError("Mass quantity must be a valid number.")
+
+    if mass_quantity is not None and mass_quantity <= 0:
+        raise InvalidNumericValueError("Mass quantity must be greater than 0.")
+
+    if volume_quantity in ("", None):
+        volume_quantity = None
+    elif not isinstance(volume_quantity, (int, float)):
+        try:
+            volume_quantity = float(volume_quantity)
+        except (TypeError, ValueError):
+            raise InvalidNumericValueError("Volume quantity must be a valid number.")
+
+    if volume_quantity is not None and volume_quantity <= 0:
+        raise InvalidNumericValueError("Volume quantity must be greater than 0.")
+
     try:
         with get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 """
+                SELECT author_user_id, status
+                FROM item
+                WHERE item_id = ?
+                  AND item_type = 'base_food'
+                """,
+                (item_id,),
+            )
+            existing_row = cursor.fetchone()
+            if existing_row is None:
+                raise InvalidItemNameError("Base food not found.")
+
+            cursor.execute(
+                """
                 UPDATE item
                 SET item_name = ?,
+                    mass_quantity = ?,
+                    mass_unit = ?,
+                    volume_quantity = ?,
+                    volume_unit = ?,
+                    serving_count = 1,
                     notes = ?,
                     updated_at = datetime('now')
                 WHERE item_id = ?
@@ -205,13 +262,14 @@ def update_base_food(
                 """,
                 (
                     item_name,
+                    mass_quantity,
+                    mass_unit,
+                    volume_quantity,
+                    volume_unit,
                     notes,
                     item_id,
                 ),
             )
-
-            if cursor.rowcount == 0:
-                raise InvalidItemNameError("Base food not found.")
 
             record_item_event(
                 item_id=item_id,
@@ -222,6 +280,18 @@ def update_base_food(
                 event_summary=build_update_summary("base_food"),
                 conn=conn,
             )
+            if existing_row[1] == "live":
+                create_post_live_edit_notifications(
+                    item={
+                        "item_id": item_id,
+                        "author_user_id": existing_row[0],
+                    },
+                    actor_user_id=actor_user_id,
+                    actor_display_name=actor_display_name,
+                    actor_role=actor_role,
+                    message_text="Live base food updated.",
+                    conn=conn,
+                )
 
             conn.commit()
 
