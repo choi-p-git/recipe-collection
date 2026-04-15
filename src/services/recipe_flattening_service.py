@@ -1,5 +1,8 @@
 from db import get_connection
-from services.unit_conversion_service import convert_unit_value
+from services.unit_conversion_service import (
+    convert_unit_value,
+    convert_with_item_mass_volume_bridge,
+)
 
 
 ACCORDING_TO_TASTE_THRESHOLD = 0.001
@@ -12,7 +15,69 @@ def _format_flattened_quantity(quantity: float) -> str:
     return f"{rounded_quantity:g}"
 
 
-def build_flattened_recipe_view(recipe_item_id: int, scale_factor: float = 1.0) -> dict:
+def _build_measurement_equivalent(
+    *,
+    quantity: float,
+    source_unit: str,
+    item_type: str,
+    target_measurement_type: str | None,
+    mass_quantity: float | None,
+    mass_unit: str | None,
+    volume_quantity: float | None,
+    volume_unit: str | None,
+) -> dict | None:
+    if target_measurement_type == "mass" and mass_unit:
+        result = convert_unit_value(quantity=quantity, from_unit=source_unit, to_unit=mass_unit)
+        if not result["ok"]:
+            result = convert_with_item_mass_volume_bridge(
+                quantity=quantity,
+                from_unit=source_unit,
+                to_unit=mass_unit,
+                item_type=item_type,
+                mass_quantity=mass_quantity,
+                mass_unit=mass_unit,
+                volume_quantity=volume_quantity,
+                volume_unit=volume_unit,
+            )
+        if result["ok"]:
+            return {
+                "quantity": float(result["quantity"]),
+                "quantity_display": _format_flattened_quantity(float(result["quantity"])),
+                "unit": mass_unit,
+                "label": "Official mass equivalent",
+                "status": result["status"],
+            }
+
+    if target_measurement_type == "volume" and volume_unit:
+        result = convert_unit_value(quantity=quantity, from_unit=source_unit, to_unit=volume_unit)
+        if not result["ok"]:
+            result = convert_with_item_mass_volume_bridge(
+                quantity=quantity,
+                from_unit=source_unit,
+                to_unit=volume_unit,
+                item_type=item_type,
+                mass_quantity=mass_quantity,
+                mass_unit=mass_unit,
+                volume_quantity=volume_quantity,
+                volume_unit=volume_unit,
+            )
+        if result["ok"]:
+            return {
+                "quantity": float(result["quantity"]),
+                "quantity_display": _format_flattened_quantity(float(result["quantity"])),
+                "unit": volume_unit,
+                "label": "Official volume equivalent",
+                "status": result["status"],
+            }
+
+    return None
+
+
+def build_flattened_recipe_view(
+    recipe_item_id: int,
+    scale_factor: float = 1.0,
+    preferred_measurement_type: str | None = None,
+) -> dict:
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -45,6 +110,10 @@ def build_flattened_recipe_view(recipe_item_id: int, scale_factor: float = 1.0) 
                     i.status,
                     i.yield_quantity,
                     i.yield_unit,
+                    i.mass_quantity,
+                    i.mass_unit,
+                    i.volume_quantity,
+                    i.volume_unit,
                     rc.component_quantity,
                     rc.component_unit
                 FROM recipe_component rc
@@ -73,11 +142,25 @@ def build_flattened_recipe_view(recipe_item_id: int, scale_factor: float = 1.0) 
                     component_status,
                     component_yield_quantity,
                     component_yield_unit,
+                    component_mass_quantity,
+                    component_mass_unit,
+                    component_volume_quantity,
+                    component_volume_unit,
                     component_quantity,
                     component_unit,
                 ) = component
 
                 scaled_quantity = float(component_quantity) * scale_factor
+                equivalent = _build_measurement_equivalent(
+                    quantity=scaled_quantity,
+                    source_unit=component_unit,
+                    item_type=component_item_type,
+                    target_measurement_type=preferred_measurement_type,
+                    mass_quantity=component_mass_quantity,
+                    mass_unit=component_mass_unit,
+                    volume_quantity=component_volume_quantity,
+                    volume_unit=component_volume_unit,
+                )
 
                 if component_item_type == "base_food":
                     flattened_rows.append(
@@ -86,10 +169,16 @@ def build_flattened_recipe_view(recipe_item_id: int, scale_factor: float = 1.0) 
                             "depth": depth,
                             "component_item_id": int(component_item_id),
                             "component_item_name": component_item_name,
+                            "component_item_type": "base_food",
+                            "mass_quantity": component_mass_quantity,
+                            "mass_unit": component_mass_unit,
+                            "volume_quantity": component_volume_quantity,
+                            "volume_unit": component_volume_unit,
                             "component_unit": component_unit,
                             "total_quantity": scaled_quantity,
                             "quantity_display": _format_flattened_quantity(scaled_quantity),
                             "source_recipe_name": current_recipe_name,
+                            "measurement_equivalent": equivalent,
                         }
                     )
                     continue
@@ -138,12 +227,18 @@ def build_flattened_recipe_view(recipe_item_id: int, scale_factor: float = 1.0) 
                         "depth": depth,
                         "component_item_id": int(component_item_id),
                         "component_item_name": component_item_name,
+                        "component_item_type": "recipe",
+                        "mass_quantity": component_mass_quantity,
+                        "mass_unit": component_mass_unit,
+                        "volume_quantity": component_volume_quantity,
+                        "volume_unit": component_volume_unit,
                         "component_unit": component_unit,
                         "total_quantity": scaled_quantity,
                         "quantity_display": _format_flattened_quantity(scaled_quantity),
                         "source_recipe_name": current_recipe_name,
                         "child_yield_quantity": component_yield_quantity,
                         "child_yield_unit": component_yield_unit,
+                        "measurement_equivalent": equivalent,
                     }
                 )
                 flatten_branch(

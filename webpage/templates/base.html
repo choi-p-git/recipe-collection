@@ -23,6 +23,7 @@
                 <a href="{{ url_for('live_collection') }}">Live Collection</a>
                 <a href="{{ url_for('my_recipes') }}">My Recipes</a>
                 <a href="{{ url_for('login_shell') }}">Mock Login</a>
+                <a href="{{ url_for('user_preferences') }}">Preferences</a>
                 <a href="{{ url_for('notifications') }}">Notifications{% if notification_count %} ({{ notification_count }}){% endif %}</a>
                 {% for portal in available_workflow_portals %}
                     <a href="{{ url_for('workflow_portal', portal_name=portal.name) }}">{{ portal.label }}</a>

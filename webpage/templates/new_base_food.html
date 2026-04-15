@@ -54,6 +54,57 @@
                 {% endfor %}
             </select>
 
+            <label for="nutrition_group">Nutrition Group (optional)</label>
+            <input
+                type="text"
+                id="nutrition_group"
+                name="nutrition_group"
+                value="{{ form_data.nutrition_group }}"
+            >
+
+            <label for="kcal_per_serving">Calories Per Serving (optional)</label>
+            <input
+                type="number"
+                step="0.01"
+                id="kcal_per_serving"
+                name="kcal_per_serving"
+                value="{{ form_data.kcal_per_serving }}"
+            >
+
+            <label for="nutrition_serving_mass_quantity">Nutrition Serving Mass Quantity (optional)</label>
+            <input
+                type="number"
+                step="0.01"
+                id="nutrition_serving_mass_quantity"
+                name="nutrition_serving_mass_quantity"
+                value="{{ form_data.nutrition_serving_mass_quantity }}"
+            >
+
+            <label for="nutrition_serving_mass_unit">Nutrition Serving Mass Unit (optional)</label>
+            <select id="nutrition_serving_mass_unit" name="nutrition_serving_mass_unit">
+                <option value="">-- Select Unit --</option>
+                {% for unit in approved_units %}
+                    <option value="{{ unit }}" {% if form_data.nutrition_serving_mass_unit == unit %}selected{% endif %}>{{ unit }}</option>
+                {% endfor %}
+            </select>
+
+            <label for="nutrition_serving_volume_quantity">Nutrition Serving Volume Quantity (optional)</label>
+            <input
+                type="number"
+                step="0.01"
+                id="nutrition_serving_volume_quantity"
+                name="nutrition_serving_volume_quantity"
+                value="{{ form_data.nutrition_serving_volume_quantity }}"
+            >
+
+            <label for="nutrition_serving_volume_unit">Nutrition Serving Volume Unit (optional)</label>
+            <select id="nutrition_serving_volume_unit" name="nutrition_serving_volume_unit">
+                <option value="">-- Select Unit --</option>
+                {% for unit in approved_units %}
+                    <option value="{{ unit }}" {% if form_data.nutrition_serving_volume_unit == unit %}selected{% endif %}>{{ unit }}</option>
+                {% endfor %}
+            </select>
+
             <p class="muted">Base foods keep a default serving count of 1 for future scaling.</p>
         {% endif %}
 

@@ -111,11 +111,12 @@ def convert_unit_value(quantity: float, from_unit: str, to_unit: str) -> dict:
     }
 
 
-def convert_with_mass_volume_bridge(
+def convert_with_item_mass_volume_bridge(
     quantity: float,
     from_unit: str,
     to_unit: str,
     *,
+    item_type: str,
     mass_quantity: float | None,
     mass_unit: str | None,
     volume_quantity: float | None,
@@ -216,12 +217,40 @@ def convert_with_mass_volume_bridge(
         }
 
     converted_quantity = bridged_canonical_quantity / float(target_profile["canonical_factor"])
+    item_type_label = "Recipe" if item_type == "recipe" else "Base food"
+    status_code = (
+        "recipe_bridge_conversion"
+        if item_type == "recipe"
+        else "base_food_bridge_conversion"
+    )
     return {
         "ok": True,
-        "status": "recipe_bridge_conversion",
-        "label": "Recipe mass-volume bridge conversion ready",
+        "status": status_code,
+        "label": f"{item_type_label} mass-volume bridge conversion ready",
         "quantity": converted_quantity,
         "unit": to_unit,
         "source_profile": source_profile,
         "target_profile": target_profile,
     }
+
+
+def convert_with_mass_volume_bridge(
+    quantity: float,
+    from_unit: str,
+    to_unit: str,
+    *,
+    mass_quantity: float | None,
+    mass_unit: str | None,
+    volume_quantity: float | None,
+    volume_unit: str | None,
+) -> dict:
+    return convert_with_item_mass_volume_bridge(
+        quantity=quantity,
+        from_unit=from_unit,
+        to_unit=to_unit,
+        item_type="recipe",
+        mass_quantity=mass_quantity,
+        mass_unit=mass_unit,
+        volume_quantity=volume_quantity,
+        volume_unit=volume_unit,
+    )

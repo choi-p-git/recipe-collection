@@ -14,6 +14,12 @@ CREATE TABLE IF NOT EXISTS item (
     mass_unit TEXT,
     volume_quantity REAL,
     volume_unit TEXT,
+    nutrition_group TEXT,
+    kcal_per_serving REAL,
+    nutrition_serving_mass_quantity REAL,
+    nutrition_serving_mass_unit TEXT,
+    nutrition_serving_volume_quantity REAL,
+    nutrition_serving_volume_unit TEXT,
 
     serving_size_quantity REAL,
     serving_size_unit TEXT,
@@ -65,6 +71,18 @@ CREATE TABLE IF NOT EXISTS item (
 
     CHECK (
         volume_quantity IS NULL OR volume_quantity > 0
+    ),
+
+    CHECK (
+        kcal_per_serving IS NULL OR kcal_per_serving >= 0
+    ),
+
+    CHECK (
+        nutrition_serving_mass_quantity IS NULL OR nutrition_serving_mass_quantity > 0
+    ),
+
+    CHECK (
+        nutrition_serving_volume_quantity IS NULL OR nutrition_serving_volume_quantity > 0
     ),
 
     CHECK (

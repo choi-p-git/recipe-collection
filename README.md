@@ -9,6 +9,7 @@ Current MVP behavior
 - Base foods are lightweight approval submissions with only an item name and optional notes.
 - A shared item detail page supports both recipes and base foods.
 - Mock auth/login is session-backed for MVP development and role testing.
+- A session-backed user preferences page stores display-mode and unit-system defaults per active mock user.
 - Reviewer, dietitian, and admin workflow portals support status movement across the MVP lifecycle.
 - Workflow history, note threads, and notifications are active across the review lifecycle.
 - Dietitian-owned official serving fields are separated from submitter-facing recipe entry.
@@ -37,12 +38,14 @@ Session-backed mock login page
 Existing account switcher
 Direct mock user creation with role selection
 Debug override panel for account, role, and display name testing
+User Preferences page for session-backed display defaults
 
 3. Base food workflow
 Minimal base food submission form
 Whitespace normalization and case-insensitive duplicate protection
 Duplicate-name suggestion flow
 Successful submit redirects to shared item detail page
+Privileged edit flow now supports dietitian-owned base-food nutrition authority fields
 
 4. Recipe workflow
 Single-page multi-section recipe editor
@@ -93,7 +96,9 @@ Seed catalog note
   - 20 base foods
   - 5 simple recipes that use only base foods
   - 3 complex recipes that use both base foods and sub-recipes
+- Seeded base foods now also include starter nutrition authority values for calories and serving reference mass/volume
 - The loader is idempotent and only runs when the `item` table is empty
+- Existing seed rows can be backfilled with newer seed nutrition metadata during init without touching non-seed records
 - Tests use `initialize_database(seed=False)` so isolated DB fixtures stay clean unless a test explicitly wants seeded data
 
 Search stack note
@@ -103,6 +108,13 @@ Search stack note
 - Current search stack supports exact match, prefix match, substring match, paged loading, collection browsing, and fuzzy fallback
 - Very short fuzzy fallbacks stay strict by default and only relax after an initial zero-result response in the recipe editor picker
 
+Menu Builder foundation note
+
+- Menu Builder is now planned as a separate planning shell layered on top of the existing item, search, scaling, and preference services
+- The current draft direction uses a `menu` -> `menu_slot` -> `menu_slot_item` model so one slot can contain multiple ordered recipes/base foods
+- First release planning is aimed at menu creation, week/day/meal/concept overview rendering, slot assignment, and assignment-only copy/paste actions
+- Drag-and-drop, rules checks, slot-level scaling persistence, and inventory-facing rollups remain deferred until the base Menu Builder behavior is stable
+
 Scaling foundation note
 
 - Sub-recipes can already be flattened at render time for `live` recipes in a first-pass read-only view
@@ -111,10 +123,18 @@ Scaling foundation note
 - Same-unit sub-recipe scaling is ratio-ready today, and same-family unit conversion is now modeled through a shared conversion service
 - Recipes now carry mass and volume measurement fields that are required by the main recipe editor flow and required before a recipe can go live
 - Base foods keep a default serving count of `1`, with official mass/volume basis data managed through privileged edit flow
+- Base foods now also support privileged nutrition authority fields such as nutrition group, calories per serving, and serving reference mass/volume
 - Live recipe detail pages now support same-family target scaling by requested batch quantity/unit
 - Live recipe detail pages now support recipe-level mass<->volume bridge scaling using the recipe's own authoritative mass and volume fields
+- Recipes with `yield_unit = each` can still scale to mass or volume targets by anchoring the scale factor through the recipe's official batch mass or batch volume
+- The shared conversion layer now also defines base-food mass<->volume bridge conversion using a base food's official mass and volume fields for future module reuse
 - Scaling currently supports hierarchical and flattened output modes with warning-based fallback for unsupported target units
+- Richer scaled recipe rendering now preserves original ingredient units while also surfacing official mass/volume equivalents when the scaling target is measurement-aware and the ingredient or sub-recipe has authoritative bridge data
+- Live recipe detail pages now support display-mode toggles for `default`, `volume`, and `mass`, plus separate `imperial` / `metric` unit-system selection
+- Volume and mass display modes use full unit-cascade rendering, choosing the largest logical unit that keeps the rendered quantity at or above `1` and stepping down to smaller units when needed
+- `each` components remain rendered in `each` across display modes so count-based items such as tortillas can still scale fractionally without forced mass/volume display
 - Scaling Foundation and Audit panels are now hidden behind a privileged technical-details toggle on the item detail page
+- Base-food nutrition authority metadata is also hidden behind the privileged technical-details toggle
 
 MVP validation checklist
 

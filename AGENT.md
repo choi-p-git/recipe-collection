@@ -319,8 +319,10 @@ Implemented:
 * existing account selection
 * direct mock user creation with role selection
 * debug override panel for account, role, and display name
+* user preferences page for session-backed display defaults
 * current recipe authorship follows the active mock session user
 * `My Recipes` uses the active mock session user for filtering
+* display-mode and unit-system defaults are stored per active mock user and used as the default live recipe detail view unless a page-level override is present
 
 ### Database Bootstrap Seed Catalog
 
@@ -334,6 +336,8 @@ Implemented:
   * 3 complex recipes using both base foods and recipes
 
 * seed loading is idempotent and only runs when the `item` table is empty
+* seeded base foods now include starter nutrition authority values for calories and serving reference mass/volume
+* init may backfill newer nutrition authority seed metadata onto older seed base foods without touching non-seed records
 * isolated test databases should continue using `initialize_database(seed=False)` unless a test explicitly needs seeded data
 
 ### Workflow Tooling
@@ -367,6 +371,7 @@ Implemented:
 * minimal submission fields: item name + optional notes
 * DB insert through service layer
 * friendly validation messages
+* privileged edit flow supports official mass/volume plus nutrition authority metadata
 
 ### Recipe Editor Shell
 
@@ -519,6 +524,97 @@ Locked future design direction:
 * live recipes available for selection in Menu Builder
 * later use recipe/base food items in broader planning workflows
 
+### 2A. Menu Builder Spec v0.1
+
+Locked current direction:
+
+* Menu Builder should be treated as a separate planning shell built on top of Recipe Collection cores
+* it should reuse:
+
+  * shared live-item search
+  * shared scaling / conversion services
+  * shared user preferences
+  * shared item-detail and measurement authority concepts
+
+* a unified platform preferences shell should eventually house:
+
+  * global display preferences
+  * Menu Builder preferences
+  * future default scaling behavior
+  * future service-specific preferences
+
+* Menu Builder needs three core business objects:
+
+  * `menu`
+  * `menu_slot`
+  * `menu_slot_item`
+
+* a `menu_slot` represents one schedulable location defined by:
+
+  * menu
+  * week
+  * day of service
+  * meal period
+  * concept / line
+
+* one slot may contain multiple assigned items
+* assigned items inside a slot should be ordered and future-ready for rearrangement
+* concepts represent the product name of a line / station and are not recipe restriction rules
+* v0.1 slot assignment should allow both:
+
+  * `recipe`
+  * `base_food`
+
+* future `customizable` item type should later become available in Menu Builder once it exists in Recipe Collection
+* first Menu Builder create flow should capture:
+
+  * service-day toggles (`Sunday` through `Saturday`)
+  * meal-period toggles (`breakfast`, `lunch`, `dinner`)
+  * concept toggles
+  * menu length in weeks
+  * confirmation / save step
+
+* first Menu Builder overview shell should support:
+
+  * week switcher
+  * overview grid by week/day/meal/concept
+  * clickable slot cells
+  * visible assigned items inside each slot
+
+* first assignment shell should use:
+
+  * left-side live-item search
+  * right-side pending assignment context
+  * confirm / cancel actions
+
+* drag-and-drop is deferred to a later release
+* first copy / paste scope should be limited to item assignments only
+* first utility actions should support:
+
+  * clear slot
+  * copy / paste slot assignments
+  * copy / paste day assignments
+  * copy / paste week assignments
+
+* slot-level scaling persistence is deferred in the first version
+* scaling behavior should remain governed by user preferences rather than initial slot data
+* bottom-up scaling is a required future Menu Builder capability:
+
+  * user selects one specific item from a flattened list
+  * user enters target quantity / unit for that item
+  * system solves backward for the parent recipe scale factor
+
+* bottom-up scaling belongs in the shared scaling service layer, not only in Menu Builder UI
+* first Menu Builder release should defer:
+
+  * drag-and-drop
+  * rules engine / conditional checks
+  * slot-level scaling overrides
+  * nutrition balancing
+  * inventory rollups
+
+* rules checks and conditional checks should be implemented only after base Menu Builder object behavior is stable
+
 ### 3. Customizable Item Type
 
 Planned future item type:
@@ -655,6 +751,11 @@ Locked direction for the first conversion implementation:
 
 * display rounding remains separate from conversion math
 * the `according to taste` rule remains a render-layer behavior for tiny scaled values
+* current extension:
+
+  * recipes may use their own authoritative mass/volume fields as a bridge during live scaling
+  * base foods may use their official mass/volume fields as a bridge in the shared conversion layer
+  * base-food bridge conversion is defined for future reuse by modules such as Menu Builder or Inventory, even if current recipe rendering does not yet depend on it directly
 
 ### 5D. Measurement Authority Model v0.1
 
@@ -674,6 +775,7 @@ Locked current direction:
 * dietitian, admin, and super user roles may edit official serving data
 * dietitian, admin, and super user roles may adjust recipe mass/volume data after submission
 * base foods remain lightweight at submit time, but privileged edit flow may add official mass/volume basis data later
+* privileged base-food edit flow may also add nutrition authority metadata such as nutrition group, calories per serving, and serving reference mass/volume
 * base foods default `serving_count` to `1`
 * recipes cannot go live until both mass and volume measurement fields are present
 * future cross-family conversion work will build on these measurement authority fields
@@ -685,6 +787,7 @@ Locked current direction:
 * live recipe detail pages may accept a requested target quantity and target unit for scaling
 * first scaling target is batch yield only
 * target scaling uses same-family conversion into the recipe's stored batch yield unit
+* recipes with `yield_unit = each` may still scale to mass or volume targets by anchoring the scale factor through the recipe's authoritative batch mass or batch volume
 * unsupported target-unit relationships should return warnings rather than crashing the page
 * scaled output should support both:
 
@@ -695,6 +798,16 @@ Locked current direction:
 * display rounding remains render-layer behavior, including `according to taste` for values below `0.001`
 * same-family scaling should be attempted first
 * if same-family conversion fails and the target/request pair is mass<->volume, live recipe scaling may use the recipe's own authoritative mass and volume fields as a bridge
+* richer scaled output may preserve the recipe's original ingredient units while also showing official mass or volume equivalents for ingredients and sub-recipes when authoritative bridge data exists
+* live recipe detail pages may expose separate display toggles for:
+
+  * display mode: `default`, `volume`, `mass`
+  * unit system: `imperial`, `metric`
+
+* `default` mode keeps the recipe's original component units in the main render
+* `volume` and `mass` modes should convert display units through the shared conversion layer when possible
+* display conversion should use a full logical cascade and choose the largest unit that renders at `>= 1`, stepping down to smaller units when needed
+* count-based `each` components remain displayed as `each` across display modes
 * broader cross-family conversion beyond recipe-level bridging remains deferred until density / richer conversion metadata is introduced
 
 ### 5F. Technical Detail Visibility
@@ -703,6 +816,7 @@ Locked current direction:
 
 * item detail pages should default to a cleaner operational view
 * technical/debug-oriented panels such as `Scaling Foundation` and `Audit` should be hidden by default
+* privileged base-food nutrition authority metadata should also stay behind technical-details visibility
 * reviewer, dietitian, admin, and super user roles may reveal those sections with a dedicated technical-details toggle
 * workflow advanced view remains separate from technical-details visibility
 
@@ -760,6 +874,6 @@ When extending this project:
 
 ## Current Next Logical Development Steps
 
-1. final documentation and release-style snapshot review
-2. define the first post-MVP slice
-3. prepare for post-MVP scaling and richer viewing features
+1. draft first Menu Builder schema and route/service path from `Menu Builder Spec v0.1`
+2. implement Menu Builder create flow
+3. implement Menu overview shell and slot assignment flow

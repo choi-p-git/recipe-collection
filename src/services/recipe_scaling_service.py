@@ -1,7 +1,7 @@
 from db import get_connection
 from services.unit_conversion_service import (
     convert_unit_value,
-    convert_with_mass_volume_bridge,
+    convert_with_item_mass_volume_bridge,
     describe_unit_conversion,
     get_unit_measurement_profile,
 )
@@ -16,6 +16,148 @@ def _format_scaled_quantity(quantity: float) -> str:
     if rounded_quantity < ACCORDING_TO_TASTE_THRESHOLD:
         return "according to taste"
     return f"{rounded_quantity:g}"
+
+
+def _build_measurement_equivalent(
+    *,
+    quantity: float,
+    source_unit: str,
+    item_type: str,
+    target_measurement_type: str | None,
+    mass_quantity: float | None,
+    mass_unit: str | None,
+    volume_quantity: float | None,
+    volume_unit: str | None,
+) -> dict | None:
+    if target_measurement_type == "mass" and mass_unit:
+        result = convert_unit_value(quantity=quantity, from_unit=source_unit, to_unit=mass_unit)
+        if not result["ok"]:
+            result = convert_with_item_mass_volume_bridge(
+                quantity=quantity,
+                from_unit=source_unit,
+                to_unit=mass_unit,
+                item_type=item_type,
+                mass_quantity=mass_quantity,
+                mass_unit=mass_unit,
+                volume_quantity=volume_quantity,
+                volume_unit=volume_unit,
+            )
+        if result["ok"]:
+            return {
+                "quantity": float(result["quantity"]),
+                "quantity_display": _format_scaled_quantity(float(result["quantity"])),
+                "unit": mass_unit,
+                "label": "Official mass equivalent",
+                "status": result["status"],
+            }
+
+    if target_measurement_type == "volume" and volume_unit:
+        result = convert_unit_value(quantity=quantity, from_unit=source_unit, to_unit=volume_unit)
+        if not result["ok"]:
+            result = convert_with_item_mass_volume_bridge(
+                quantity=quantity,
+                from_unit=source_unit,
+                to_unit=volume_unit,
+                item_type=item_type,
+                mass_quantity=mass_quantity,
+                mass_unit=mass_unit,
+                volume_quantity=volume_quantity,
+                volume_unit=volume_unit,
+            )
+        if result["ok"]:
+            return {
+                "quantity": float(result["quantity"]),
+                "quantity_display": _format_scaled_quantity(float(result["quantity"])),
+                "unit": volume_unit,
+                "label": "Official volume equivalent",
+                "status": result["status"],
+            }
+
+    return None
+
+
+def _convert_target_to_recipe_scale_basis(
+    *,
+    target_quantity: float,
+    target_unit: str,
+    recipe_yield_quantity: float,
+    recipe_yield_unit: str,
+    recipe_mass_quantity: float | None,
+    recipe_mass_unit: str | None,
+    recipe_volume_quantity: float | None,
+    recipe_volume_unit: str | None,
+) -> dict:
+    target_profile = get_unit_measurement_profile(target_unit)
+    recipe_yield_profile = get_unit_measurement_profile(recipe_yield_unit)
+
+    direct_result = convert_unit_value(
+        quantity=target_quantity,
+        from_unit=target_unit,
+        to_unit=recipe_yield_unit,
+    )
+    if direct_result["ok"]:
+        return {
+            "ok": True,
+            "status": direct_result["status"],
+            "scale_factor": float(direct_result["quantity"]) / float(recipe_yield_quantity),
+            "basis_quantity": recipe_yield_quantity,
+            "basis_unit": recipe_yield_unit,
+        }
+
+    if target_profile and recipe_yield_profile:
+        if recipe_yield_profile["measurement_type"] == "count" and target_profile["measurement_type"] == "mass":
+            mass_result = convert_unit_value(
+                quantity=target_quantity,
+                from_unit=target_unit,
+                to_unit=recipe_mass_unit,
+            )
+            if mass_result["ok"] and recipe_mass_quantity:
+                return {
+                    "ok": True,
+                    "status": "recipe_batch_mass_basis",
+                    "scale_factor": float(mass_result["quantity"]) / float(recipe_mass_quantity),
+                    "basis_quantity": recipe_mass_quantity,
+                    "basis_unit": recipe_mass_unit,
+                }
+
+        if target_profile and recipe_yield_profile["measurement_type"] == "count" and target_profile["measurement_type"] == "volume":
+            volume_result = convert_unit_value(
+                quantity=target_quantity,
+                from_unit=target_unit,
+                to_unit=recipe_volume_unit,
+            )
+            if volume_result["ok"] and recipe_volume_quantity:
+                return {
+                    "ok": True,
+                    "status": "recipe_batch_volume_basis",
+                    "scale_factor": float(volume_result["quantity"]) / float(recipe_volume_quantity),
+                    "basis_quantity": recipe_volume_quantity,
+                    "basis_unit": recipe_volume_unit,
+                }
+
+    bridge_result = convert_with_item_mass_volume_bridge(
+        quantity=target_quantity,
+        from_unit=target_unit,
+        to_unit=recipe_yield_unit,
+        item_type="recipe",
+        mass_quantity=recipe_mass_quantity,
+        mass_unit=recipe_mass_unit,
+        volume_quantity=recipe_volume_quantity,
+        volume_unit=recipe_volume_unit,
+    )
+    if bridge_result["ok"]:
+        return {
+            "ok": True,
+            "status": bridge_result["status"],
+            "scale_factor": float(bridge_result["quantity"]) / float(recipe_yield_quantity),
+            "basis_quantity": recipe_yield_quantity,
+            "basis_unit": recipe_yield_unit,
+        }
+
+    return {
+        "ok": False,
+        "status": bridge_result["status"],
+    }
 
 
 def build_scaled_recipe_view(
@@ -55,6 +197,10 @@ def build_scaled_recipe_view(
                 rc.component_item_id,
                 i.item_name,
                 i.item_type,
+                i.mass_quantity,
+                i.mass_unit,
+                i.volume_quantity,
+                i.volume_unit,
                 rc.component_quantity,
                 rc.component_unit,
                 rc.component_sequence
@@ -95,22 +241,17 @@ def build_scaled_recipe_view(
             "rows": [],
         }
 
-    conversion_result = convert_unit_value(
-        quantity=normalized_target_quantity,
-        from_unit=normalized_target_unit,
-        to_unit=recipe_row[5],
+    scale_basis_result = _convert_target_to_recipe_scale_basis(
+        target_quantity=normalized_target_quantity,
+        target_unit=normalized_target_unit,
+        recipe_yield_quantity=recipe_row[4],
+        recipe_yield_unit=recipe_row[5],
+        recipe_mass_quantity=recipe_row[6],
+        recipe_mass_unit=recipe_row[7],
+        recipe_volume_quantity=recipe_row[8],
+        recipe_volume_unit=recipe_row[9],
     )
-    if not conversion_result["ok"]:
-        conversion_result = convert_with_mass_volume_bridge(
-            quantity=normalized_target_quantity,
-            from_unit=normalized_target_unit,
-            to_unit=recipe_row[5],
-            mass_quantity=recipe_row[6],
-            mass_unit=recipe_row[7],
-            volume_quantity=recipe_row[8],
-            volume_unit=recipe_row[9],
-        )
-    if not conversion_result["ok"]:
+    if not scale_basis_result["ok"]:
         return {
             "available": True,
             "is_scaled": False,
@@ -120,10 +261,20 @@ def build_scaled_recipe_view(
             "rows": [],
         }
 
-    scale_factor = float(conversion_result["quantity"]) / float(recipe_row[4])
+    scale_factor = float(scale_basis_result["scale_factor"])
+    target_profile = get_unit_measurement_profile(normalized_target_unit)
+    preferred_measurement_type = (
+        target_profile["measurement_type"]
+        if target_profile and target_profile["measurement_type"] in {"mass", "volume"}
+        else None
+    )
 
     if ingredient_view == "flattened":
-        flattened_view = build_flattened_recipe_view(recipe_item_id, scale_factor=scale_factor)
+        flattened_view = build_flattened_recipe_view(
+            recipe_item_id,
+            scale_factor=scale_factor,
+            preferred_measurement_type=preferred_measurement_type,
+        )
         return {
             "available": True,
             "is_scaled": True,
@@ -132,7 +283,9 @@ def build_scaled_recipe_view(
             "target_unit": normalized_target_unit,
             "recipe_yield_quantity": recipe_row[4],
             "recipe_yield_unit": recipe_row[5],
-            "conversion_status": conversion_result["status"],
+            "conversion_status": scale_basis_result["status"],
+            "scale_basis_quantity": scale_basis_result["basis_quantity"],
+            "scale_basis_unit": scale_basis_result["basis_unit"],
             "warnings": flattened_view["warnings"],
             "rows": flattened_view["rows"],
             "row_mode": "flattened",
@@ -146,7 +299,9 @@ def build_scaled_recipe_view(
         "target_unit": normalized_target_unit,
         "recipe_yield_quantity": recipe_row[4],
         "recipe_yield_unit": recipe_row[5],
-        "conversion_status": conversion_result["status"],
+        "conversion_status": scale_basis_result["status"],
+        "scale_basis_quantity": scale_basis_result["basis_quantity"],
+        "scale_basis_unit": scale_basis_result["basis_unit"],
         "warnings": [],
         "row_mode": "hierarchical",
         "rows": [
@@ -154,10 +309,24 @@ def build_scaled_recipe_view(
                 "component_item_id": row[0],
                 "component_item_name": row[1],
                 "component_item_type": row[2],
-                "component_quantity": float(row[3]) * scale_factor,
-                "component_unit": row[4],
-                "quantity_display": _format_scaled_quantity(float(row[3]) * scale_factor),
-                "component_sequence": row[5],
+                "mass_quantity": row[3],
+                "mass_unit": row[4],
+                "volume_quantity": row[5],
+                "volume_unit": row[6],
+                "component_quantity": float(row[7]) * scale_factor,
+                "component_unit": row[8],
+                "quantity_display": _format_scaled_quantity(float(row[7]) * scale_factor),
+                "component_sequence": row[9],
+                "measurement_equivalent": _build_measurement_equivalent(
+                    quantity=float(row[7]) * scale_factor,
+                    source_unit=row[8],
+                    item_type=row[2],
+                    target_measurement_type=preferred_measurement_type,
+                    mass_quantity=row[3],
+                    mass_unit=row[4],
+                    volume_quantity=row[5],
+                    volume_unit=row[6],
+                ),
             }
             for row in component_rows
         ],
@@ -259,6 +428,7 @@ def build_recipe_scaling_foundation(recipe_item_id: int) -> dict | None:
             "Direct same-unit scaling is ready for ratio math.",
             "Same-family unit conversion is now modeled through the shared unit conversion service.",
             "Recipe-level mass-to-volume scaling can use authoritative recipe measurement fields during live scaling.",
-            "Base-food density-aware and broader cross-type scaling remains a later step.",
+            "Base-food mass-to-volume bridge conversion is now defined in the shared conversion layer for future module reuse.",
+            "Broader density-aware and richer cross-type scaling remains a later step.",
         ],
     }

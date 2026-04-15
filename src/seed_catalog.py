@@ -175,6 +175,174 @@ BASE_FOOD_ITEMS = [
 ]
 
 
+# Seed nutrition authority values are sourced from USDA FoodData Central SR Legacy
+# reference foods and standardized to the app's approved units for seed usage.
+# Dijon Mustard currently uses USDA prepared yellow mustard as the closest
+# official seed proxy until a more specific authoritative Dijon source is added.
+BASE_FOOD_NUTRITION = {
+    "Chicken Breast": {
+        "nutrition_group": "Poultry Products",
+        "kcal_per_serving": 231.0,
+        "nutrition_serving_mass_quantity": 140.0,
+        "nutrition_serving_mass_unit": "g",
+        "nutrition_serving_volume_quantity": 1.0,
+        "nutrition_serving_volume_unit": "cup",
+    },
+    "Romaine Lettuce": {
+        "nutrition_group": "Vegetables and Vegetable Products",
+        "kcal_per_serving": 8.0,
+        "nutrition_serving_mass_quantity": 47.0,
+        "nutrition_serving_mass_unit": "g",
+        "nutrition_serving_volume_quantity": 1.0,
+        "nutrition_serving_volume_unit": "cup",
+    },
+    "Celery": {
+        "nutrition_group": "Vegetables and Vegetable Products",
+        "kcal_per_serving": 14.1,
+        "nutrition_serving_mass_quantity": 101.0,
+        "nutrition_serving_mass_unit": "g",
+        "nutrition_serving_volume_quantity": 1.0,
+        "nutrition_serving_volume_unit": "cup",
+    },
+    "Red Onion": {
+        "nutrition_group": "Vegetables and Vegetable Products",
+        "kcal_per_serving": 16.0,
+        "nutrition_serving_mass_quantity": 40.0,
+        "nutrition_serving_mass_unit": "g",
+        "nutrition_serving_volume_quantity": 0.25,
+        "nutrition_serving_volume_unit": "cup",
+    },
+    "Mayo": {
+        "nutrition_group": "Fats and Oils",
+        "kcal_per_serving": 103.2,
+        "nutrition_serving_mass_quantity": 15.0,
+        "nutrition_serving_mass_unit": "g",
+        "nutrition_serving_volume_quantity": 1.0,
+        "nutrition_serving_volume_unit": "tbs",
+    },
+    "Dijon Mustard": {
+        "nutrition_group": "Spices and Herbs",
+        "kcal_per_serving": 3.0,
+        "nutrition_serving_mass_quantity": 5.0,
+        "nutrition_serving_mass_unit": "g",
+        "nutrition_serving_volume_quantity": 1.0,
+        "nutrition_serving_volume_unit": "tsp",
+    },
+    "Lemon Juice": {
+        "nutrition_group": "Fruits and Fruit Juices",
+        "kcal_per_serving": 3.4,
+        "nutrition_serving_mass_quantity": 15.25,
+        "nutrition_serving_mass_unit": "g",
+        "nutrition_serving_volume_quantity": 1.0,
+        "nutrition_serving_volume_unit": "tbs",
+    },
+    "Salt": {
+        "nutrition_group": "Spices and Herbs",
+        "kcal_per_serving": 0.0,
+        "nutrition_serving_mass_quantity": 6.0,
+        "nutrition_serving_mass_unit": "g",
+        "nutrition_serving_volume_quantity": 1.0,
+        "nutrition_serving_volume_unit": "tsp",
+    },
+    "Black Pepper": {
+        "nutrition_group": "Spices and Herbs",
+        "kcal_per_serving": 5.8,
+        "nutrition_serving_mass_quantity": 2.3,
+        "nutrition_serving_mass_unit": "g",
+        "nutrition_serving_volume_quantity": 1.0,
+        "nutrition_serving_volume_unit": "tsp",
+    },
+    "Olive Oil": {
+        "nutrition_group": "Fats and Oils",
+        "kcal_per_serving": 119.3,
+        "nutrition_serving_mass_quantity": 13.5,
+        "nutrition_serving_mass_unit": "g",
+        "nutrition_serving_volume_quantity": 1.0,
+        "nutrition_serving_volume_unit": "tbs",
+    },
+    "Garlic": {
+        "nutrition_group": "Vegetables and Vegetable Products",
+        "kcal_per_serving": 4.2,
+        "nutrition_serving_mass_quantity": 2.8,
+        "nutrition_serving_mass_unit": "g",
+        "nutrition_serving_volume_quantity": 1.0,
+        "nutrition_serving_volume_unit": "tsp",
+    },
+    "Parsley": {
+        "nutrition_group": "Vegetables and Vegetable Products",
+        "kcal_per_serving": 1.4,
+        "nutrition_serving_mass_quantity": 3.8,
+        "nutrition_serving_mass_unit": "g",
+        "nutrition_serving_volume_quantity": 1.0,
+        "nutrition_serving_volume_unit": "tbs",
+    },
+    "Cucumber": {
+        "nutrition_group": "Vegetables and Vegetable Products",
+        "kcal_per_serving": 7.8,
+        "nutrition_serving_mass_quantity": 52.0,
+        "nutrition_serving_mass_unit": "g",
+        "nutrition_serving_volume_quantity": 0.5,
+        "nutrition_serving_volume_unit": "cup",
+    },
+    "Tomato": {
+        "nutrition_group": "Vegetables and Vegetable Products",
+        "kcal_per_serving": 16.2,
+        "nutrition_serving_mass_quantity": 90.0,
+        "nutrition_serving_mass_unit": "g",
+        "nutrition_serving_volume_quantity": 0.5,
+        "nutrition_serving_volume_unit": "cup",
+    },
+    "Carrot": {
+        "nutrition_group": "Vegetables and Vegetable Products",
+        "kcal_per_serving": 26.2,
+        "nutrition_serving_mass_quantity": 64.0,
+        "nutrition_serving_mass_unit": "g",
+        "nutrition_serving_volume_quantity": 0.5,
+        "nutrition_serving_volume_unit": "cup",
+    },
+    "Cooked White Rice": {
+        "nutrition_group": "Cereal Grains and Pasta",
+        "kcal_per_serving": 120.9,
+        "nutrition_serving_mass_quantity": 93.0,
+        "nutrition_serving_mass_unit": "g",
+        "nutrition_serving_volume_quantity": 0.5,
+        "nutrition_serving_volume_unit": "cup",
+    },
+    "Chicken Stock": {
+        "nutrition_group": "Soups, Sauces, and Gravies",
+        "kcal_per_serving": 14.9,
+        "nutrition_serving_mass_quantity": 249.0,
+        "nutrition_serving_mass_unit": "g",
+        "nutrition_serving_volume_quantity": 1.0,
+        "nutrition_serving_volume_unit": "cup",
+    },
+    "Butter": {
+        "nutrition_group": "Dairy and Egg Products",
+        "kcal_per_serving": 101.8,
+        "nutrition_serving_mass_quantity": 14.2,
+        "nutrition_serving_mass_unit": "g",
+        "nutrition_serving_volume_quantity": 1.0,
+        "nutrition_serving_volume_unit": "tbs",
+    },
+    "Breadcrumbs": {
+        "nutrition_group": "Baked Products",
+        "kcal_per_serving": 29.9,
+        "nutrition_serving_mass_quantity": 11.25,
+        "nutrition_serving_mass_unit": "g",
+        "nutrition_serving_volume_quantity": 0.25,
+        "nutrition_serving_volume_unit": "cup",
+    },
+    "Parmesan Cheese": {
+        "nutrition_group": "Dairy and Egg Products",
+        "kcal_per_serving": 21.0,
+        "nutrition_serving_mass_quantity": 5.0,
+        "nutrition_serving_mass_unit": "g",
+        "nutrition_serving_volume_quantity": 1.0,
+        "nutrition_serving_volume_unit": "tbs",
+    },
+}
+
+
 RECIPE_ITEMS = [
     {
         "item_name": "Lemon Herb Mayo",
@@ -389,6 +557,48 @@ def database_has_seedable_items(conn: sqlite3.Connection) -> bool:
     return bool(row and row[0] > 0)
 
 
+def sync_seed_base_food_nutrition(conn: sqlite3.Connection) -> int:
+    updated_rows = 0
+
+    for item_name, nutrition in BASE_FOOD_NUTRITION.items():
+        cursor = conn.execute(
+            """
+            UPDATE item
+            SET nutrition_group = ?,
+                kcal_per_serving = ?,
+                nutrition_serving_mass_quantity = ?,
+                nutrition_serving_mass_unit = ?,
+                nutrition_serving_volume_quantity = ?,
+                nutrition_serving_volume_unit = ?,
+                updated_at = datetime('now')
+            WHERE item_name = ?
+              AND item_type = 'base_food'
+              AND author_user_id = ?
+              AND (
+                    nutrition_group IS NULL
+                 OR kcal_per_serving IS NULL
+                 OR nutrition_serving_mass_quantity IS NULL
+                 OR nutrition_serving_mass_unit IS NULL
+                 OR nutrition_serving_volume_quantity IS NULL
+                 OR nutrition_serving_volume_unit IS NULL
+              )
+            """,
+            (
+                nutrition["nutrition_group"],
+                nutrition["kcal_per_serving"],
+                nutrition["nutrition_serving_mass_quantity"],
+                nutrition["nutrition_serving_mass_unit"],
+                nutrition["nutrition_serving_volume_quantity"],
+                nutrition["nutrition_serving_volume_unit"],
+                item_name,
+                SEED_DIETITIAN_USER_ID,
+            ),
+        )
+        updated_rows += cursor.rowcount
+
+    return updated_rows
+
+
 def seed_database_if_empty(conn: sqlite3.Connection) -> bool:
     if database_has_seedable_items(conn):
         return False
@@ -396,6 +606,7 @@ def seed_database_if_empty(conn: sqlite3.Connection) -> bool:
     item_ids: dict[str, int] = {}
 
     for base_food in BASE_FOOD_ITEMS:
+        nutrition = BASE_FOOD_NUTRITION[base_food["item_name"]]
         item_id = _insert_item(
             conn,
             item_name=base_food["item_name"],
@@ -408,6 +619,12 @@ def seed_database_if_empty(conn: sqlite3.Connection) -> bool:
             mass_unit=base_food["mass_unit"],
             volume_quantity=base_food["volume_quantity"],
             volume_unit=base_food["volume_unit"],
+            nutrition_group=nutrition["nutrition_group"],
+            kcal_per_serving=nutrition["kcal_per_serving"],
+            nutrition_serving_mass_quantity=nutrition["nutrition_serving_mass_quantity"],
+            nutrition_serving_mass_unit=nutrition["nutrition_serving_mass_unit"],
+            nutrition_serving_volume_quantity=nutrition["nutrition_serving_volume_quantity"],
+            nutrition_serving_volume_unit=nutrition["nutrition_serving_volume_unit"],
             serving_size_quantity=None,
             serving_size_unit=None,
             serving_count=1.0,
@@ -441,6 +658,12 @@ def seed_database_if_empty(conn: sqlite3.Connection) -> bool:
             mass_unit=recipe["mass_unit"],
             volume_quantity=recipe["volume_quantity"],
             volume_unit=recipe["volume_unit"],
+            nutrition_group=None,
+            kcal_per_serving=None,
+            nutrition_serving_mass_quantity=None,
+            nutrition_serving_mass_unit=None,
+            nutrition_serving_volume_quantity=None,
+            nutrition_serving_volume_unit=None,
             serving_size_quantity=recipe["serving_size_quantity"],
             serving_size_unit=recipe["serving_size_unit"],
             serving_count=recipe["serving_count"],
@@ -501,6 +724,12 @@ def _insert_item(
     mass_unit: str | None,
     volume_quantity: float | None,
     volume_unit: str | None,
+    nutrition_group: str | None,
+    kcal_per_serving: float | None,
+    nutrition_serving_mass_quantity: float | None,
+    nutrition_serving_mass_unit: str | None,
+    nutrition_serving_volume_quantity: float | None,
+    nutrition_serving_volume_unit: str | None,
     serving_size_quantity: float | None,
     serving_size_unit: str | None,
     serving_count: float | None,
@@ -526,6 +755,12 @@ def _insert_item(
             mass_unit,
             volume_quantity,
             volume_unit,
+            nutrition_group,
+            kcal_per_serving,
+            nutrition_serving_mass_quantity,
+            nutrition_serving_mass_unit,
+            nutrition_serving_volume_quantity,
+            nutrition_serving_volume_unit,
             serving_size_quantity,
             serving_size_unit,
             serving_count,
@@ -539,7 +774,7 @@ def _insert_item(
             created_at,
             updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
         """,
         (
             item_name,
@@ -552,6 +787,12 @@ def _insert_item(
             mass_unit,
             volume_quantity,
             volume_unit,
+            nutrition_group,
+            kcal_per_serving,
+            nutrition_serving_mass_quantity,
+            nutrition_serving_mass_unit,
+            nutrition_serving_volume_quantity,
+            nutrition_serving_volume_unit,
             serving_size_quantity,
             serving_size_unit,
             serving_count,

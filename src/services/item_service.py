@@ -89,6 +89,12 @@ def create_base_food(
     mass_unit: str | None = None,
     volume_quantity: float | None = None,
     volume_unit: str | None = None,
+    nutrition_group: str | None = None,
+    kcal_per_serving: float | None = None,
+    nutrition_serving_mass_quantity: float | None = None,
+    nutrition_serving_mass_unit: str | None = None,
+    nutrition_serving_volume_quantity: float | None = None,
+    nutrition_serving_volume_unit: str | None = None,
     serving_size_quantity: float | None = None,
     serving_size_unit: str | None = None,
     serving_count: float | None = 1,
@@ -122,6 +128,12 @@ def create_base_food(
                     mass_unit,
                     volume_quantity,
                     volume_unit,
+                    nutrition_group,
+                    kcal_per_serving,
+                    nutrition_serving_mass_quantity,
+                    nutrition_serving_mass_unit,
+                    nutrition_serving_volume_quantity,
+                    nutrition_serving_volume_unit,
                     serving_size_quantity,
                     serving_size_unit,
                     serving_count,
@@ -135,7 +147,7 @@ def create_base_food(
                     created_at,
                     updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
                 """,
                 (
                     item_name,
@@ -148,6 +160,12 @@ def create_base_food(
                     mass_unit,
                     volume_quantity,
                     volume_unit,
+                    nutrition_group,
+                    kcal_per_serving,
+                    nutrition_serving_mass_quantity,
+                    nutrition_serving_mass_unit,
+                    nutrition_serving_volume_quantity,
+                    nutrition_serving_volume_unit,
                     serving_size_quantity,
                     serving_size_unit,
                     serving_count,
@@ -196,6 +214,12 @@ def update_base_food(
     mass_unit: str | None = None,
     volume_quantity: float | None = None,
     volume_unit: str | None = None,
+    nutrition_group: str | None = None,
+    kcal_per_serving: float | None = None,
+    nutrition_serving_mass_quantity: float | None = None,
+    nutrition_serving_mass_unit: str | None = None,
+    nutrition_serving_volume_quantity: float | None = None,
+    nutrition_serving_volume_unit: str | None = None,
     actor_user_id: str = SYSTEM_BASE_FOOD_USER_ID,
     actor_display_name: str = SYSTEM_BASE_FOOD_DISPLAY_NAME,
     actor_role: str = "standard_user",
@@ -230,6 +254,55 @@ def update_base_food(
     if volume_quantity is not None and volume_quantity <= 0:
         raise InvalidNumericValueError("Volume quantity must be greater than 0.")
 
+    nutrition_group = str(nutrition_group).strip() if nutrition_group else None
+
+    if kcal_per_serving in ("", None):
+        kcal_per_serving = None
+    elif not isinstance(kcal_per_serving, (int, float)):
+        try:
+            kcal_per_serving = float(kcal_per_serving)
+        except (TypeError, ValueError):
+            raise InvalidNumericValueError("Calories per serving must be a valid number.")
+
+    if kcal_per_serving is not None and kcal_per_serving < 0:
+        raise InvalidNumericValueError("Calories per serving cannot be negative.")
+
+    if nutrition_serving_mass_quantity in ("", None):
+        nutrition_serving_mass_quantity = None
+    elif not isinstance(nutrition_serving_mass_quantity, (int, float)):
+        try:
+            nutrition_serving_mass_quantity = float(nutrition_serving_mass_quantity)
+        except (TypeError, ValueError):
+            raise InvalidNumericValueError("Nutrition serving mass quantity must be a valid number.")
+
+    if (
+        nutrition_serving_mass_quantity is not None
+        and nutrition_serving_mass_quantity <= 0
+    ):
+        raise InvalidNumericValueError("Nutrition serving mass quantity must be greater than 0.")
+
+    nutrition_serving_mass_unit = (
+        str(nutrition_serving_mass_unit).strip() if nutrition_serving_mass_unit else None
+    )
+
+    if nutrition_serving_volume_quantity in ("", None):
+        nutrition_serving_volume_quantity = None
+    elif not isinstance(nutrition_serving_volume_quantity, (int, float)):
+        try:
+            nutrition_serving_volume_quantity = float(nutrition_serving_volume_quantity)
+        except (TypeError, ValueError):
+            raise InvalidNumericValueError("Nutrition serving volume quantity must be a valid number.")
+
+    if (
+        nutrition_serving_volume_quantity is not None
+        and nutrition_serving_volume_quantity <= 0
+    ):
+        raise InvalidNumericValueError("Nutrition serving volume quantity must be greater than 0.")
+
+    nutrition_serving_volume_unit = (
+        str(nutrition_serving_volume_unit).strip() if nutrition_serving_volume_unit else None
+    )
+
     try:
         with get_connection() as conn:
             cursor = conn.cursor()
@@ -254,6 +327,12 @@ def update_base_food(
                     mass_unit = ?,
                     volume_quantity = ?,
                     volume_unit = ?,
+                    nutrition_group = ?,
+                    kcal_per_serving = ?,
+                    nutrition_serving_mass_quantity = ?,
+                    nutrition_serving_mass_unit = ?,
+                    nutrition_serving_volume_quantity = ?,
+                    nutrition_serving_volume_unit = ?,
                     serving_count = 1,
                     notes = ?,
                     updated_at = datetime('now')
@@ -266,6 +345,12 @@ def update_base_food(
                     mass_unit,
                     volume_quantity,
                     volume_unit,
+                    nutrition_group,
+                    kcal_per_serving,
+                    nutrition_serving_mass_quantity,
+                    nutrition_serving_mass_unit,
+                    nutrition_serving_volume_quantity,
+                    nutrition_serving_volume_unit,
                     notes,
                     item_id,
                 ),

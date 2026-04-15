@@ -25,6 +25,7 @@ from services.mock_auth_service import (
     create_mock_user,
     get_current_mock_user,
     select_mock_user,
+    update_current_user_preferences,
 )
 from services.item_note_service import (
     ItemNoteError,
@@ -33,6 +34,7 @@ from services.item_note_service import (
     post_item_note,
     resolve_note_recipient,
 )
+from services.base_food_conversion_service import build_base_food_conversion_preview
 from services.notification_service import (
     acknowledge_item_notifications_for_viewer,
     get_notification_count,
@@ -46,6 +48,13 @@ from services.policy_service import (
 )
 from services.recipe_flattening_service import build_flattened_recipe_view
 from services.recipe_scaling_service import build_recipe_scaling_foundation, build_scaled_recipe_view
+from services.unit_display_service import (
+    DISPLAY_MODE_DEFAULT,
+    UNIT_SYSTEM_IMPERIAL,
+    apply_display_preferences_to_rows,
+    normalize_display_mode,
+    normalize_unit_system,
+)
 from services.workflow_service import (
     WorkflowPermissionError,
     ensure_portal_access,
@@ -84,6 +93,12 @@ def get_base_food_form_data() -> dict:
         "mass_unit": request.form.get("mass_unit", "").strip(),
         "volume_quantity": request.form.get("volume_quantity", "").strip(),
         "volume_unit": request.form.get("volume_unit", "").strip(),
+        "nutrition_group": request.form.get("nutrition_group", "").strip(),
+        "kcal_per_serving": request.form.get("kcal_per_serving", "").strip(),
+        "nutrition_serving_mass_quantity": request.form.get("nutrition_serving_mass_quantity", "").strip(),
+        "nutrition_serving_mass_unit": request.form.get("nutrition_serving_mass_unit", "").strip(),
+        "nutrition_serving_volume_quantity": request.form.get("nutrition_serving_volume_quantity", "").strip(),
+        "nutrition_serving_volume_unit": request.form.get("nutrition_serving_volume_unit", "").strip(),
     }
 
 
@@ -111,6 +126,7 @@ def inject_mock_auth_context():
     return {
         "current_mock_user": current_user,
         "current_mock_user_role_label": ROLE_LABELS.get(current_user["role"], current_user["role"]),
+        "current_user_preferences": current_user.get("preferences", {}),
         "available_workflow_portals": get_available_workflow_portals(current_user["role"]),
         "notification_count": get_notification_count(current_user),
     }
@@ -125,6 +141,12 @@ def new_base_food():
         "mass_unit": "",
         "volume_quantity": "",
         "volume_unit": "",
+        "nutrition_group": "",
+        "kcal_per_serving": "",
+        "nutrition_serving_mass_quantity": "",
+        "nutrition_serving_mass_unit": "",
+        "nutrition_serving_volume_quantity": "",
+        "nutrition_serving_volume_unit": "",
     }
 
     if request.method == "POST":
@@ -202,6 +224,28 @@ def notifications():
     return render_template(
         "notifications.html",
         notification_rows=notification_rows,
+        current_user=current_user,
+    )
+
+
+@app.route("/preferences", methods=["GET", "POST"])
+def user_preferences():
+    current_user = get_current_mock_user(session)
+
+    if request.method == "POST":
+        updated_user = update_current_user_preferences(
+            session,
+            display_mode=request.form.get("display_mode", ""),
+            unit_system=request.form.get("unit_system", ""),
+        )
+        flash(
+            f"Preferences updated for {updated_user['display_name']}.",
+            "success",
+        )
+        return redirect(url_for("user_preferences"))
+
+    return render_template(
+        "preferences.html",
         current_user=current_user,
     )
 
@@ -391,6 +435,12 @@ def edit_item(item_id: int):
             "mass_unit": item.get("mass_unit") or "",
             "volume_quantity": item.get("volume_quantity") or "",
             "volume_unit": item.get("volume_unit") or "",
+            "nutrition_group": item.get("nutrition_group") or "",
+            "kcal_per_serving": item.get("kcal_per_serving") or "",
+            "nutrition_serving_mass_quantity": item.get("nutrition_serving_mass_quantity") or "",
+            "nutrition_serving_mass_unit": item.get("nutrition_serving_mass_unit") or "",
+            "nutrition_serving_volume_quantity": item.get("nutrition_serving_volume_quantity") or "",
+            "nutrition_serving_volume_unit": item.get("nutrition_serving_volume_unit") or "",
         }
         can_manage_measurements = can_manage_official_measurements(current_user["role"])
 
@@ -421,6 +471,36 @@ def edit_item(item_id: int):
                         form_data["volume_unit"] or None
                         if can_manage_measurements
                         else item.get("volume_unit")
+                    ),
+                    nutrition_group=(
+                        form_data["nutrition_group"] or None
+                        if can_manage_measurements
+                        else item.get("nutrition_group")
+                    ),
+                    kcal_per_serving=(
+                        form_data["kcal_per_serving"]
+                        if can_manage_measurements
+                        else item.get("kcal_per_serving")
+                    ),
+                    nutrition_serving_mass_quantity=(
+                        form_data["nutrition_serving_mass_quantity"]
+                        if can_manage_measurements
+                        else item.get("nutrition_serving_mass_quantity")
+                    ),
+                    nutrition_serving_mass_unit=(
+                        form_data["nutrition_serving_mass_unit"] or None
+                        if can_manage_measurements
+                        else item.get("nutrition_serving_mass_unit")
+                    ),
+                    nutrition_serving_volume_quantity=(
+                        form_data["nutrition_serving_volume_quantity"]
+                        if can_manage_measurements
+                        else item.get("nutrition_serving_volume_quantity")
+                    ),
+                    nutrition_serving_volume_unit=(
+                        form_data["nutrition_serving_volume_unit"] or None
+                        if can_manage_measurements
+                        else item.get("nutrition_serving_volume_unit")
                     ),
                     actor_user_id=current_user["user_id"],
                     actor_display_name=current_user["display_name"],
@@ -600,8 +680,17 @@ def item_detail(item_id: int):
         and request.args.get("ingredient_view", "").strip() == "flattened"
         else "hierarchical"
     )
+    current_preferences = current_user.get("preferences", {})
+    display_mode = normalize_display_mode(
+        request.args.get("display_mode", current_preferences.get("display_mode", DISPLAY_MODE_DEFAULT))
+    )
+    unit_system = normalize_unit_system(
+        request.args.get("unit_system", current_preferences.get("unit_system", UNIT_SYSTEM_IMPERIAL))
+    )
     scale_quantity = request.args.get("scale_quantity", "").strip()
     scale_unit = request.args.get("scale_unit", "").strip()
+    base_food_convert_quantity = request.args.get("convert_quantity", "").strip()
+    base_food_convert_unit = request.args.get("convert_unit", "").strip()
     scaled_recipe_view = (
         build_scaled_recipe_view(
             item_id,
@@ -610,6 +699,15 @@ def item_detail(item_id: int):
             ingredient_view=ingredient_view_mode,
         )
         if item["item_type"] == "recipe" and item["status"] == "live" and (scale_quantity or scale_unit)
+        else None
+    )
+    base_food_conversion_preview = (
+        build_base_food_conversion_preview(
+            item,
+            target_quantity=base_food_convert_quantity,
+            target_unit=base_food_convert_unit,
+        )
+        if item["item_type"] == "base_food" and technical_details_enabled and (base_food_convert_quantity or base_food_convert_unit)
         else None
     )
     flattened_recipe_view = (
@@ -628,6 +726,36 @@ def item_detail(item_id: int):
         else None
     )
 
+    ingredient_display_warnings: list[str] = []
+    if item["item_type"] == "recipe" and item["status"] == "live":
+        if scaled_recipe_view is not None:
+            processed_scaled = apply_display_preferences_to_rows(
+                rows=scaled_recipe_view.get("rows", []),
+                row_mode=scaled_recipe_view.get("row_mode", "hierarchical"),
+                display_mode=display_mode,
+                unit_system=unit_system,
+            )
+            scaled_recipe_view["rows"] = processed_scaled["rows"]
+            ingredient_display_warnings = processed_scaled["warnings"]
+        elif ingredient_view_mode == "flattened" and flattened_recipe_view is not None:
+            processed_flattened = apply_display_preferences_to_rows(
+                rows=flattened_recipe_view["rows"],
+                row_mode="flattened",
+                display_mode=display_mode,
+                unit_system=unit_system,
+            )
+            flattened_recipe_view["rows"] = processed_flattened["rows"]
+            ingredient_display_warnings = processed_flattened["warnings"]
+        else:
+            processed_hierarchical = apply_display_preferences_to_rows(
+                rows=item["ingredients"],
+                row_mode="hierarchical",
+                display_mode=display_mode,
+                unit_system=unit_system,
+            )
+            item["ingredients"] = processed_hierarchical["rows"]
+            ingredient_display_warnings = processed_hierarchical["warnings"]
+
     return render_template(
         "item_detail.html",
         item=item,
@@ -640,12 +768,20 @@ def item_detail(item_id: int):
         advanced_workflow_enabled=advanced_workflow_enabled,
         show_workflow_panels=show_workflow_panels,
         ingredient_view_mode=ingredient_view_mode,
+        display_mode=display_mode,
+        unit_system=unit_system,
         scale_quantity=scale_quantity,
         scale_unit=scale_unit,
+        base_food_convert_quantity=base_food_convert_quantity,
+        base_food_convert_unit=base_food_convert_unit,
+        base_food_conversion_preview=base_food_conversion_preview,
         scaled_recipe_view=scaled_recipe_view,
         flattened_recipe_view=flattened_recipe_view,
         scaling_foundation=scaling_foundation,
+        ingredient_display_warnings=ingredient_display_warnings,
         approved_units=APPROVED_UNITS,
+        default_display_mode=DISPLAY_MODE_DEFAULT,
+        default_unit_system=UNIT_SYSTEM_IMPERIAL,
     )
 
 

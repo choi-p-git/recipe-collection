@@ -3,6 +3,12 @@ import re
 from typing import Any
 
 from config.roles import APPROVED_ROLES, ROLE_LABELS
+from services.unit_display_service import (
+    DISPLAY_MODE_DEFAULT,
+    UNIT_SYSTEM_IMPERIAL,
+    normalize_display_mode,
+    normalize_unit_system,
+)
 
 
 DEFAULT_MOCK_USERS = [
@@ -10,26 +16,56 @@ DEFAULT_MOCK_USERS = [
         "user_id": "dev_user_001",
         "display_name": "Plato Choi",
         "role": "standard_user",
+        "preferences": {
+            "display_mode": DISPLAY_MODE_DEFAULT,
+            "unit_system": UNIT_SYSTEM_IMPERIAL,
+        },
     },
     {
         "user_id": "dietitian_001",
         "display_name": "Dana Reed",
         "role": "dietitian",
+        "preferences": {
+            "display_mode": DISPLAY_MODE_DEFAULT,
+            "unit_system": UNIT_SYSTEM_IMPERIAL,
+        },
     },
     {
         "user_id": "reviewer_001",
         "display_name": "Chris Vale",
         "role": "reviewer",
+        "preferences": {
+            "display_mode": DISPLAY_MODE_DEFAULT,
+            "unit_system": UNIT_SYSTEM_IMPERIAL,
+        },
     },
     {
         "user_id": "admin_001",
         "display_name": "Morgan Hale",
         "role": "admin",
+        "preferences": {
+            "display_mode": DISPLAY_MODE_DEFAULT,
+            "unit_system": UNIT_SYSTEM_IMPERIAL,
+        },
     },
 ]
 
 MOCK_USERS_SESSION_KEY = "mock_auth_users"
 CURRENT_USER_SESSION_KEY = "mock_auth_current_user"
+
+
+def _normalize_preferences(preferences: dict[str, Any] | None) -> dict[str, str]:
+    preferences = preferences or {}
+    return {
+        "display_mode": normalize_display_mode(preferences.get("display_mode")),
+        "unit_system": normalize_unit_system(preferences.get("unit_system")),
+    }
+
+
+def _hydrate_user(user: dict[str, Any]) -> dict[str, Any]:
+    hydrated_user = deepcopy(user)
+    hydrated_user["preferences"] = _normalize_preferences(hydrated_user.get("preferences"))
+    return hydrated_user
 
 
 def _normalize_display_name(display_name: str) -> str:
@@ -58,14 +94,17 @@ def _next_custom_user_id(existing_users: list[dict[str, str]]) -> str:
 
 def ensure_mock_auth_state(flask_session: Any) -> None:
     if MOCK_USERS_SESSION_KEY not in flask_session:
-        flask_session[MOCK_USERS_SESSION_KEY] = deepcopy(DEFAULT_MOCK_USERS)
+        flask_session[MOCK_USERS_SESSION_KEY] = [_hydrate_user(user) for user in DEFAULT_MOCK_USERS]
 
-    users = flask_session[MOCK_USERS_SESSION_KEY]
+    users = [_hydrate_user(user) for user in flask_session[MOCK_USERS_SESSION_KEY]]
+    flask_session[MOCK_USERS_SESSION_KEY] = users
     user_lookup = _build_user_lookup(users)
 
     current_user = flask_session.get(CURRENT_USER_SESSION_KEY)
     if not current_user or current_user.get("user_id") not in user_lookup:
         flask_session[CURRENT_USER_SESSION_KEY] = deepcopy(users[0])
+    else:
+        flask_session[CURRENT_USER_SESSION_KEY] = _hydrate_user(current_user)
 
 
 def get_mock_users(flask_session: Any) -> list[dict[str, str]]:
@@ -105,6 +144,7 @@ def create_mock_user(flask_session: Any, display_name: str, role: str) -> dict[s
         "user_id": _next_custom_user_id(users),
         "display_name": normalized_display_name,
         "role": normalized_role,
+        "preferences": _normalize_preferences(None),
     }
     users.append(new_user)
 
@@ -134,9 +174,33 @@ def apply_debug_override(
         "user_id": base_user["user_id"],
         "display_name": normalized_display_name,
         "role": normalized_role,
+        "preferences": _normalize_preferences(base_user.get("preferences")),
     }
     flask_session[CURRENT_USER_SESSION_KEY] = overridden_user
     return deepcopy(overridden_user)
+
+
+def update_current_user_preferences(flask_session: Any, *, display_mode: str, unit_system: str) -> dict[str, Any]:
+    ensure_mock_auth_state(flask_session)
+    normalized_preferences = _normalize_preferences(
+        {
+            "display_mode": display_mode,
+            "unit_system": unit_system,
+        }
+    )
+
+    users = [_hydrate_user(user) for user in flask_session[MOCK_USERS_SESSION_KEY]]
+    current_user = _hydrate_user(flask_session[CURRENT_USER_SESSION_KEY])
+
+    for user in users:
+        if user["user_id"] == current_user["user_id"]:
+            user["preferences"] = deepcopy(normalized_preferences)
+            break
+
+    current_user["preferences"] = deepcopy(normalized_preferences)
+    flask_session[MOCK_USERS_SESSION_KEY] = users
+    flask_session[CURRENT_USER_SESSION_KEY] = current_user
+    return deepcopy(current_user)
 
 
 def build_auth_shell_context(flask_session: Any) -> dict[str, Any]:

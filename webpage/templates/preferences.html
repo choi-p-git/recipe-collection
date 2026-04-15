@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}Preferences{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <div>
+            <h2>User Preferences</h2>
+            <p class="page-subtitle">
+                Session-backed preferences for display behavior today, with room for future Menu Builder and service-level settings.
+            </p>
+        </div>
+    </div>
+
+    <section class="auth-shell-grid">
+        <article class="auth-panel">
+            <h3>Display Defaults</h3>
+            <p class="auth-panel-copy">
+                Set your default recipe viewing mode and unit system. Page-level toggles can still override these when needed.
+            </p>
+            <form method="post" action="{{ url_for('user_preferences') }}">
+                <label for="display_mode">Default Display Mode</label>
+                <select id="display_mode" name="display_mode">
+                    <option value="default" {% if current_user.preferences.display_mode == 'default' %}selected{% endif %}>Default</option>
+                    <option value="volume" {% if current_user.preferences.display_mode == 'volume' %}selected{% endif %}>Volume</option>
+                    <option value="mass" {% if current_user.preferences.display_mode == 'mass' %}selected{% endif %}>Mass</option>
+                </select>
+
+                <label for="unit_system">Default Unit System</label>
+                <select id="unit_system" name="unit_system">
+                    <option value="imperial" {% if current_user.preferences.unit_system == 'imperial' %}selected{% endif %}>Imperial</option>
+                    <option value="metric" {% if current_user.preferences.unit_system == 'metric' %}selected{% endif %}>Metric</option>
+                </select>
+
+                <button type="submit">Save Preferences</button>
+            </form>
+        </article>
+
+        <article class="auth-panel">
+            <h3>Current Defaults</h3>
+            <p class="auth-panel-copy">
+                These values are now used as the default item-detail display behavior for this active mock user.
+            </p>
+            <p><strong>Display Mode:</strong> {{ current_user.preferences.display_mode|title }}</p>
+            <p><strong>Unit System:</strong> {{ current_user.preferences.unit_system|title }}</p>
+        </article>
+
+        <article class="auth-panel">
+            <h3>Future Services</h3>
+            <p class="auth-panel-copy">
+                This page is intended to expand later for service-wide preferences such as Menu Builder defaults, inventory display preferences, and planner-specific behavior.
+            </p>
+            <ul class="item-detail-list">
+                <li>Menu Builder display and batch defaults</li>
+                <li>Inventory and conversion display preferences</li>
+                <li>Role-aware workflow and operational view settings</li>
+            </ul>
+        </article>
+    </section>
+{% endblock %}

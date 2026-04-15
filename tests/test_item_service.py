@@ -77,3 +77,44 @@ def test_update_base_food_updates_name_and_notes(isolated_db):
     conn.close()
 
     assert row == ("Fresh Celery", "New note", 120.0, "g", 1.0, "cup", 1.0)
+
+
+def test_update_base_food_updates_nutrition_authority_fields(isolated_db):
+    item_id = create_base_food(item_name="Nutrition Celery", notes="Old note")
+
+    update_base_food(
+        item_id=item_id,
+        item_name="Nutrition Celery",
+        notes="Reviewed nutrition data",
+        mass_quantity=120,
+        mass_unit="g",
+        volume_quantity=1,
+        volume_unit="cup",
+        nutrition_group="Vegetable",
+        kcal_per_serving=16,
+        nutrition_serving_mass_quantity=100,
+        nutrition_serving_mass_unit="g",
+        nutrition_serving_volume_quantity=1,
+        nutrition_serving_volume_unit="cup",
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT
+            nutrition_group,
+            kcal_per_serving,
+            nutrition_serving_mass_quantity,
+            nutrition_serving_mass_unit,
+            nutrition_serving_volume_quantity,
+            nutrition_serving_volume_unit
+        FROM item
+        WHERE item_id = ?
+        """,
+        (item_id,),
+    )
+    row = cursor.fetchone()
+    conn.close()
+
+    assert row == ("Vegetable", 16.0, 100.0, "g", 1.0, "cup")

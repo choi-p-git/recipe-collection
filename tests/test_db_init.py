@@ -44,6 +44,7 @@ def test_initialize_database_records_applied_migration_versions(isolated_db):
         "0002_add_item_event.sql",
         "0003_add_item_notification.sql",
         "0004_add_measurement_authority_fields.sql",
+        "0005_add_base_food_nutrition_fields.sql",
     ]
 
 

@@ -93,10 +93,11 @@ def apply_migrations() -> None:
 
 
 def load_seed_catalog_if_needed() -> bool:
-    from seed_catalog import seed_database_if_empty
+    from seed_catalog import seed_database_if_empty, sync_seed_base_food_nutrition
 
     with get_connection() as conn:
         did_seed = seed_database_if_empty(conn)
+        sync_seed_base_food_nutrition(conn)
         conn.commit()
         return did_seed
 

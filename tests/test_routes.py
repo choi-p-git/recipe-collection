@@ -14,6 +14,7 @@ def test_index_and_form_routes_render(app_client):
     assert "Yield Mass Quantity" in recipe_page.get_data(as_text=True)
     assert "Official Serving Count" not in recipe_page.get_data(as_text=True)
     assert app_client.get("/login").status_code == 200
+    assert app_client.get("/preferences").status_code == 200
 
 
 def test_new_base_food_post_redirects_to_item_detail(app_client):
@@ -45,6 +46,7 @@ def test_item_detail_route_renders_base_food(app_client):
     assert "Classification" not in page
     assert "Workflow History" in page
     assert "Base Food created." in page
+    assert "Nutrition Authority" not in page
 
 
 def test_item_detail_route_renders_recipe(app_client):
@@ -79,6 +81,23 @@ def test_item_detail_route_renders_recipe(app_client):
     assert "no cooking" in page
     assert "Ingredients" in page
     assert "Method Steps" in page
+
+
+def test_preferences_route_updates_current_user_defaults(app_client):
+    response = app_client.post(
+        "/preferences",
+        data={
+            "display_mode": "mass",
+            "unit_system": "metric",
+        },
+        follow_redirects=True,
+    )
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Preferences updated for Plato Choi." in page
+    assert "Mass" in page
+    assert "Metric" in page
 
 
 def test_item_detail_shows_edit_link_for_allowed_roles(app_client):
@@ -1561,6 +1580,283 @@ def test_live_recipe_detail_supports_recipe_bridge_scaling(app_client, isolated_
     assert "Scaled Ingredients" in page
 
 
+def test_live_each_recipe_detail_supports_mass_scaling_via_official_batch_basis(app_client, isolated_db):
+    oil_id = create_base_food(item_name="Route Each Mass Oil")
+    recipe_id = create_recipe(
+        {
+            "item_name": "Route Each Mass Recipe",
+            "yield_quantity": 10,
+            "yield_unit": "each",
+            "mass_quantity": 1000,
+            "mass_unit": "g",
+            "volume_quantity": 1,
+            "volume_unit": "qt",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Mix"],
+            "ingredients": [
+                {"component_item_id": oil_id, "component_quantity": 5, "component_unit": "oz"},
+            ],
+        }
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id IN (?, ?)", (oil_id, recipe_id))
+    conn.commit()
+    conn.close()
+
+    response = app_client.get(f"/items/{recipe_id}?scale_quantity=500&scale_unit=g")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Scaling to 500.0 g" in page
+    assert "base yield 10.0 each." in page
+    assert "Scaling factor anchored through official batch basis" in page
+    assert "1000" in page
+    assert "2.5" in page
+    assert "oz" in page
+
+
+def test_live_recipe_detail_shows_measurement_equivalent_for_scaled_base_food(app_client, isolated_db):
+    oil_id = create_base_food(item_name="Route Equivalent Oil")
+    recipe_id = create_recipe(
+        {
+            "item_name": "Route Equivalent Recipe",
+            "yield_quantity": 2,
+            "yield_unit": "qt",
+            "mass_quantity": 2000,
+            "mass_unit": "g",
+            "volume_quantity": 2,
+            "volume_unit": "qt",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Mix"],
+            "ingredients": [
+                {"component_item_id": oil_id, "component_quantity": 0.5, "component_unit": "cup"},
+            ],
+        }
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        UPDATE item
+        SET status = 'live',
+            mass_quantity = 216,
+            mass_unit = 'g',
+            volume_quantity = 1,
+            volume_unit = 'cup'
+        WHERE item_id = ?
+        """,
+        (oil_id,),
+    )
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id IN (?, ?)", (oil_id, recipe_id))
+    conn.commit()
+    conn.close()
+
+    response = app_client.get(f"/items/{recipe_id}?scale_quantity=1&scale_unit=kg")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Official mass equivalent:" in page
+    assert "54" in page
+
+
+def test_live_recipe_detail_volume_mode_cascades_to_smaller_unit(app_client, isolated_db):
+    oil_id = create_base_food(item_name="Route Volume Cascade Oil")
+    recipe_id = create_recipe(
+        {
+            "item_name": "Route Volume Cascade Recipe",
+            "yield_quantity": 1,
+            "yield_unit": "each",
+            "mass_quantity": 400,
+            "mass_unit": "g",
+            "volume_quantity": 2,
+            "volume_unit": "cup",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Mix"],
+            "ingredients": [
+                {"component_item_id": oil_id, "component_quantity": 0.5, "component_unit": "cup"},
+            ],
+        }
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        UPDATE item
+        SET status = 'live',
+            mass_quantity = 216,
+            mass_unit = 'g',
+            volume_quantity = 1,
+            volume_unit = 'cup'
+        WHERE item_id = ?
+        """,
+        (oil_id,),
+    )
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id IN (?, ?)", (oil_id, recipe_id))
+    conn.commit()
+    conn.close()
+
+    response = app_client.get(f"/items/{recipe_id}?display_mode=volume&unit_system=imperial")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "8" in page
+    assert "tbs" in page
+    assert "Official mass equivalent:" not in page
+
+
+def test_live_recipe_detail_mass_mode_keeps_each_components_as_each(app_client, isolated_db):
+    tortilla_id = create_base_food(item_name="Route Tortilla")
+    recipe_id = create_recipe(
+        {
+            "item_name": "Route Tortilla Recipe",
+            "yield_quantity": 1,
+            "yield_unit": "each",
+            "mass_quantity": 300,
+            "mass_unit": "g",
+            "volume_quantity": 2,
+            "volume_unit": "cup",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Assemble"],
+            "ingredients": [
+                {"component_item_id": tortilla_id, "component_quantity": 1.25, "component_unit": "each"},
+            ],
+        }
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        UPDATE item
+        SET status = 'live',
+            mass_quantity = 60,
+            mass_unit = 'g',
+            volume_quantity = 1,
+            volume_unit = 'each'
+        WHERE item_id = ?
+        """,
+        (tortilla_id,),
+    )
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id IN (?, ?)", (tortilla_id, recipe_id))
+    conn.commit()
+    conn.close()
+
+    response = app_client.get(f"/items/{recipe_id}?display_mode=mass&unit_system=metric")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "1.25" in page
+    assert "each" in page
+
+
+def test_live_recipe_detail_uses_saved_user_display_preferences_by_default(app_client, isolated_db):
+    oil_id = create_base_food(item_name="Route Saved Preference Oil")
+    recipe_id = create_recipe(
+        {
+            "item_name": "Route Saved Preference Recipe",
+            "yield_quantity": 1,
+            "yield_unit": "each",
+            "mass_quantity": 400,
+            "mass_unit": "g",
+            "volume_quantity": 2,
+            "volume_unit": "cup",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Mix"],
+            "ingredients": [
+                {"component_item_id": oil_id, "component_quantity": 0.5, "component_unit": "cup"},
+            ],
+        }
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        UPDATE item
+        SET status = 'live',
+            mass_quantity = 216,
+            mass_unit = 'g',
+            volume_quantity = 1,
+            volume_unit = 'cup'
+        WHERE item_id = ?
+        """,
+        (oil_id,),
+    )
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id IN (?, ?)", (oil_id, recipe_id))
+    conn.commit()
+    conn.close()
+
+    app_client.post(
+        "/preferences",
+        data={
+            "display_mode": "volume",
+            "unit_system": "imperial",
+        },
+        follow_redirects=False,
+    )
+
+    response = app_client.get(f"/items/{recipe_id}")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "8" in page
+    assert "tbs" in page
+    assert "Official mass equivalent:" not in page
+
+
+def test_live_recipe_detail_shows_measurement_equivalent_for_scaled_flattened_base_food(app_client, isolated_db):
+    oil_id = create_base_food(item_name="Route Flat Equivalent Oil")
+    recipe_id = create_recipe(
+        {
+            "item_name": "Route Flat Equivalent Recipe",
+            "yield_quantity": 2,
+            "yield_unit": "kg",
+            "mass_quantity": 2000,
+            "mass_unit": "g",
+            "volume_quantity": 2,
+            "volume_unit": "qt",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Mix"],
+            "ingredients": [
+                {"component_item_id": oil_id, "component_quantity": 108, "component_unit": "g"},
+            ],
+        }
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        UPDATE item
+        SET status = 'live',
+            mass_quantity = 216,
+            mass_unit = 'g',
+            volume_quantity = 1,
+            volume_unit = 'cup'
+        WHERE item_id = ?
+        """,
+        (oil_id,),
+    )
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id IN (?, ?)", (oil_id, recipe_id))
+    conn.commit()
+    conn.close()
+
+    response = app_client.get(
+        f"/items/{recipe_id}?ingredient_view=flattened&scale_quantity=1&scale_unit=qt"
+    )
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Scaled Flattened Ingredients" in page
+    assert "Official volume equivalent:" in page
+    assert "0.25" in page
+    assert "cup" in page
+
+
 def test_live_item_detail_advanced_view_reveals_workflow_history_and_notes_for_reviewer(app_client, isolated_db):
     base_food_id = create_base_food(item_name="Live Advanced Base")
     recipe_response = app_client.post(
@@ -1664,6 +1960,149 @@ def test_edit_base_food_route_updates_item(app_client, isolated_db):
 
     assert response.status_code == 302
     assert row == ("New Celery", "Updated note")
+
+
+def test_edit_base_food_route_allows_dietitian_nutrition_authority_updates(app_client, isolated_db):
+    item_id = create_base_food(item_name="Dietitian Celery", notes="Old note")
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "dietitian_001"},
+        follow_redirects=False,
+    )
+
+    response = app_client.post(
+        f"/items/{item_id}/edit",
+        data={
+            "item_name": "Dietitian Celery",
+            "notes": "Nutrition entered",
+            "mass_quantity": "120",
+            "mass_unit": "g",
+            "volume_quantity": "1",
+            "volume_unit": "cup",
+            "nutrition_group": "Vegetable",
+            "kcal_per_serving": "16",
+            "nutrition_serving_mass_quantity": "100",
+            "nutrition_serving_mass_unit": "g",
+            "nutrition_serving_volume_quantity": "1",
+            "nutrition_serving_volume_unit": "cup",
+        },
+        follow_redirects=False,
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT nutrition_group, kcal_per_serving
+        FROM item
+        WHERE item_id = ?
+        """,
+        (item_id,),
+    )
+    row = cursor.fetchone()
+    conn.close()
+
+    assert response.status_code == 302
+    assert row == ("Vegetable", 16.0)
+
+
+def test_base_food_detail_shows_nutrition_authority_only_for_privileged_technical_view(app_client, isolated_db):
+    item_id = create_base_food(item_name="Privileged Nutrition Celery")
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        UPDATE item
+        SET nutrition_group = ?, kcal_per_serving = ?, nutrition_serving_mass_quantity = ?, nutrition_serving_mass_unit = ?
+        WHERE item_id = ?
+        """,
+        ("Vegetable", 16, 100, "g", item_id),
+    )
+    conn.commit()
+    conn.close()
+
+    standard_response = app_client.get(f"/items/{item_id}")
+    standard_page = standard_response.get_data(as_text=True)
+
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "dietitian_001"},
+        follow_redirects=False,
+    )
+    privileged_response = app_client.get(f"/items/{item_id}?technical_view=advanced")
+    privileged_page = privileged_response.get_data(as_text=True)
+
+    assert standard_response.status_code == 200
+    assert "Nutrition Authority" not in standard_page
+    assert privileged_response.status_code == 200
+    assert "Nutrition Authority" in privileged_page
+    assert "Vegetable" in privileged_page
+
+
+def test_base_food_detail_supports_privileged_conversion_preview(app_client, isolated_db):
+    item_id = create_base_food(item_name="Preview Olive Oil")
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        UPDATE item
+        SET status = 'live',
+            mass_quantity = 216,
+            mass_unit = 'g',
+            volume_quantity = 1,
+            volume_unit = 'cup'
+        WHERE item_id = ?
+        """,
+        (item_id,),
+    )
+    conn.commit()
+    conn.close()
+
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "dietitian_001"},
+        follow_redirects=False,
+    )
+    response = app_client.get(f"/items/{item_id}?technical_view=advanced&convert_quantity=1&convert_unit=tbs")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Convert Base Food" in page
+    assert "1.0 tbs" in page
+    assert "maps to 13.5" in page
+    assert "official mass" in page
+
+
+def test_base_food_detail_conversion_preview_shows_warning_for_incompatible_unit(app_client, isolated_db):
+    item_id = create_base_food(item_name="Preview Salt")
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        UPDATE item
+        SET status = 'live',
+            mass_quantity = 288,
+            mass_unit = 'g',
+            volume_quantity = 1,
+            volume_unit = 'cup'
+        WHERE item_id = ?
+        """,
+        (item_id,),
+    )
+    conn.commit()
+    conn.close()
+
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "dietitian_001"},
+        follow_redirects=False,
+    )
+    response = app_client.get(f"/items/{item_id}?technical_view=advanced&convert_quantity=1&convert_unit=each")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Conversion warnings" in page
+    assert "not convertible" in page
 
 
 def test_edit_recipe_route_renders_for_allowed_role(app_client):

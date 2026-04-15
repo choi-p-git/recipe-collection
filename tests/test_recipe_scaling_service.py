@@ -1,10 +1,12 @@
 from services.recipe_scaling_service import build_recipe_scaling_foundation, build_scaled_recipe_view
 from services.unit_conversion_service import (
     convert_unit_value,
+    convert_with_item_mass_volume_bridge,
     convert_with_mass_volume_bridge,
     describe_unit_conversion,
     get_unit_measurement_profile,
 )
+from services.unit_display_service import build_display_measurement
 
 
 def test_get_unit_measurement_profile_returns_mass_volume_and_count_units():
@@ -63,6 +65,71 @@ def test_convert_with_mass_volume_bridge_supports_recipe_level_cross_family_conv
     assert volume_to_mass["ok"] is True
     assert volume_to_mass["status"] == "recipe_bridge_conversion"
     assert round(volume_to_mass["quantity"], 3) == 250.0
+
+
+def test_convert_with_item_mass_volume_bridge_supports_base_food_cross_family_conversion():
+    volume_to_mass = convert_with_item_mass_volume_bridge(
+        1,
+        "cup",
+        "g",
+        item_type="base_food",
+        mass_quantity=216,
+        mass_unit="g",
+        volume_quantity=1,
+        volume_unit="cup",
+    )
+    mass_to_volume = convert_with_item_mass_volume_bridge(
+        13.5,
+        "g",
+        "tbs",
+        item_type="base_food",
+        mass_quantity=216,
+        mass_unit="g",
+        volume_quantity=1,
+        volume_unit="cup",
+    )
+
+    assert volume_to_mass["ok"] is True
+    assert volume_to_mass["status"] == "base_food_bridge_conversion"
+    assert round(volume_to_mass["quantity"], 3) == 216.0
+    assert mass_to_volume["ok"] is True
+    assert mass_to_volume["status"] == "base_food_bridge_conversion"
+    assert round(mass_to_volume["quantity"], 3) == 1.0
+
+
+def test_build_display_measurement_cascades_to_smaller_imperial_volume_unit():
+    display = build_display_measurement(
+        quantity=0.5,
+        source_unit="cup",
+        item_type="base_food",
+        display_mode="volume",
+        unit_system="imperial",
+        mass_quantity=216,
+        mass_unit="g",
+        volume_quantity=1,
+        volume_unit="cup",
+    )
+
+    assert display["quantity_display"] == "8"
+    assert display["unit"] == "tbs"
+
+
+def test_build_display_measurement_keeps_each_in_mass_mode():
+    display = build_display_measurement(
+        quantity=1.25,
+        source_unit="each",
+        item_type="base_food",
+        display_mode="mass",
+        unit_system="metric",
+        mass_quantity=120,
+        mass_unit="g",
+        volume_quantity=1,
+        volume_unit="cup",
+    )
+
+    assert display["quantity_display"] == "1.25"
+    assert display["unit"] == "each"
+    assert display["status"] == "original"
 
 
 def test_build_recipe_scaling_foundation_uses_same_family_relationship_label(isolated_db):
@@ -290,3 +357,188 @@ def test_build_scaled_recipe_view_supports_recipe_mass_volume_bridge(isolated_db
     assert scaled_view["is_scaled"] is True
     assert scaled_view["conversion_status"] == "recipe_bridge_conversion"
     assert scaled_view["rows"][0]["quantity_display"] == "4"
+
+
+def test_build_scaled_recipe_view_supports_each_recipe_scaled_by_mass_basis(isolated_db):
+    import sqlite3
+
+    from services.item_service import create_base_food
+    from services.recipe_service import create_recipe
+
+    oil_id = create_base_food(item_name="Scaled Each Mass Oil")
+    recipe_id = create_recipe(
+        {
+            "item_name": "Scaled Each Mass Recipe",
+            "yield_quantity": 10,
+            "yield_unit": "each",
+            "mass_quantity": 1000,
+            "mass_unit": "g",
+            "volume_quantity": 1,
+            "volume_unit": "qt",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Mix"],
+            "ingredients": [
+                {"component_item_id": oil_id, "component_quantity": 5, "component_unit": "oz"},
+            ],
+        }
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id IN (?, ?)", (oil_id, recipe_id))
+    conn.commit()
+    conn.close()
+
+    scaled_view = build_scaled_recipe_view(recipe_id, 500, "g", ingredient_view="hierarchical")
+
+    assert scaled_view is not None
+    assert scaled_view["is_scaled"] is True
+    assert scaled_view["conversion_status"] == "recipe_batch_mass_basis"
+    assert scaled_view["scale_basis_quantity"] == 1000
+    assert scaled_view["scale_basis_unit"] == "g"
+    assert scaled_view["rows"][0]["quantity_display"] == "2.5"
+
+
+def test_build_scaled_recipe_view_supports_each_recipe_scaled_by_volume_basis(isolated_db):
+    import sqlite3
+
+    from services.item_service import create_base_food
+    from services.recipe_service import create_recipe
+
+    oil_id = create_base_food(item_name="Scaled Each Volume Oil")
+    recipe_id = create_recipe(
+        {
+            "item_name": "Scaled Each Volume Recipe",
+            "yield_quantity": 10,
+            "yield_unit": "each",
+            "mass_quantity": 1000,
+            "mass_unit": "g",
+            "volume_quantity": 1,
+            "volume_unit": "qt",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Mix"],
+            "ingredients": [
+                {"component_item_id": oil_id, "component_quantity": 2, "component_unit": "cup"},
+            ],
+        }
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id IN (?, ?)", (oil_id, recipe_id))
+    conn.commit()
+    conn.close()
+
+    scaled_view = build_scaled_recipe_view(recipe_id, 2, "cup", ingredient_view="hierarchical")
+
+    assert scaled_view is not None
+    assert scaled_view["is_scaled"] is True
+    assert scaled_view["conversion_status"] == "recipe_batch_volume_basis"
+    assert scaled_view["scale_basis_quantity"] == 1
+    assert scaled_view["scale_basis_unit"] == "qt"
+    assert scaled_view["rows"][0]["quantity_display"] == "1"
+
+
+def test_build_scaled_recipe_view_adds_base_food_mass_equivalent_for_hierarchical_rows(isolated_db):
+    import sqlite3
+
+    from services.item_service import create_base_food
+    from services.recipe_service import create_recipe
+
+    oil_id = create_base_food(item_name="Scaled Equivalent Oil")
+    recipe_id = create_recipe(
+        {
+            "item_name": "Scaled Equivalent Recipe",
+            "yield_quantity": 2,
+            "yield_unit": "qt",
+            "mass_quantity": 2000,
+            "mass_unit": "g",
+            "volume_quantity": 2,
+            "volume_unit": "qt",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Mix"],
+            "ingredients": [
+                {"component_item_id": oil_id, "component_quantity": 0.5, "component_unit": "cup"},
+            ],
+        }
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        UPDATE item
+        SET status = 'live',
+            mass_quantity = 216,
+            mass_unit = 'g',
+            volume_quantity = 1,
+            volume_unit = 'cup'
+        WHERE item_id = ?
+        """,
+        (oil_id,),
+    )
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id = ?", (recipe_id,))
+    conn.commit()
+    conn.close()
+
+    scaled_view = build_scaled_recipe_view(recipe_id, 1, "kg", ingredient_view="hierarchical")
+
+    assert scaled_view is not None
+    equivalent = scaled_view["rows"][0]["measurement_equivalent"]
+    assert equivalent is not None
+    assert equivalent["label"] == "Official mass equivalent"
+    assert equivalent["quantity_display"] == "54"
+    assert equivalent["unit"] == "g"
+
+
+def test_build_scaled_recipe_view_adds_base_food_volume_equivalent_for_flattened_rows(isolated_db):
+    import sqlite3
+
+    from services.item_service import create_base_food
+    from services.recipe_service import create_recipe
+
+    oil_id = create_base_food(item_name="Scaled Flat Equivalent Oil")
+    recipe_id = create_recipe(
+        {
+            "item_name": "Scaled Flat Equivalent Recipe",
+            "yield_quantity": 2,
+            "yield_unit": "kg",
+            "mass_quantity": 2000,
+            "mass_unit": "g",
+            "volume_quantity": 2,
+            "volume_unit": "qt",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Mix"],
+            "ingredients": [
+                {"component_item_id": oil_id, "component_quantity": 108, "component_unit": "g"},
+            ],
+        }
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        UPDATE item
+        SET status = 'live',
+            mass_quantity = 216,
+            mass_unit = 'g',
+            volume_quantity = 1,
+            volume_unit = 'cup'
+        WHERE item_id = ?
+        """,
+        (oil_id,),
+    )
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id = ?", (recipe_id,))
+    conn.commit()
+    conn.close()
+
+    scaled_view = build_scaled_recipe_view(recipe_id, 1, "qt", ingredient_view="flattened")
+
+    assert scaled_view is not None
+    base_food_row = next(row for row in scaled_view["rows"] if row["row_type"] == "base_food")
+    equivalent = base_food_row["measurement_equivalent"]
+    assert equivalent is not None
+    assert equivalent["label"] == "Official volume equivalent"
+    assert equivalent["quantity_display"] == "0.25"
+    assert equivalent["unit"] == "cup"

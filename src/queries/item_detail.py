@@ -27,6 +27,12 @@ def get_item_detail(item_id: int) -> dict | None:
                 mass_unit,
                 volume_quantity,
                 volume_unit,
+                nutrition_group,
+                kcal_per_serving,
+                nutrition_serving_mass_quantity,
+                nutrition_serving_mass_unit,
+                nutrition_serving_volume_quantity,
+                nutrition_serving_volume_unit,
                 serving_size_quantity,
                 serving_size_unit,
                 serving_count,
@@ -60,6 +66,10 @@ def get_item_detail(item_id: int) -> dict | None:
                     rc.component_item_id,
                     i.item_name,
                     i.item_type,
+                    i.mass_quantity,
+                    i.mass_unit,
+                    i.volume_quantity,
+                    i.volume_unit,
                     rc.component_quantity,
                     rc.component_unit,
                     rc.component_sequence,
@@ -75,8 +85,8 @@ def get_item_detail(item_id: int) -> dict | None:
 
             ingredient_rows = cursor.fetchall()
 
-    instructions_text = item_row[14] or ""
-    primary_cooking_method_code = item_row[15]
+    instructions_text = item_row[20] or ""
+    primary_cooking_method_code = item_row[21]
     item_type = item_row[2]
 
     return {
@@ -92,9 +102,15 @@ def get_item_detail(item_id: int) -> dict | None:
         "mass_unit": item_row[8],
         "volume_quantity": item_row[9],
         "volume_unit": item_row[10],
-        "serving_size_quantity": item_row[11],
-        "serving_size_unit": item_row[12],
-        "serving_count": item_row[13],
+        "nutrition_group": item_row[11],
+        "kcal_per_serving": item_row[12],
+        "nutrition_serving_mass_quantity": item_row[13],
+        "nutrition_serving_mass_unit": item_row[14],
+        "nutrition_serving_volume_quantity": item_row[15],
+        "nutrition_serving_volume_unit": item_row[16],
+        "serving_size_quantity": item_row[17],
+        "serving_size_unit": item_row[18],
+        "serving_count": item_row[19],
         "instructions_text": instructions_text,
         "instruction_steps": decode_instruction_text_to_steps(instructions_text),
         "primary_cooking_method_code": primary_cooking_method_code,
@@ -103,15 +119,15 @@ def get_item_detail(item_id: int) -> dict | None:
             if primary_cooking_method_code
             else None
         ),
-        "status": item_row[16],
-        "status_label": STATUS_LABELS.get(item_row[16], item_row[16]),
-        "requires_resubmission": bool(item_row[17]),
-        "notes": item_row[18],
-        "concept_classification": item_row[19],
-        "meal_classification": item_row[20],
-        "haccp_process_classification": item_row[21],
-        "created_at": item_row[22],
-        "updated_at": item_row[23],
+        "status": item_row[22],
+        "status_label": STATUS_LABELS.get(item_row[22], item_row[22]),
+        "requires_resubmission": bool(item_row[23]),
+        "notes": item_row[24],
+        "concept_classification": item_row[25],
+        "meal_classification": item_row[26],
+        "haccp_process_classification": item_row[27],
+        "created_at": item_row[28],
+        "updated_at": item_row[29],
         "ingredients": [
             {
                 "recipe_component_id": row[0],
@@ -119,10 +135,14 @@ def get_item_detail(item_id: int) -> dict | None:
                 "component_item_name": row[2],
                 "component_item_type": row[3],
                 "component_item_type_label": ITEM_TYPE_LABELS.get(row[3], row[3]),
-                "component_quantity": row[4],
-                "component_unit": row[5],
-                "component_sequence": row[6],
-                "component_notes": row[7],
+                "mass_quantity": row[4],
+                "mass_unit": row[5],
+                "volume_quantity": row[6],
+                "volume_unit": row[7],
+                "component_quantity": row[8],
+                "component_unit": row[9],
+                "component_sequence": row[10],
+                "component_notes": row[11],
             }
             for row in ingredient_rows
         ],

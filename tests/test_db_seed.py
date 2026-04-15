@@ -30,6 +30,15 @@ def test_initialize_database_seeds_catalog_when_enabled(isolated_db):
     )
     nested_component_count = cursor.fetchone()[0]
 
+    cursor.execute(
+        """
+        SELECT nutrition_group, kcal_per_serving, nutrition_serving_mass_quantity, nutrition_serving_volume_quantity
+        FROM item
+        WHERE item_name = 'Chicken Breast'
+        """
+    )
+    chicken_breast_nutrition = cursor.fetchone()
+
     conn.close()
 
     assert did_seed is True
@@ -37,6 +46,7 @@ def test_initialize_database_seeds_catalog_when_enabled(isolated_db):
     assert recipe_count == 8
     assert live_count == 28
     assert nested_component_count == 1
+    assert chicken_breast_nutrition == ("Poultry Products", 231.0, 140.0, 1.0)
 
 
 def test_initialize_database_does_not_duplicate_seed_catalog(isolated_db):
