@@ -15,6 +15,7 @@ def test_index_and_form_routes_render(app_client):
     assert "Official Serving Count" not in recipe_page.get_data(as_text=True)
     assert app_client.get("/login").status_code == 200
     assert app_client.get("/preferences").status_code == 200
+    assert app_client.get("/menus/new").status_code == 200
 
 
 def test_new_base_food_post_redirects_to_item_detail(app_client):
@@ -81,6 +82,73 @@ def test_item_detail_route_renders_recipe(app_client):
     assert "no cooking" in page
     assert "Ingredients" in page
     assert "Method Steps" in page
+
+
+def test_new_menu_post_creates_menu_and_materializes_slots(app_client, isolated_db):
+    response = app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "Spring Menu",
+            "service_days": ["monday", "wednesday"],
+            "meal_periods": ["lunch", "dinner"],
+            "concepts": ["hot_line", "salad_bar"],
+            "menu_length_weeks": "2",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert "/menus/" in response.headers["Location"]
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT menu_id, menu_name, status FROM menu")
+    menu_row = cursor.fetchone()
+    cursor.execute("SELECT COUNT(*) FROM menu_slot WHERE menu_id = ?", (menu_row[0],))
+    slot_count = cursor.fetchone()[0]
+    conn.close()
+
+    assert menu_row[1:] == ("Spring Menu", "draft")
+    assert slot_count == 16
+
+
+def test_menu_detail_route_renders_week_overview(app_client):
+    create_response = app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "Week Test Menu",
+            "service_days": ["monday"],
+            "meal_periods": ["lunch"],
+            "concepts": ["hot_line", "salad_bar"],
+            "menu_length_weeks": "2",
+        },
+        follow_redirects=False,
+    )
+    menu_location = create_response.headers["Location"]
+
+    response = app_client.get(f"{menu_location}?week=2")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Week Test Menu" in page
+    assert "Week 2 Overview" in page
+    assert "Hot Line" in page
+    assert "Salad Bar" in page
+
+
+def test_new_menu_post_shows_validation_error_for_missing_selections(app_client):
+    response = app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "Invalid Menu",
+            "menu_length_weeks": "1",
+        },
+        follow_redirects=True,
+    )
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Select at least one service day." in page
 
 
 def test_preferences_route_updates_current_user_defaults(app_client):

@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}{{ menu.menu_name }}{% endblock %}
+{% block main_class %}container container-menu-builder{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <div>
+            <h2>{{ menu.menu_name }}</h2>
+            <p class="page-subtitle">
+                Menu overview shell for {{ menu.author_display_name }}. This first slice establishes the week structure and slot grid.
+            </p>
+        </div>
+        <div>
+            <span class="status-badge status-chip-submitted">{{ menu.status_label }}</span>
+        </div>
+    </div>
+
+    <section class="item-detail-section">
+        <h3>Menu Summary</h3>
+        <div class="detail-stat-grid">
+            <article class="detail-stat-card">
+                <p class="detail-stat-label">Weeks</p>
+                <p class="detail-stat-value">{{ menu.menu_length_weeks }}</p>
+            </article>
+            <article class="detail-stat-card">
+                <p class="detail-stat-label">Service Days</p>
+                <p class="detail-stat-value">{{ menu.service_days|length }}</p>
+            </article>
+            <article class="detail-stat-card">
+                <p class="detail-stat-label">Meal Periods</p>
+                <p class="detail-stat-value">{{ menu.meal_periods|length }}</p>
+            </article>
+            <article class="detail-stat-card">
+                <p class="detail-stat-label">Concepts</p>
+                <p class="detail-stat-value">{{ menu.concepts|length }}</p>
+            </article>
+        </div>
+    </section>
+
+    <section class="item-detail-section">
+        <h3>Weeks</h3>
+        <div class="detail-toggle-row">
+            {% for week_number in week_numbers %}
+                <a
+                    class="page-action-link secondary {% if week_number == selected_week_number %}is-current-toggle{% endif %}"
+                    href="{{ url_for('menu_detail', menu_id=menu.menu_id, week=week_number) }}"
+                >
+                    Week {{ week_number }}
+                </a>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section class="item-detail-section menu-overview-shell">
+        <h3>Week {{ selected_week_number }} Overview</h3>
+        <p class="muted">
+            Days render left to right and concepts render top to bottom. Smaller windows keep the planning grid at readable width and allow horizontal scrolling instead of squeezing the layout.
+        </p>
+
+        {% for meal in meal_period_options if meal.value in menu.meal_periods %}
+            <div class="menu-overview-meal-section">
+                <div class="menu-overview-section-header">
+                    <h4>{{ meal.label }}</h4>
+                </div>
+                <div class="menu-overview-scroll">
+                    <div class="menu-grid-shell" style="--menu-day-count: {{ menu.service_days|length }};">
+                        <div class="menu-grid-corner">Concept / Day</div>
+                        {% for day in day_options if day.value in menu.service_days %}
+                            <div class="menu-grid-day-header">{{ day.label }}</div>
+                        {% endfor %}
+
+                        {% for concept_name in menu.concepts %}
+                            <div class="menu-grid-concept-header">{{ concept_name|replace('_', ' ')|title }}</div>
+                            {% for day in day_options if day.value in menu.service_days %}
+                                {% set slot = (week_slots | selectattr('day_of_week', 'equalto', day.value) | selectattr('meal_period', 'equalto', meal.value) | selectattr('concept_name', 'equalto', concept_name) | list | first) %}
+                                <div class="menu-grid-cell">
+                                    {% if slot %}
+                                        <p class="menu-grid-slot-id">Slot {{ slot.menu_slot_id }}</p>
+                                        <p class="muted">Ready for assignment.</p>
+                                    {% else %}
+                                        <p class="muted">No slot found.</p>
+                                    {% endif %}
+                                </div>
+                            {% endfor %}
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+    </section>
+{% endblock %}

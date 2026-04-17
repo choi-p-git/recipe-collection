@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block title %}New Menu{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <div>
+            <h2>Create Menu</h2>
+            <p class="page-subtitle">
+                Build the base menu structure by selecting service days, meal periods, concepts, and menu length.
+            </p>
+        </div>
+    </div>
+
+    <form method="post" class="form-section">
+        <div class="form-row">
+            <label for="menu_name">Menu Name</label>
+            <input
+                type="text"
+                id="menu_name"
+                name="menu_name"
+                value="{{ form_data.menu_name }}"
+                placeholder="Spring Cycle Menu"
+            >
+        </div>
+
+        <fieldset class="form-checkbox-group">
+            <legend>Days of Service</legend>
+            <div class="checkbox-grid">
+                {% for option in day_options %}
+                    <label class="checkbox-card">
+                        <input
+                            type="checkbox"
+                            name="service_days"
+                            value="{{ option.value }}"
+                            {% if option.value in form_data.service_days %}checked{% endif %}
+                        >
+                        <span>{{ option.label }}</span>
+                    </label>
+                {% endfor %}
+            </div>
+        </fieldset>
+
+        <fieldset class="form-checkbox-group">
+            <legend>Meal Periods</legend>
+            <div class="checkbox-grid">
+                {% for option in meal_period_options %}
+                    <label class="checkbox-card">
+                        <input
+                            type="checkbox"
+                            name="meal_periods"
+                            value="{{ option.value }}"
+                            {% if option.value in form_data.meal_periods %}checked{% endif %}
+                        >
+                        <span>{{ option.label }}</span>
+                    </label>
+                {% endfor %}
+            </div>
+        </fieldset>
+
+        <fieldset class="form-checkbox-group">
+            <legend>Concept Availability</legend>
+            <div class="checkbox-grid">
+                {% for option in concept_options %}
+                    <label class="checkbox-card">
+                        <input
+                            type="checkbox"
+                            name="concepts"
+                            value="{{ option.value }}"
+                            {% if option.value in form_data.concepts %}checked{% endif %}
+                        >
+                        <span>{{ option.label }}</span>
+                    </label>
+                {% endfor %}
+            </div>
+        </fieldset>
+
+        <div class="form-row">
+            <label for="menu_length_weeks">Menu Length in Weeks</label>
+            <input
+                type="number"
+                id="menu_length_weeks"
+                name="menu_length_weeks"
+                min="1"
+                step="1"
+                value="{{ form_data.menu_length_weeks }}"
+            >
+        </div>
+
+        <section class="item-detail-section">
+            <h3>Confirmation</h3>
+            <p class="muted">
+                Saving this menu will create the base slot structure for every selected week, day, meal period, and concept.
+            </p>
+            <button type="submit">Create Menu</button>
+        </section>
+    </form>
+{% endblock %}

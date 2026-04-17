@@ -10,6 +10,12 @@ body {
     padding: 1rem;
 }
 
+.container-menu-builder {
+    max-width: 1800px;
+    margin: 2rem auto;
+    padding: 1rem;
+}
+
 .site-header {
     display: flex;
     justify-content: space-between;
@@ -545,6 +551,96 @@ button:disabled {
 .filter-row {
     display: grid;
     gap: 0.35rem;
+}
+
+.form-checkbox-group {
+    border: 1px solid #ddd;
+    background: #fff;
+    padding: 1rem;
+}
+
+.checkbox-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 0.75rem;
+}
+
+.checkbox-card {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    border: 1px solid #e5e7eb;
+    background: #f8fafc;
+    border-radius: 10px;
+    padding: 0.75rem;
+}
+
+.menu-overview-shell {
+    display: grid;
+    gap: 1rem;
+}
+
+.menu-overview-meal-section {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.menu-overview-section-header h4 {
+    margin: 0;
+}
+
+.menu-overview-scroll {
+    overflow-x: auto;
+    padding-bottom: 0.5rem;
+}
+
+.menu-grid-shell {
+    --menu-concept-column-width: 220px;
+    --menu-day-column-width: 220px;
+    display: grid;
+    grid-template-columns: var(--menu-concept-column-width) repeat(var(--menu-day-count), var(--menu-day-column-width));
+    gap: 0.75rem;
+    min-width: calc(var(--menu-concept-column-width) + (var(--menu-day-count) * var(--menu-day-column-width)) + (var(--menu-day-count) * 0.75rem));
+}
+
+.menu-grid-corner,
+.menu-grid-day-header,
+.menu-grid-concept-header,
+.menu-grid-cell {
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    background: #fff;
+    padding: 1rem;
+}
+
+.menu-grid-corner,
+.menu-grid-day-header,
+.menu-grid-concept-header {
+    background: #f8fafc;
+    font-weight: 700;
+    color: #1f2937;
+}
+
+.menu-grid-day-header {
+    text-align: center;
+}
+
+.menu-grid-concept-header {
+    display: flex;
+    align-items: center;
+}
+
+.menu-grid-cell {
+    min-height: 110px;
+    display: grid;
+    align-content: start;
+    gap: 0.35rem;
+}
+
+.menu-grid-slot-id {
+    margin: 0;
+    color: #2563eb;
+    font-weight: 700;
 }
 
 .status-chip-row {

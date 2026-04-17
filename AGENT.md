@@ -615,6 +615,171 @@ Locked current direction:
 
 * rules checks and conditional checks should be implemented only after base Menu Builder object behavior is stable
 
+### 2B. Menu Builder Schema Draft v0.1
+
+Recommended first schema shape:
+
+#### `menu`
+
+Purpose:
+
+* top-level planning object for one menu build
+
+Required fields:
+
+* `menu_id`
+* `menu_name`
+* `author_user_id`
+* `author_display_name`
+* `service_days_json`
+* `meal_periods_json`
+* `concepts_json`
+* `menu_length_weeks`
+* `status`
+* `created_at`
+* `updated_at`
+
+Recommended rules:
+
+* `menu_name` is required
+* `menu_length_weeks` must be `> 0`
+* `service_days_json` stores selected days from:
+
+  * `sunday`
+  * `monday`
+  * `tuesday`
+  * `wednesday`
+  * `thursday`
+  * `friday`
+  * `saturday`
+
+* `meal_periods_json` stores selected meal periods from:
+
+  * `breakfast`
+  * `lunch`
+  * `dinner`
+
+* `concepts_json` stores the selected concept/line names in current display order
+* first status set can remain lightweight, for example:
+
+  * `draft`
+  * `active`
+  * `archived`
+
+Reasoning:
+
+* JSON lists are acceptable in v0.1 because selected days, meal periods, and concepts are menu-level configuration state rather than cross-menu relational data
+* concept order matters for overview rendering, so preserving concept list order at the menu level is useful
+
+#### `menu_slot`
+
+Purpose:
+
+* one schedulable slot in the overview grid
+
+Required fields:
+
+* `menu_slot_id`
+* `menu_id`
+* `week_number`
+* `day_of_week`
+* `meal_period`
+* `concept_name`
+* `created_at`
+* `updated_at`
+
+Recommended uniqueness:
+
+* unique on:
+
+  * `menu_id`
+  * `week_number`
+  * `day_of_week`
+  * `meal_period`
+  * `concept_name`
+
+Recommended rules:
+
+* `week_number` must be `>= 1`
+* `day_of_week` must be one of the controlled day values
+* `meal_period` must be one of the controlled meal values
+* `concept_name` is required and should match one of the menu's configured concepts at the application layer
+
+Reasoning:
+
+* explicit slot rows make the overview grid addressable for copy/paste/clear actions
+* a slot should exist even when no items are assigned yet
+
+#### `menu_slot_item`
+
+Purpose:
+
+* ordered item assignment inside a slot
+
+Required fields:
+
+* `menu_slot_item_id`
+* `menu_slot_id`
+* `item_id`
+* `item_sequence`
+* `created_at`
+* `updated_at`
+
+Recommended rules:
+
+* `item_id` references `item(item_id)`
+* application layer should restrict first-release assignments to `live` items only
+* application layer should allow first-release assignment for:
+
+  * `recipe`
+  * `base_food`
+
+* `item_sequence` must be `>= 1`
+
+Recommended uniqueness:
+
+* unique on:
+
+  * `menu_slot_id`
+  * `item_sequence`
+
+Reasoning:
+
+* ordered slot rows support future rearrangement without changing the slot identity
+* copy/paste of assignments can be implemented by duplicating `menu_slot_item` rows only
+
+Explicitly deferred from first schema:
+
+* slot-level scaling overrides
+* slot-level notes
+* slot-level rule-check results
+* drag-and-drop metadata
+* menu publication workflow
+* inventory rollup state
+* nutrition rollup state
+* bottom-up scaling target storage
+
+Recommended implementation path:
+
+1. add `menu`, `menu_slot`, and `menu_slot_item`
+2. build create-menu flow that materializes slot rows at menu creation time
+3. build overview grid from `menu_slot`
+4. build slot assignment flow on top of `menu_slot_item`
+5. add copy/paste/clear actions at the service layer before introducing richer menu rules
+
+Current implementation status:
+
+* migration-backed `menu`, `menu_slot`, and `menu_slot_item` tables are now in place
+* first create-menu flow is implemented
+* menu creation now materializes slot rows up front based on:
+
+  * selected service days
+  * selected meal periods
+  * selected concepts
+  * selected menu length in weeks
+
+* first menu detail route now renders a week-based overview shell with slot placeholders ready for future assignment flow
+
 ### 3. Customizable Item Type
 
 Planned future item type:

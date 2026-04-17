@@ -4,6 +4,7 @@ from flask import Flask, flash, jsonify, redirect, render_template, request, ses
 
 from config.units import APPROVED_UNITS
 from config.cooking_methods import APPROVED_COOKING_METHODS
+from config.menu_builder import CONCEPT_OPTIONS, DAY_OF_WEEK_OPTIONS, MEAL_PERIOD_OPTIONS
 from config.roles import ROLE_LABELS
 from config.statuses import STATUS_LABELS
 from services.item_service import (
@@ -27,6 +28,7 @@ from services.mock_auth_service import (
     select_mock_user,
     update_current_user_preferences,
 )
+from services.menu_service import InvalidMenuPayloadError, create_menu
 from services.item_note_service import (
     ItemNoteError,
     acknowledge_item_notes_for_viewer,
@@ -66,6 +68,7 @@ from queries.item_detail import get_item_detail
 from queries.item_edit import get_item_edit_payload
 from queries.item_events import get_item_events
 from queries.live_collection import get_live_collection_page
+from queries.menu_detail import get_menu_detail
 from queries.my_recipes import get_my_recipes
 from queries.workflow_items import get_workflow_portal_items
 
@@ -105,6 +108,16 @@ def get_base_food_form_data() -> dict:
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+def get_menu_form_data() -> dict:
+    return {
+        "menu_name": request.form.get("menu_name", "").strip(),
+        "service_days": request.form.getlist("service_days"),
+        "meal_periods": request.form.getlist("meal_periods"),
+        "concepts": request.form.getlist("concepts"),
+        "menu_length_weeks": request.form.get("menu_length_weeks", "").strip(),
+    }
 
 
 def get_current_recipe_author() -> dict[str, str]:
@@ -208,6 +221,76 @@ def new_recipe():
         can_manage_official_measurements_for_current_user=can_manage_official_measurements(
             current_user["role"]
         ),
+    )
+
+
+@app.route("/menus/new", methods=["GET", "POST"])
+def new_menu():
+    form_data = {
+        "menu_name": "",
+        "service_days": [],
+        "meal_periods": [],
+        "concepts": [],
+        "menu_length_weeks": "1",
+    }
+
+    if request.method == "POST":
+        form_data = get_menu_form_data()
+        current_user = get_current_mock_user(session)
+
+        try:
+            menu_id = create_menu(
+                menu_name=form_data["menu_name"],
+                author_user_id=current_user["user_id"],
+                author_display_name=current_user["display_name"],
+                service_days=form_data["service_days"],
+                meal_periods=form_data["meal_periods"],
+                concepts=form_data["concepts"],
+                menu_length_weeks=form_data["menu_length_weeks"],
+                allowed_service_days=[option["value"] for option in DAY_OF_WEEK_OPTIONS],
+                allowed_meal_periods=[option["value"] for option in MEAL_PERIOD_OPTIONS],
+                allowed_concepts=[option["value"] for option in CONCEPT_OPTIONS],
+            )
+            flash(f"Menu '{form_data['menu_name']}' created successfully.", "success")
+            return redirect(url_for("menu_detail", menu_id=menu_id))
+        except InvalidMenuPayloadError as exc:
+            flash(str(exc), "error")
+
+    return render_template(
+        "new_menu.html",
+        form_data=form_data,
+        day_options=DAY_OF_WEEK_OPTIONS,
+        meal_period_options=MEAL_PERIOD_OPTIONS,
+        concept_options=CONCEPT_OPTIONS,
+    )
+
+
+@app.route("/menus/<int:menu_id>")
+def menu_detail(menu_id: int):
+    menu = get_menu_detail(menu_id)
+    if menu is None:
+        return "Menu not found.", 404
+
+    week_numbers = list(range(1, menu["menu_length_weeks"] + 1))
+    selected_week = request.args.get("week", "1").strip()
+    try:
+        selected_week_number = int(selected_week)
+    except ValueError:
+        selected_week_number = 1
+
+    if selected_week_number not in week_numbers:
+        selected_week_number = 1
+
+    week_slots = [slot for slot in menu["slots"] if slot["week_number"] == selected_week_number]
+
+    return render_template(
+        "menu_detail.html",
+        menu=menu,
+        week_numbers=week_numbers,
+        selected_week_number=selected_week_number,
+        week_slots=week_slots,
+        day_options=DAY_OF_WEEK_OPTIONS,
+        meal_period_options=MEAL_PERIOD_OPTIONS,
     )
 
 
