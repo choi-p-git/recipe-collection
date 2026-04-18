@@ -114,6 +114,7 @@ Menu Builder foundation note
 - The current draft direction uses a `menu` -> `menu_slot` -> `menu_slot_item` model so one slot can contain multiple ordered recipes/base foods
 - Current schema draft keeps menu-level day/meal/concept selections on the `menu` record and uses explicit `menu_slot` rows plus ordered `menu_slot_item` rows for overview rendering and assignment actions
 - The first implemented Menu Builder slice now includes migration-backed `menu`/`menu_slot`/`menu_slot_item` tables plus a create-menu flow that materializes slots up front and redirects into a week-based overview shell
+- The next implemented slice now supports first-pass slot assignment for `live` recipes and base foods, with slot cells linking into an assignment shell and the overview reflecting current assigned items
 - First release planning is aimed at menu creation, week/day/meal/concept overview rendering, slot assignment, and assignment-only copy/paste actions
 - Drag-and-drop, rules checks, slot-level scaling persistence, and inventory-facing rollups remain deferred until the base Menu Builder behavior is stable
 

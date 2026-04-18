@@ -77,7 +77,18 @@
                                 <div class="menu-grid-cell">
                                     {% if slot %}
                                         <p class="menu-grid-slot-id">Slot {{ slot.menu_slot_id }}</p>
-                                        <p class="muted">Ready for assignment.</p>
+                                        {% if slot.assigned_items %}
+                                            <ul class="menu-slot-item-list">
+                                                {% for assigned_item in slot.assigned_items %}
+                                                    <li>{{ assigned_item.item_name }}</li>
+                                                {% endfor %}
+                                            </ul>
+                                        {% else %}
+                                            <p class="muted">Ready for assignment.</p>
+                                        {% endif %}
+                                        <p>
+                                            <a class="text-link" href="{{ url_for('menu_slot_assign', menu_id=menu.menu_id, menu_slot_id=slot.menu_slot_id, week=selected_week_number) }}">Assign Items</a>
+                                        </p>
                                     {% else %}
                                         <p class="muted">No slot found.</p>
                                     {% endif %}

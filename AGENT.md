@@ -779,6 +779,8 @@ Current implementation status:
   * selected menu length in weeks
 
 * first menu detail route now renders a week-based overview shell with slot placeholders ready for future assignment flow
+* first slot assignment flow is now implemented for `live` recipes and `live` base foods
+* slot cells now expose assignment links and render currently assigned item names in overview
 
 ### 3. Customizable Item Type
 

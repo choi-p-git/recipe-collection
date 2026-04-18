@@ -46,6 +46,39 @@ def get_menu_detail(menu_id: int) -> dict | None:
         )
         slot_rows = cursor.fetchall()
 
+        cursor.execute(
+            """
+            SELECT
+                msi.menu_slot_id,
+                msi.menu_slot_item_id,
+                msi.item_sequence,
+                i.item_id,
+                i.item_name,
+                i.item_type
+            FROM menu_slot_item msi
+            JOIN item i
+              ON i.item_id = msi.item_id
+            JOIN menu_slot ms
+              ON ms.menu_slot_id = msi.menu_slot_id
+            WHERE ms.menu_id = ?
+            ORDER BY msi.menu_slot_id ASC, msi.item_sequence ASC, msi.menu_slot_item_id ASC
+            """,
+            (menu_id,),
+        )
+        slot_item_rows = cursor.fetchall()
+
+    slot_items_by_slot_id: dict[int, list[dict]] = {}
+    for row in slot_item_rows:
+        slot_items_by_slot_id.setdefault(row[0], []).append(
+            {
+                "menu_slot_item_id": row[1],
+                "item_sequence": row[2],
+                "item_id": row[3],
+                "item_name": row[4],
+                "item_type": row[5],
+            }
+        )
+
     return {
         "menu_id": menu_row[0],
         "menu_name": menu_row[1],
@@ -66,6 +99,7 @@ def get_menu_detail(menu_id: int) -> dict | None:
                 "day_of_week": row[2],
                 "meal_period": row[3],
                 "concept_name": row[4],
+                "assigned_items": slot_items_by_slot_id.get(row[0], []),
             }
             for row in slot_rows
         ],

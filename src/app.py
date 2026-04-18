@@ -28,7 +28,12 @@ from services.mock_auth_service import (
     select_mock_user,
     update_current_user_preferences,
 )
-from services.menu_service import InvalidMenuPayloadError, create_menu
+from services.menu_service import (
+    InvalidMenuPayloadError,
+    InvalidMenuSlotAssignmentError,
+    create_menu,
+    replace_menu_slot_items,
+)
 from services.item_note_service import (
     ItemNoteError,
     acknowledge_item_notes_for_viewer,
@@ -69,6 +74,8 @@ from queries.item_edit import get_item_edit_payload
 from queries.item_events import get_item_events
 from queries.live_collection import get_live_collection_page
 from queries.menu_detail import get_menu_detail
+from queries.my_menus import get_my_menus
+from queries.menu_slot_detail import get_menu_slot_detail
 from queries.my_recipes import get_my_recipes
 from queries.workflow_items import get_workflow_portal_items
 
@@ -265,6 +272,17 @@ def new_menu():
     )
 
 
+@app.route("/menus")
+def my_menus():
+    current_user = get_current_mock_user(session)
+    page_data = get_my_menus(current_user["user_id"])
+    return render_template(
+        "menus.html",
+        page_data=page_data,
+        current_user=current_user,
+    )
+
+
 @app.route("/menus/<int:menu_id>")
 def menu_detail(menu_id: int):
     menu = get_menu_detail(menu_id)
@@ -291,6 +309,39 @@ def menu_detail(menu_id: int):
         week_slots=week_slots,
         day_options=DAY_OF_WEEK_OPTIONS,
         meal_period_options=MEAL_PERIOD_OPTIONS,
+    )
+
+
+@app.route("/menus/<int:menu_id>/slots/<int:menu_slot_id>/assign", methods=["GET", "POST"])
+def menu_slot_assign(menu_id: int, menu_slot_id: int):
+    search_term = request.values.get("q", "").strip()
+    item_type = request.values.get("item_type", "").strip()
+
+    if request.method == "POST":
+        try:
+            replace_menu_slot_items(
+                menu_slot_id=menu_slot_id,
+                selected_item_ids=request.form.getlist("selected_item_ids"),
+            )
+            flash("Menu slot assignments updated.", "success")
+            return redirect(url_for("menu_detail", menu_id=menu_id, week=request.form.get("week", "1")))
+        except InvalidMenuSlotAssignmentError as exc:
+            flash(str(exc), "error")
+
+    slot_detail = get_menu_slot_detail(
+        menu_id,
+        menu_slot_id,
+        search_term=search_term,
+        item_type=item_type,
+    )
+    if slot_detail is None:
+        return "Menu slot not found.", 404
+
+    return render_template(
+        "menu_slot_assign.html",
+        slot_detail=slot_detail,
+        search_term=search_term,
+        selected_item_type=item_type,
     )
 
 

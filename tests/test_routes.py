@@ -15,6 +15,7 @@ def test_index_and_form_routes_render(app_client):
     assert "Official Serving Count" not in recipe_page.get_data(as_text=True)
     assert app_client.get("/login").status_code == 200
     assert app_client.get("/preferences").status_code == 200
+    assert app_client.get("/menus").status_code == 200
     assert app_client.get("/menus/new").status_code == 200
 
 
@@ -134,6 +135,141 @@ def test_menu_detail_route_renders_week_overview(app_client):
     assert "Week 2 Overview" in page
     assert "Hot Line" in page
     assert "Salad Bar" in page
+
+
+def test_my_menus_route_renders_current_user_menus(app_client):
+    create_response = app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "Owner Menu",
+            "service_days": ["monday"],
+            "meal_periods": ["lunch"],
+            "concepts": ["hot_line"],
+            "menu_length_weeks": "1",
+        },
+        follow_redirects=False,
+    )
+
+    assert create_response.status_code == 302
+
+    response = app_client.get("/menus")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "My Menus" in page
+    assert "Owner Menu" in page
+    assert "Future Menu Workspaces" in page
+
+
+def test_menu_slot_assign_route_renders_search_and_current_slot(app_client):
+    create_response = app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "Assign Route Menu",
+            "service_days": ["monday"],
+            "meal_periods": ["lunch"],
+            "concepts": ["hot_line"],
+            "menu_length_weeks": "1",
+        },
+        follow_redirects=False,
+    )
+    menu_location = create_response.headers["Location"]
+
+    menu_id = int(menu_location.rstrip("/").split("/")[-1])
+    response = app_client.get(f"/menus/{menu_id}/slots/1/assign")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Assign Slot Items" in page
+    assert "Pending Assignment" in page
+    assert "menu_slot_assign.js" in page
+
+
+def test_menu_slot_assign_route_renders_search_results(app_client, isolated_db):
+    create_response = app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "Assign Search Menu",
+            "service_days": ["monday"],
+            "meal_periods": ["lunch"],
+            "concepts": ["hot_line"],
+            "menu_length_weeks": "1",
+        },
+        follow_redirects=False,
+    )
+    menu_id = int(create_response.headers["Location"].rstrip("/").split("/")[-1])
+
+    base_food_id = create_base_food(item_name="Assign Search Lettuce")
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id = ?", (base_food_id,))
+    cursor.execute("SELECT menu_slot_id FROM menu_slot WHERE menu_id = ?", (menu_id,))
+    menu_slot_id = cursor.fetchone()[0]
+    conn.commit()
+    conn.close()
+
+    response = app_client.get(f"/menus/{menu_id}/slots/{menu_slot_id}/assign?q=lettuce")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Assign Search Lettuce" in page
+    assert "Base Food | ID" in page
+
+
+def test_menu_slot_assign_post_updates_slot_and_renders_in_menu_overview(app_client, isolated_db):
+    create_response = app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "Assigned Menu",
+            "service_days": ["monday"],
+            "meal_periods": ["lunch"],
+            "concepts": ["hot_line"],
+            "menu_length_weeks": "1",
+        },
+        follow_redirects=False,
+    )
+    menu_id = int(create_response.headers["Location"].rstrip("/").split("/")[-1])
+
+    base_food_id = create_base_food(item_name="Assigned Slot Lettuce")
+    recipe_id = create_recipe(
+        {
+            "item_name": "Assigned Slot Salad",
+            "yield_quantity": 1,
+            "yield_unit": "each",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Mix"],
+            "ingredients": [
+                {
+                    "component_item_id": base_food_id,
+                    "component_quantity": 1,
+                    "component_unit": "cup",
+                }
+            ],
+        }
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id IN (?, ?)", (base_food_id, recipe_id))
+    cursor.execute("SELECT menu_slot_id FROM menu_slot WHERE menu_id = ?", (menu_id,))
+    menu_slot_id = cursor.fetchone()[0]
+    conn.commit()
+    conn.close()
+
+    response = app_client.post(
+        f"/menus/{menu_id}/slots/{menu_slot_id}/assign",
+        data={
+            "week": "1",
+            "selected_item_ids": [str(recipe_id), str(base_food_id)],
+        },
+        follow_redirects=True,
+    )
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Menu slot assignments updated." in page
+    assert "Assigned Slot Salad" in page
+    assert "Assigned Slot Lettuce" in page
 
 
 def test_new_menu_post_shows_validation_error_for_missing_selections(app_client):

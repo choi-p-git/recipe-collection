@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block main_class %}container container-menu-builder{% endblock %}
+{% block title %}Assign Slot{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <div>
+            <h2>Assign Slot Items</h2>
+            <p class="page-subtitle">
+                {{ slot_detail.menu_name }} | Week {{ slot_detail.week_number }} | {{ slot_detail.day_of_week|title }} | {{ slot_detail.meal_period|title }} | {{ slot_detail.concept_name|replace('_', ' ')|title }}
+            </p>
+        </div>
+    </div>
+
+    <div class="menu-assign-shell" data-menu-slot-assign-shell>
+        <section class="item-detail-section">
+            <h3>Search Live Items</h3>
+            <form method="get" class="filter-form" id="menu-slot-search-form">
+                <input type="hidden" name="week" value="{{ slot_detail.week_number }}">
+                <div class="filter-row collection-search-row">
+                    <label for="q">Search</label>
+                    <input type="search" id="q" name="q" value="{{ search_term }}" placeholder="Search live recipes or base foods">
+                </div>
+                <div class="filter-row">
+                    <label for="item_type">Item Type</label>
+                    <select id="item_type" name="item_type">
+                        <option value="">All Live Items</option>
+                        <option value="recipe" {% if selected_item_type == 'recipe' %}selected{% endif %}>Recipes</option>
+                        <option value="base_food" {% if selected_item_type == 'base_food' %}selected{% endif %}>Base Foods</option>
+                    </select>
+                </div>
+                <button type="submit">Search</button>
+            </form>
+
+            <form method="post" class="menu-assignment-form" id="menu-slot-assignment-form">
+                <input type="hidden" name="week" value="{{ slot_detail.week_number }}">
+                <div class="menu-assignment-hidden-inputs" id="menu-slot-selected-inputs">
+                    {% for item in slot_detail.assigned_items %}
+                        <input type="hidden" name="selected_item_ids" value="{{ item.item_id }}">
+                    {% endfor %}
+                </div>
+
+                <div class="menu-assignment-results" id="menu-slot-search-results">
+                    {% if search_term %}
+                        {% if slot_detail.search_results["items"] %}
+                            {% for result in slot_detail.search_results["items"] %}
+                                <label class="checkbox-card menu-search-result-card">
+                                    <input
+                                        type="checkbox"
+                                        value="{{ result.item_id }}"
+                                        {% if result.item_id in slot_detail.assigned_items|map(attribute='item_id')|list %}checked{% endif %}
+                                    >
+                                    <span>
+                                        <strong>{{ result.item_name }}</strong><br>
+                                        <span class="muted">{{ result.item_type|replace('_', ' ')|title }} | ID {{ result.item_id }}</span>
+                                    </span>
+                                </label>
+                            {% endfor %}
+                        {% else %}
+                            <p class="muted">No matching live items found.</p>
+                        {% endif %}
+                    {% else %}
+                        <p class="muted">Enter a search term to find live recipes and base foods for this slot.</p>
+                    {% endif %}
+                </div>
+
+                <div class="menu-assignment-actions">
+                    <button type="submit">Confirm Assignment</button>
+                    <a class="page-action-link secondary" href="{{ url_for('menu_detail', menu_id=slot_detail.menu_id, week=slot_detail.week_number) }}">Cancel</a>
+                </div>
+            </form>
+        </section>
+
+        <section class="item-detail-section">
+            <h3>Pending Assignment</h3>
+            <div id="menu-slot-selected-summary">
+                {% if slot_detail.assigned_items %}
+                    <ol class="item-detail-list">
+                    {% for item in slot_detail.assigned_items %}
+                        <li>
+                            <strong>{{ item.item_name }}</strong>
+                            <span class="muted">({{ item.item_type|replace('_', ' ')|title }})</span>
+                        </li>
+                    {% endfor %}
+                    </ol>
+                {% else %}
+                    <p class="muted">No items selected yet.</p>
+                {% endif %}
+            </div>
+        </section>
+    </div>
+
+    <script id="menu-slot-initial-selected" type="application/json">{{ slot_detail.assigned_items|tojson }}</script>
+    <script id="menu-slot-initial-search-results" type="application/json">{{ slot_detail.search_results["items"]|tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+    <script src="{{ url_for('static', filename='menu_slot_assign.js') }}"></script>
+{% endblock %}

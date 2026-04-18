@@ -22,6 +22,7 @@
                 <a href="{{ url_for('index') }}">Home</a>
                 <a href="{{ url_for('live_collection') }}">Live Collection</a>
                 <a href="{{ url_for('my_recipes') }}">My Recipes</a>
+                <a href="{{ url_for('my_menus') }}">My Menus</a>
                 <a href="{{ url_for('new_menu') }}">New Menu</a>
                 <a href="{{ url_for('login_shell') }}">Mock Login</a>
                 <a href="{{ url_for('user_preferences') }}">Preferences</a>
@@ -44,5 +45,6 @@
 
         {% block content %}{% endblock %}
     </main>
+    {% block scripts %}{% endblock %}
 </body>
 </html>

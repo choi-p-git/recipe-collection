@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}My Menus{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <div>
+            <h2>My Menus</h2>
+            <p class="page-subtitle">
+                Manage menu plans created by {{ current_user.display_name }} and grow into future menu workspaces from one place.
+            </p>
+        </div>
+        <a class="page-action-link" href="{{ url_for('new_menu') }}">Create New Menu</a>
+    </div>
+
+    <div class="menu-shell-grid">
+        <section class="item-detail-section">
+            <h3>Created Menus</h3>
+            {% if page_data.menus %}
+                <div class="my-recipes-list">
+                    {% for menu in page_data.menus %}
+                        <article class="recipe-card">
+                            <div>
+                                <div class="recipe-card-header">
+                                    <div>
+                                        <h3>
+                                            <a href="{{ url_for('menu_detail', menu_id=menu.menu_id) }}">{{ menu.menu_name }}</a>
+                                        </h3>
+                                        <p class="recipe-card-meta">
+                                            {{ menu.menu_length_weeks }} week{% if menu.menu_length_weeks != 1 %}s{% endif %}
+                                            | {{ menu.slot_count }} slot{% if menu.slot_count != 1 %}s{% endif %}
+                                            | {{ menu.assigned_item_count }} assigned item{% if menu.assigned_item_count != 1 %}s{% endif %}
+                                        </p>
+                                    </div>
+                                </div>
+                                <p class="recipe-card-dates">
+                                    Updated {{ menu.updated_at }} | Created {{ menu.created_at }}
+                                </p>
+                            </div>
+                            <div class="collection-card-badges">
+                                <span class="collection-type-badge">Draft Menu</span>
+                                <a class="page-action-link secondary" href="{{ url_for('menu_detail', menu_id=menu.menu_id) }}">Open Menu</a>
+                            </div>
+                        </article>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="empty-state">
+                    <h3>No menus yet</h3>
+                    <p>Start with a new menu shell, then we can build slot assignment, copy and paste, and future planning tools on top of it.</p>
+                </div>
+            {% endif %}
+        </section>
+
+        <section class="item-detail-section">
+            <h3>Future Menu Workspaces</h3>
+            <div class="menu-future-shells">
+                <article class="detail-stat-card">
+                    <p class="detail-stat-label">School Operations</p>
+                    <p class="detail-stat-value">Planned</p>
+                    <p class="muted">Future shell for recurring school menus, calendar workflows, and operational planning views.</p>
+                </article>
+                <article class="detail-stat-card">
+                    <p class="detail-stat-label">Catering</p>
+                    <p class="detail-stat-value">Planned</p>
+                    <p class="muted">Future shell for event-driven menu planning, packaged service views, and customer-specific menu variants.</p>
+                </article>
+                <article class="detail-stat-card">
+                    <p class="detail-stat-label">Role Portals</p>
+                    <p class="detail-stat-value">Planned</p>
+                    <p class="muted">Future role-aware menu views for dietitians, reviewers, and admins without changing the main menu entry point.</p>
+                </article>
+            </div>
+        </section>
+    </div>
+{% endblock %}
