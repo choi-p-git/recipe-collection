@@ -161,6 +161,26 @@ def test_my_menus_route_renders_current_user_menus(app_client):
     assert "Future Menu Workspaces" in page
 
 
+def test_my_menus_route_shows_delete_action(app_client):
+    app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "Delete Action Menu",
+            "service_days": ["monday"],
+            "meal_periods": ["lunch"],
+            "concepts": ["hot_line"],
+            "menu_length_weeks": "1",
+        },
+        follow_redirects=False,
+    )
+
+    response = app_client.get("/menus")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Delete Menu" in page
+
+
 def test_menu_slot_assign_route_renders_search_and_current_slot(app_client):
     create_response = app_client.post(
         "/menus/new",
@@ -183,6 +203,27 @@ def test_menu_slot_assign_route_renders_search_and_current_slot(app_client):
     assert "Assign Slot Items" in page
     assert "Pending Assignment" in page
     assert "menu_slot_assign.js" in page
+
+
+def test_menu_detail_route_shows_delete_action(app_client):
+    create_response = app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "Delete Detail Menu",
+            "service_days": ["monday"],
+            "meal_periods": ["lunch"],
+            "concepts": ["hot_line"],
+            "menu_length_weeks": "1",
+        },
+        follow_redirects=False,
+    )
+    menu_location = create_response.headers["Location"]
+
+    response = app_client.get(menu_location)
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Delete Menu" in page
 
 
 def test_menu_slot_assign_route_renders_search_results(app_client, isolated_db):
@@ -270,6 +311,74 @@ def test_menu_slot_assign_post_updates_slot_and_renders_in_menu_overview(app_cli
     assert "Menu slot assignments updated." in page
     assert "Assigned Slot Salad" in page
     assert "Assigned Slot Lettuce" in page
+
+
+def test_delete_menu_route_removes_menu_and_redirects_to_my_menus(app_client, isolated_db):
+    create_response = app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "Delete Route Menu",
+            "service_days": ["monday"],
+            "meal_periods": ["lunch"],
+            "concepts": ["hot_line"],
+            "menu_length_weeks": "1",
+        },
+        follow_redirects=False,
+    )
+    menu_id = int(create_response.headers["Location"].rstrip("/").split("/")[-1])
+
+    response = app_client.post(
+        f"/menus/{menu_id}/delete",
+        follow_redirects=True,
+    )
+    page = response.get_data(as_text=True)
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM menu WHERE menu_id = ?", (menu_id,))
+    menu_count = cursor.fetchone()[0]
+    conn.close()
+
+    assert response.status_code == 200
+    assert "Menu deleted successfully." in page
+    assert menu_count == 0
+
+
+def test_delete_menu_route_rejects_non_owner(app_client, isolated_db):
+    create_response = app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "Protected Route Menu",
+            "service_days": ["monday"],
+            "meal_periods": ["lunch"],
+            "concepts": ["hot_line"],
+            "menu_length_weeks": "1",
+        },
+        follow_redirects=False,
+    )
+    menu_id = int(create_response.headers["Location"].rstrip("/").split("/")[-1])
+
+    app_client.post(
+        "/login/select",
+        data={"selected_user_id": "reviewer_001"},
+        follow_redirects=False,
+    )
+
+    response = app_client.post(
+        f"/menus/{menu_id}/delete",
+        follow_redirects=True,
+    )
+    page = response.get_data(as_text=True)
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM menu WHERE menu_id = ?", (menu_id,))
+    menu_count = cursor.fetchone()[0]
+    conn.close()
+
+    assert response.status_code == 200
+    assert "You can only delete menus you created." in page
+    assert menu_count == 1
 
 
 def test_new_menu_post_shows_validation_error_for_missing_selections(app_client):

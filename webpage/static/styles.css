@@ -585,6 +585,15 @@ button:disabled {
     gap: 1rem;
 }
 
+.menu-inline-action-form,
+.menu-header-action-form {
+    display: inline-flex;
+}
+
+.menu-header-action-form {
+    margin-top: 0.75rem;
+}
+
 .menu-future-shells {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

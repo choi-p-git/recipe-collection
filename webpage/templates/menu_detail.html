@@ -13,6 +13,9 @@
         </div>
         <div>
             <span class="status-badge status-chip-submitted">{{ menu.status_label }}</span>
+            <form method="post" action="{{ url_for('delete_menu_route', menu_id=menu.menu_id) }}" class="menu-header-action-form">
+                <button type="submit" class="workflow-button workflow-button-danger">Delete Menu</button>
+            </form>
         </div>
     </div>
 

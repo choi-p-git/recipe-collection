@@ -29,9 +29,9 @@ Latest full schema snapshot stored in `database/schema.sql`
 Unified `item` table plus `recipe_component` table
 Database initialization and pending migration application handled by `src/db.py`
 Automatic seed catalog bootstrap on empty real databases:
-- 20 base foods
-- 5 simple recipes
-- 3 complex recipes
+- 1000 base foods
+- 500 simple recipes
+- 500 complex recipes
 
 2. Mock auth shell
 Session-backed mock login page
@@ -93,9 +93,9 @@ Seed catalog note
 
 - Empty real databases bootstrap with a reusable seed catalog stored in `src/seed_catalog.py`
 - The seed catalog includes:
-  - 20 base foods
-  - 5 simple recipes that use only base foods
-  - 3 complex recipes that use both base foods and sub-recipes
+  - 1000 base foods, preserving the original named starter items and expanding with USDA-backed references when available
+  - 500 simple recipes that use only base foods
+  - 500 complex recipes that use both base foods and sub-recipes
 - Seeded base foods now also include starter nutrition authority values for calories and serving reference mass/volume
 - The loader is idempotent and only runs when the `item` table is empty
 - Existing seed rows can be backfilled with newer seed nutrition metadata during init without touching non-seed records

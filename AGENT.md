@@ -331,9 +331,9 @@ Implemented:
 * empty real databases auto-load a reusable seed catalog
 * seed catalog currently includes:
 
-  * 20 base foods
-  * 5 simple recipes using only base foods
-  * 3 complex recipes using both base foods and recipes
+  * 1000 base foods
+  * 500 simple recipes using only base foods
+  * 500 complex recipes using both base foods and recipes
 
 * seed loading is idempotent and only runs when the `item` table is empty
 * seeded base foods now include starter nutrition authority values for calories and serving reference mass/volume

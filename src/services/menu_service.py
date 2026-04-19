@@ -11,6 +11,10 @@ class InvalidMenuSlotAssignmentError(ValueError):
     """Raised when slot assignment payload is invalid."""
 
 
+class InvalidMenuDeleteError(ValueError):
+    """Raised when a menu delete request is invalid."""
+
+
 def _normalize_name(value: str) -> str:
     return " ".join(str(value or "").split())
 
@@ -203,4 +207,23 @@ def replace_menu_slot_items(
             "UPDATE menu_slot SET updated_at = datetime('now') WHERE menu_slot_id = ?",
             (menu_slot_id,),
         )
+        conn.commit()
+
+
+def delete_menu(*, menu_id: int, actor_user_id: str) -> None:
+    initialize_database()
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT author_user_id FROM menu WHERE menu_id = ?",
+            (menu_id,),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            raise InvalidMenuDeleteError("Menu not found.")
+        if row[0] != actor_user_id:
+            raise InvalidMenuDeleteError("You can only delete menus you created.")
+
+        cursor.execute("DELETE FROM menu WHERE menu_id = ?", (menu_id,))
         conn.commit()

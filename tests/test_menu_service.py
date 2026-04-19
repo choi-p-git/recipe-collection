@@ -5,9 +5,11 @@ import pytest
 from services.item_service import create_base_food
 from services.recipe_service import create_recipe
 from services.menu_service import (
+    InvalidMenuDeleteError,
     InvalidMenuPayloadError,
     InvalidMenuSlotAssignmentError,
     create_menu,
+    delete_menu,
     replace_menu_slot_items,
 )
 
@@ -135,3 +137,70 @@ def test_replace_menu_slot_items_rejects_non_live_items(isolated_db):
 
     with pytest.raises(InvalidMenuSlotAssignmentError):
         replace_menu_slot_items(menu_slot_id=menu_slot_id, selected_item_ids=[base_food_id])
+
+
+def test_delete_menu_removes_menu_slots_and_assignments(isolated_db):
+    menu_id = create_menu(
+        menu_name="Delete Menu",
+        author_user_id="dev_user_001",
+        author_display_name="Plato Choi",
+        service_days=["monday"],
+        meal_periods=["lunch"],
+        concepts=["hot_line"],
+        menu_length_weeks=1,
+        allowed_service_days=["monday"],
+        allowed_meal_periods=["lunch"],
+        allowed_concepts=["hot_line"],
+    )
+    base_food_id = create_base_food(item_name="Delete Menu Lettuce")
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT menu_slot_id FROM menu_slot WHERE menu_id = ?", (menu_id,))
+    menu_slot_id = cursor.fetchone()[0]
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id = ?", (base_food_id,))
+    conn.commit()
+    conn.close()
+
+    replace_menu_slot_items(menu_slot_id=menu_slot_id, selected_item_ids=[base_food_id])
+    delete_menu(menu_id=menu_id, actor_user_id="dev_user_001")
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM menu WHERE menu_id = ?", (menu_id,))
+    menu_count = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM menu_slot WHERE menu_id = ?", (menu_id,))
+    slot_count = cursor.fetchone()[0]
+    cursor.execute(
+        """
+        SELECT COUNT(*)
+        FROM menu_slot_item msi
+        JOIN menu_slot ms ON ms.menu_slot_id = msi.menu_slot_id
+        WHERE ms.menu_id = ?
+        """,
+        (menu_id,),
+    )
+    item_count = cursor.fetchone()[0]
+    conn.close()
+
+    assert menu_count == 0
+    assert slot_count == 0
+    assert item_count == 0
+
+
+def test_delete_menu_rejects_non_owner():
+    menu_id = create_menu(
+        menu_name="Protected Menu",
+        author_user_id="dev_user_001",
+        author_display_name="Plato Choi",
+        service_days=["monday"],
+        meal_periods=["lunch"],
+        concepts=["hot_line"],
+        menu_length_weeks=1,
+        allowed_service_days=["monday"],
+        allowed_meal_periods=["lunch"],
+        allowed_concepts=["hot_line"],
+    )
+
+    with pytest.raises(InvalidMenuDeleteError):
+        delete_menu(menu_id=menu_id, actor_user_id="reviewer_001")

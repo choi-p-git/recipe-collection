@@ -30,8 +30,10 @@ from services.mock_auth_service import (
 )
 from services.menu_service import (
     InvalidMenuPayloadError,
+    InvalidMenuDeleteError,
     InvalidMenuSlotAssignmentError,
     create_menu,
+    delete_menu,
     replace_menu_slot_items,
 )
 from services.item_note_service import (
@@ -310,6 +312,19 @@ def menu_detail(menu_id: int):
         day_options=DAY_OF_WEEK_OPTIONS,
         meal_period_options=MEAL_PERIOD_OPTIONS,
     )
+
+
+@app.route("/menus/<int:menu_id>/delete", methods=["POST"])
+def delete_menu_route(menu_id: int):
+    current_user = get_current_mock_user(session)
+    try:
+        delete_menu(menu_id=menu_id, actor_user_id=current_user["user_id"])
+        flash("Menu deleted successfully.", "success")
+    except InvalidMenuDeleteError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("menu_detail", menu_id=menu_id))
+
+    return redirect(url_for("my_menus"))
 
 
 @app.route("/menus/<int:menu_id>/slots/<int:menu_slot_id>/assign", methods=["GET", "POST"])

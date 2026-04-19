@@ -42,9 +42,9 @@ def test_initialize_database_seeds_catalog_when_enabled(isolated_db):
     conn.close()
 
     assert did_seed is True
-    assert base_food_count == 20
-    assert recipe_count == 8
-    assert live_count == 28
+    assert base_food_count == 1000
+    assert recipe_count == 1000
+    assert live_count == 2000
     assert nested_component_count == 1
     assert chicken_breast_nutrition == ("Poultry Products", 231.0, 140.0, 1.0)
 
@@ -63,4 +63,4 @@ def test_initialize_database_does_not_duplicate_seed_catalog(isolated_db):
 
     assert first_seed is True
     assert second_seed is False
-    assert item_count == 28
+    assert item_count == 2000
