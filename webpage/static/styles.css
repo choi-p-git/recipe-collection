@@ -657,6 +657,25 @@ button:disabled {
     gap: 0.35rem;
 }
 
+.menu-slot-actions {
+    display: grid;
+    gap: 0.5rem;
+}
+
+.menu-slot-action-link-row {
+    margin: 0;
+}
+
+.menu-slot-action-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.menu-slot-action-buttons form {
+    display: inline-flex;
+}
+
 .menu-grid-slot-id {
     margin: 0;
     color: #2563eb;

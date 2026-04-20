@@ -31,9 +31,13 @@ from services.mock_auth_service import (
 from services.menu_service import (
     InvalidMenuPayloadError,
     InvalidMenuDeleteError,
+    InvalidMenuSlotActionError,
     InvalidMenuSlotAssignmentError,
+    clear_menu_slot,
     create_menu,
     delete_menu,
+    get_menu_slot_assignment_ids,
+    paste_menu_slot_assignment_ids,
     replace_menu_slot_items,
 )
 from services.item_note_service import (
@@ -140,6 +144,15 @@ def get_current_recipe_author() -> dict[str, str]:
         "author_display_name": current_user["display_name"],
         "author_role": current_user["role"],
     }
+
+
+def get_menu_slot_clipboard() -> dict | None:
+    clipboard = session.get("menu_slot_clipboard")
+    if not isinstance(clipboard, dict):
+        return None
+    if not isinstance(clipboard.get("item_ids"), list):
+        return None
+    return clipboard
 
 
 @app.context_processor
@@ -311,6 +324,7 @@ def menu_detail(menu_id: int):
         week_slots=week_slots,
         day_options=DAY_OF_WEEK_OPTIONS,
         meal_period_options=MEAL_PERIOD_OPTIONS,
+        menu_slot_clipboard=get_menu_slot_clipboard(),
     )
 
 
@@ -327,6 +341,71 @@ def delete_menu_route(menu_id: int):
     return redirect(url_for("my_menus"))
 
 
+@app.route("/menus/<int:menu_id>/slots/<int:menu_slot_id>/copy", methods=["POST"])
+def copy_menu_slot_route(menu_id: int, menu_slot_id: int):
+    current_user = get_current_mock_user(session)
+    week = request.form.get("week", "1")
+    try:
+        copied_item_ids = get_menu_slot_assignment_ids(
+            menu_slot_id=menu_slot_id,
+            actor_user_id=current_user["user_id"],
+        )
+        session["menu_slot_clipboard"] = {
+            "item_ids": copied_item_ids,
+            "source_menu_id": menu_id,
+            "source_slot_id": menu_slot_id,
+            "copied_count": len(copied_item_ids),
+        }
+        flash(
+            (
+                f"Copied {len(copied_item_ids)} slot item{'s' if len(copied_item_ids) != 1 else ''}."
+                if copied_item_ids
+                else "Copied an empty slot."
+            ),
+            "success",
+        )
+    except InvalidMenuSlotActionError as exc:
+        flash(str(exc), "error")
+
+    return redirect(url_for("menu_detail", menu_id=menu_id, week=week))
+
+
+@app.route("/menus/<int:menu_id>/slots/<int:menu_slot_id>/paste", methods=["POST"])
+def paste_menu_slot_route(menu_id: int, menu_slot_id: int):
+    current_user = get_current_mock_user(session)
+    week = request.form.get("week", "1")
+    clipboard = get_menu_slot_clipboard()
+
+    try:
+        copied_item_ids = clipboard["item_ids"] if clipboard else []
+        paste_menu_slot_assignment_ids(
+            menu_slot_id=menu_slot_id,
+            actor_user_id=current_user["user_id"],
+            copied_item_ids=copied_item_ids,
+        )
+        flash("Pasted copied slot items.", "success")
+    except InvalidMenuSlotActionError as exc:
+        flash(str(exc), "error")
+
+    return redirect(url_for("menu_detail", menu_id=menu_id, week=week))
+
+
+@app.route("/menus/<int:menu_id>/slots/<int:menu_slot_id>/clear", methods=["POST"])
+def clear_menu_slot_route(menu_id: int, menu_slot_id: int):
+    current_user = get_current_mock_user(session)
+    week = request.form.get("week", "1")
+    try:
+        clear_menu_slot(
+            menu_slot_id=menu_slot_id,
+            actor_user_id=current_user["user_id"],
+        )
+        flash("Cleared slot assignments.", "success")
+    except InvalidMenuSlotActionError as exc:
+        flash(str(exc), "error")
+
+    return redirect(url_for("menu_detail", menu_id=menu_id, week=week))
+
+
 @app.route("/menus/<int:menu_id>/slots/<int:menu_slot_id>/assign", methods=["GET", "POST"])
 def menu_slot_assign(menu_id: int, menu_slot_id: int):
     search_term = request.values.get("q", "").strip()
@@ -337,6 +416,7 @@ def menu_slot_assign(menu_id: int, menu_slot_id: int):
             replace_menu_slot_items(
                 menu_slot_id=menu_slot_id,
                 selected_item_ids=request.form.getlist("selected_item_ids"),
+                actor_user_id=get_current_mock_user(session)["user_id"],
             )
             flash("Menu slot assignments updated.", "success")
             return redirect(url_for("menu_detail", menu_id=menu_id, week=request.form.get("week", "1")))

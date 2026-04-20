@@ -224,6 +224,9 @@ def test_menu_detail_route_shows_delete_action(app_client):
 
     assert response.status_code == 200
     assert "Delete Menu" in page
+    assert "Copy" in page
+    assert "Paste" in page
+    assert "Clear" in page
 
 
 def test_menu_slot_assign_route_renders_search_results(app_client, isolated_db):
@@ -311,6 +314,155 @@ def test_menu_slot_assign_post_updates_slot_and_renders_in_menu_overview(app_cli
     assert "Menu slot assignments updated." in page
     assert "Assigned Slot Salad" in page
     assert "Assigned Slot Lettuce" in page
+
+
+def test_copy_and_paste_menu_slot_routes_update_session_and_target_slot(app_client, isolated_db):
+    create_response = app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "Clipboard Route Menu",
+            "service_days": ["monday"],
+            "meal_periods": ["lunch"],
+            "concepts": ["hot_line", "salad_bar"],
+            "menu_length_weeks": "1",
+        },
+        follow_redirects=False,
+    )
+    menu_id = int(create_response.headers["Location"].rstrip("/").split("/")[-1])
+
+    first_item_id = create_base_food(item_name="Route Clipboard One")
+    second_item_id = create_base_food(item_name="Route Clipboard Two")
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT menu_slot_id FROM menu_slot WHERE menu_id = ? ORDER BY menu_slot_id ASC",
+        (menu_id,),
+    )
+    source_slot_id, target_slot_id = [row[0] for row in cursor.fetchall()]
+    cursor.execute(
+        "UPDATE item SET status = 'live' WHERE item_id IN (?, ?)",
+        (first_item_id, second_item_id),
+    )
+    conn.commit()
+    conn.close()
+
+    app_client.post(
+        f"/menus/{menu_id}/slots/{source_slot_id}/assign",
+        data={
+            "week": "1",
+            "selected_item_ids": [str(first_item_id), str(second_item_id)],
+        },
+        follow_redirects=False,
+    )
+
+    copy_response = app_client.post(
+        f"/menus/{menu_id}/slots/{source_slot_id}/copy",
+        data={"week": "1"},
+        follow_redirects=True,
+    )
+    paste_response = app_client.post(
+        f"/menus/{menu_id}/slots/{target_slot_id}/paste",
+        data={"week": "1"},
+        follow_redirects=True,
+    )
+    paste_page = paste_response.get_data(as_text=True)
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT item_id, item_sequence
+        FROM menu_slot_item
+        WHERE menu_slot_id = ?
+        ORDER BY item_sequence ASC
+        """,
+        (target_slot_id,),
+    )
+    pasted_rows = cursor.fetchall()
+    conn.close()
+
+    assert copy_response.status_code == 200
+    assert "Copied 2 slot items." in copy_response.get_data(as_text=True)
+    assert paste_response.status_code == 200
+    assert "Pasted copied slot items." in paste_page
+    assert pasted_rows == [(first_item_id, 1), (second_item_id, 2)]
+
+
+def test_clear_menu_slot_route_removes_assignments(app_client, isolated_db):
+    create_response = app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "Clear Route Menu",
+            "service_days": ["monday"],
+            "meal_periods": ["lunch"],
+            "concepts": ["hot_line"],
+            "menu_length_weeks": "1",
+        },
+        follow_redirects=False,
+    )
+    menu_id = int(create_response.headers["Location"].rstrip("/").split("/")[-1])
+    base_food_id = create_base_food(item_name="Clear Route Lettuce")
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT menu_slot_id FROM menu_slot WHERE menu_id = ?", (menu_id,))
+    menu_slot_id = cursor.fetchone()[0]
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id = ?", (base_food_id,))
+    conn.commit()
+    conn.close()
+
+    app_client.post(
+        f"/menus/{menu_id}/slots/{menu_slot_id}/assign",
+        data={"week": "1", "selected_item_ids": [str(base_food_id)]},
+        follow_redirects=False,
+    )
+
+    response = app_client.post(
+        f"/menus/{menu_id}/slots/{menu_slot_id}/clear",
+        data={"week": "1"},
+        follow_redirects=True,
+    )
+    page = response.get_data(as_text=True)
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM menu_slot_item WHERE menu_slot_id = ?", (menu_slot_id,))
+    item_count = cursor.fetchone()[0]
+    conn.close()
+
+    assert response.status_code == 200
+    assert "Cleared slot assignments." in page
+    assert item_count == 0
+
+
+def test_paste_menu_slot_route_requires_copied_items(app_client, isolated_db):
+    create_response = app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "Paste Empty Menu",
+            "service_days": ["monday"],
+            "meal_periods": ["lunch"],
+            "concepts": ["hot_line"],
+            "menu_length_weeks": "1",
+        },
+        follow_redirects=False,
+    )
+    menu_id = int(create_response.headers["Location"].rstrip("/").split("/")[-1])
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT menu_slot_id FROM menu_slot WHERE menu_id = ?", (menu_id,))
+    menu_slot_id = cursor.fetchone()[0]
+    conn.close()
+
+    response = app_client.post(
+        f"/menus/{menu_id}/slots/{menu_slot_id}/paste",
+        data={"week": "1"},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert "No copied slot items are available to paste." in response.get_data(as_text=True)
 
 
 def test_delete_menu_route_removes_menu_and_redirects_to_my_menus(app_client, isolated_db):

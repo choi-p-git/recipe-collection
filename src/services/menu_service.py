@@ -15,6 +15,10 @@ class InvalidMenuDeleteError(ValueError):
     """Raised when a menu delete request is invalid."""
 
 
+class InvalidMenuSlotActionError(ValueError):
+    """Raised when a slot clear/copy/paste request is invalid."""
+
+
 def _normalize_name(value: str) -> str:
     return " ".join(str(value or "").split())
 
@@ -35,6 +39,23 @@ def _normalize_unique_values(values: list[str], allowed_values: list[str]) -> li
 
 def _normalize_unique_concepts(values: list[str], allowed_values: list[str]) -> list[str]:
     return _normalize_unique_values(values, allowed_values)
+
+
+def _get_menu_slot_context(cursor, menu_slot_id: int) -> tuple[int, str]:
+    cursor.execute(
+        """
+        SELECT ms.menu_id, m.author_user_id
+        FROM menu_slot ms
+        JOIN menu m
+          ON m.menu_id = ms.menu_id
+        WHERE ms.menu_slot_id = ?
+        """,
+        (menu_slot_id,),
+    )
+    row = cursor.fetchone()
+    if row is None:
+        raise InvalidMenuSlotActionError("Menu slot not found.")
+    return int(row[0]), str(row[1])
 
 
 def create_menu(
@@ -140,6 +161,7 @@ def replace_menu_slot_items(
     *,
     menu_slot_id: int,
     selected_item_ids: list[str | int],
+    actor_user_id: str,
 ) -> None:
     initialize_database()
 
@@ -157,12 +179,9 @@ def replace_menu_slot_items(
 
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            "SELECT menu_slot_id FROM menu_slot WHERE menu_slot_id = ?",
-            (menu_slot_id,),
-        )
-        if cursor.fetchone() is None:
-            raise InvalidMenuSlotAssignmentError("Menu slot not found.")
+        _, owner_user_id = _get_menu_slot_context(cursor, menu_slot_id)
+        if owner_user_id != actor_user_id:
+            raise InvalidMenuSlotAssignmentError("You can only edit menu slots for menus you created.")
 
         if normalized_item_ids:
             cursor.execute(
@@ -208,6 +227,66 @@ def replace_menu_slot_items(
             (menu_slot_id,),
         )
         conn.commit()
+
+
+def get_menu_slot_assignment_ids(*, menu_slot_id: int, actor_user_id: str) -> list[int]:
+    initialize_database()
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        _, owner_user_id = _get_menu_slot_context(cursor, menu_slot_id)
+        if owner_user_id != actor_user_id:
+            raise InvalidMenuSlotActionError("You can only copy menu slots for menus you created.")
+
+        cursor.execute(
+            """
+            SELECT item_id
+            FROM menu_slot_item
+            WHERE menu_slot_id = ?
+            ORDER BY item_sequence ASC, menu_slot_item_id ASC
+            """,
+            (menu_slot_id,),
+        )
+        return [int(row[0]) for row in cursor.fetchall()]
+
+
+def clear_menu_slot(*, menu_slot_id: int, actor_user_id: str) -> None:
+    initialize_database()
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        _, owner_user_id = _get_menu_slot_context(cursor, menu_slot_id)
+        if owner_user_id != actor_user_id:
+            raise InvalidMenuSlotActionError("You can only clear menu slots for menus you created.")
+
+        cursor.execute(
+            "DELETE FROM menu_slot_item WHERE menu_slot_id = ?",
+            (menu_slot_id,),
+        )
+        cursor.execute(
+            "UPDATE menu_slot SET updated_at = datetime('now') WHERE menu_slot_id = ?",
+            (menu_slot_id,),
+        )
+        conn.commit()
+
+
+def paste_menu_slot_assignment_ids(
+    *,
+    menu_slot_id: int,
+    actor_user_id: str,
+    copied_item_ids: list[str | int],
+) -> None:
+    if not copied_item_ids:
+        raise InvalidMenuSlotActionError("No copied slot items are available to paste.")
+
+    try:
+        replace_menu_slot_items(
+            menu_slot_id=menu_slot_id,
+            selected_item_ids=copied_item_ids,
+            actor_user_id=actor_user_id,
+        )
+    except InvalidMenuSlotAssignmentError as exc:
+        raise InvalidMenuSlotActionError(str(exc))
 
 
 def delete_menu(*, menu_id: int, actor_user_id: str) -> None:

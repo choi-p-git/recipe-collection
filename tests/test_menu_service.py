@@ -7,9 +7,13 @@ from services.recipe_service import create_recipe
 from services.menu_service import (
     InvalidMenuDeleteError,
     InvalidMenuPayloadError,
+    InvalidMenuSlotActionError,
     InvalidMenuSlotAssignmentError,
+    clear_menu_slot,
     create_menu,
     delete_menu,
+    get_menu_slot_assignment_ids,
+    paste_menu_slot_assignment_ids,
     replace_menu_slot_items,
 )
 
@@ -95,7 +99,11 @@ def test_replace_menu_slot_items_replaces_assignments_with_live_items(isolated_d
     conn.commit()
     conn.close()
 
-    replace_menu_slot_items(menu_slot_id=menu_slot_id, selected_item_ids=[recipe_id, base_food_id])
+    replace_menu_slot_items(
+        menu_slot_id=menu_slot_id,
+        selected_item_ids=[recipe_id, base_food_id],
+        actor_user_id="dev_user_001",
+    )
 
     conn = sqlite3.connect(isolated_db)
     cursor = conn.cursor()
@@ -136,7 +144,11 @@ def test_replace_menu_slot_items_rejects_non_live_items(isolated_db):
     conn.close()
 
     with pytest.raises(InvalidMenuSlotAssignmentError):
-        replace_menu_slot_items(menu_slot_id=menu_slot_id, selected_item_ids=[base_food_id])
+        replace_menu_slot_items(
+            menu_slot_id=menu_slot_id,
+            selected_item_ids=[base_food_id],
+            actor_user_id="dev_user_001",
+        )
 
 
 def test_delete_menu_removes_menu_slots_and_assignments(isolated_db):
@@ -162,7 +174,11 @@ def test_delete_menu_removes_menu_slots_and_assignments(isolated_db):
     conn.commit()
     conn.close()
 
-    replace_menu_slot_items(menu_slot_id=menu_slot_id, selected_item_ids=[base_food_id])
+    replace_menu_slot_items(
+        menu_slot_id=menu_slot_id,
+        selected_item_ids=[base_food_id],
+        actor_user_id="dev_user_001",
+    )
     delete_menu(menu_id=menu_id, actor_user_id="dev_user_001")
 
     conn = sqlite3.connect(isolated_db)
@@ -204,3 +220,109 @@ def test_delete_menu_rejects_non_owner():
 
     with pytest.raises(InvalidMenuDeleteError):
         delete_menu(menu_id=menu_id, actor_user_id="reviewer_001")
+
+
+def test_copy_clear_and_paste_menu_slot_assignments(isolated_db):
+    menu_id = create_menu(
+        menu_name="Clipboard Menu",
+        author_user_id="dev_user_001",
+        author_display_name="Plato Choi",
+        service_days=["monday"],
+        meal_periods=["lunch"],
+        concepts=["hot_line", "salad_bar"],
+        menu_length_weeks=1,
+        allowed_service_days=["monday"],
+        allowed_meal_periods=["lunch"],
+        allowed_concepts=["hot_line", "salad_bar"],
+    )
+    first_item_id = create_base_food(item_name="Clipboard Item One")
+    second_item_id = create_base_food(item_name="Clipboard Item Two")
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT menu_slot_id FROM menu_slot WHERE menu_id = ? ORDER BY menu_slot_id ASC",
+        (menu_id,),
+    )
+    source_slot_id, target_slot_id = [row[0] for row in cursor.fetchall()]
+    cursor.execute(
+        "UPDATE item SET status = 'live' WHERE item_id IN (?, ?)",
+        (first_item_id, second_item_id),
+    )
+    conn.commit()
+    conn.close()
+
+    replace_menu_slot_items(
+        menu_slot_id=source_slot_id,
+        selected_item_ids=[first_item_id, second_item_id],
+        actor_user_id="dev_user_001",
+    )
+    copied_item_ids = get_menu_slot_assignment_ids(
+        menu_slot_id=source_slot_id,
+        actor_user_id="dev_user_001",
+    )
+    clear_menu_slot(menu_slot_id=source_slot_id, actor_user_id="dev_user_001")
+    paste_menu_slot_assignment_ids(
+        menu_slot_id=target_slot_id,
+        actor_user_id="dev_user_001",
+        copied_item_ids=copied_item_ids,
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT COUNT(*) FROM menu_slot_item WHERE menu_slot_id = ?",
+        (source_slot_id,),
+    )
+    source_count = cursor.fetchone()[0]
+    cursor.execute(
+        """
+        SELECT item_id, item_sequence
+        FROM menu_slot_item
+        WHERE menu_slot_id = ?
+        ORDER BY item_sequence ASC
+        """,
+        (target_slot_id,),
+    )
+    target_rows = cursor.fetchall()
+    conn.close()
+
+    assert copied_item_ids == [first_item_id, second_item_id]
+    assert source_count == 0
+    assert target_rows == [(first_item_id, 1), (second_item_id, 2)]
+
+
+def test_menu_slot_actions_reject_non_owner(isolated_db):
+    menu_id = create_menu(
+        menu_name="Protected Slot Menu",
+        author_user_id="dev_user_001",
+        author_display_name="Plato Choi",
+        service_days=["monday"],
+        meal_periods=["lunch"],
+        concepts=["hot_line"],
+        menu_length_weeks=1,
+        allowed_service_days=["monday"],
+        allowed_meal_periods=["lunch"],
+        allowed_concepts=["hot_line"],
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT menu_slot_id FROM menu_slot WHERE menu_id = ?", (menu_id,))
+    menu_slot_id = cursor.fetchone()[0]
+    conn.close()
+
+    with pytest.raises(InvalidMenuSlotActionError):
+        get_menu_slot_assignment_ids(menu_slot_id=menu_slot_id, actor_user_id="reviewer_001")
+
+    with pytest.raises(InvalidMenuSlotActionError):
+        clear_menu_slot(menu_slot_id=menu_slot_id, actor_user_id="reviewer_001")
+
+
+def test_paste_menu_slot_assignments_requires_clipboard_data():
+    with pytest.raises(InvalidMenuSlotActionError):
+        paste_menu_slot_assignment_ids(
+            menu_slot_id=1,
+            actor_user_id="dev_user_001",
+            copied_item_ids=[],
+        )

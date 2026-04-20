@@ -89,9 +89,25 @@
                                         {% else %}
                                             <p class="muted">Ready for assignment.</p>
                                         {% endif %}
-                                        <p>
-                                            <a class="text-link" href="{{ url_for('menu_slot_assign', menu_id=menu.menu_id, menu_slot_id=slot.menu_slot_id, week=selected_week_number) }}">Assign Items</a>
-                                        </p>
+                                        <div class="menu-slot-actions">
+                                            <p class="menu-slot-action-link-row">
+                                                <a class="text-link" href="{{ url_for('menu_slot_assign', menu_id=menu.menu_id, menu_slot_id=slot.menu_slot_id, week=selected_week_number) }}">Assign Items</a>
+                                            </p>
+                                            <div class="menu-slot-action-buttons">
+                                                <form method="post" action="{{ url_for('copy_menu_slot_route', menu_id=menu.menu_id, menu_slot_id=slot.menu_slot_id) }}">
+                                                    <input type="hidden" name="week" value="{{ selected_week_number }}">
+                                                    <button type="submit" class="workflow-button workflow-button-secondary">Copy</button>
+                                                </form>
+                                                <form method="post" action="{{ url_for('paste_menu_slot_route', menu_id=menu.menu_id, menu_slot_id=slot.menu_slot_id) }}">
+                                                    <input type="hidden" name="week" value="{{ selected_week_number }}">
+                                                    <button type="submit" class="workflow-button workflow-button-secondary" {% if not menu_slot_clipboard %}disabled{% endif %}>Paste</button>
+                                                </form>
+                                                <form method="post" action="{{ url_for('clear_menu_slot_route', menu_id=menu.menu_id, menu_slot_id=slot.menu_slot_id) }}">
+                                                    <input type="hidden" name="week" value="{{ selected_week_number }}">
+                                                    <button type="submit" class="workflow-button workflow-button-danger">Clear</button>
+                                                </form>
+                                            </div>
+                                        </div>
                                     {% else %}
                                         <p class="muted">No slot found.</p>
                                     {% endif %}
@@ -103,4 +119,14 @@
             </div>
         {% endfor %}
     </section>
+
+    {% if menu_slot_clipboard %}
+        <section class="item-detail-section">
+            <h3>Slot Clipboard</h3>
+            <p class="muted">
+                Ready to paste {{ menu_slot_clipboard.copied_count }} copied item{% if menu_slot_clipboard.copied_count != 1 %}s{% endif %}
+                from slot {{ menu_slot_clipboard.source_slot_id }}.
+            </p>
+        </section>
+    {% endif %}
 {% endblock %}
