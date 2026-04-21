@@ -224,9 +224,8 @@ def test_menu_detail_route_shows_delete_action(app_client):
 
     assert response.status_code == 200
     assert "Delete Menu" in page
-    assert "Copy" in page
-    assert "Paste" in page
-    assert "Clear" in page
+    assert "Bulk Slot Actions" in page
+    assert "Enable Selection" in page
 
 
 def test_menu_slot_assign_route_renders_search_results(app_client, isolated_db):
@@ -387,6 +386,166 @@ def test_copy_and_paste_menu_slot_routes_update_session_and_target_slot(app_clie
     assert paste_response.status_code == 200
     assert "Pasted copied slot items." in paste_page
     assert pasted_rows == [(first_item_id, 1), (second_item_id, 2)]
+
+
+def test_menu_detail_route_renders_bulk_selection_mode(app_client):
+    create_response = app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "Bulk Selection Menu",
+            "service_days": ["monday"],
+            "meal_periods": ["lunch"],
+            "concepts": ["hot_line"],
+            "menu_length_weeks": "1",
+        },
+        follow_redirects=False,
+    )
+    menu_location = create_response.headers["Location"]
+
+    response = app_client.get(f"{menu_location}?bulk_action=copy&bulk_scope=cell")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Copy Selected Cells" in page
+    assert "Select Slot" in page
+
+
+def test_menu_bulk_copy_and_paste_routes_work_for_cell_mode(app_client, isolated_db):
+    create_response = app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "Bulk Cell Route Menu",
+            "service_days": ["monday", "tuesday"],
+            "meal_periods": ["lunch"],
+            "concepts": ["hot_line"],
+            "menu_length_weeks": "1",
+        },
+        follow_redirects=False,
+    )
+    menu_id = int(create_response.headers["Location"].rstrip("/").split("/")[-1])
+    base_food_id = create_base_food(item_name="Bulk Cell Route Item")
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT menu_slot_id FROM menu_slot WHERE menu_id = ? ORDER BY menu_slot_id ASC",
+        (menu_id,),
+    )
+    source_slot_id, target_slot_id = [row[0] for row in cursor.fetchall()]
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id = ?", (base_food_id,))
+    conn.commit()
+    conn.close()
+
+    app_client.post(
+        f"/menus/{menu_id}/slots/{source_slot_id}/assign",
+        data={"week": "1", "selected_item_ids": [str(base_food_id)]},
+        follow_redirects=False,
+    )
+
+    copy_response = app_client.post(
+        f"/menus/{menu_id}/bulk-action",
+        data={
+            "week": "1",
+            "action": "copy",
+            "scope": "cell",
+            "selected_slot_ids": [str(source_slot_id)],
+        },
+        follow_redirects=True,
+    )
+    paste_response = app_client.post(
+        f"/menus/{menu_id}/bulk-action",
+        data={
+            "week": "1",
+            "action": "paste",
+            "selected_slot_ids": [str(target_slot_id)],
+        },
+        follow_redirects=True,
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT item_id FROM menu_slot_item WHERE menu_slot_id = ?", (target_slot_id,))
+    pasted_item_id = cursor.fetchone()[0]
+    conn.close()
+
+    assert copy_response.status_code == 200
+    assert "Copied 1 cell." in copy_response.get_data(as_text=True)
+    assert paste_response.status_code == 200
+    assert "Pasted into 1 slot." in paste_response.get_data(as_text=True)
+    assert pasted_item_id == base_food_id
+
+
+def test_menu_bulk_clear_route_supports_day_scope(app_client, isolated_db):
+    create_response = app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "Bulk Day Clear Menu",
+            "service_days": ["monday", "tuesday"],
+            "meal_periods": ["lunch", "dinner"],
+            "concepts": ["hot_line"],
+            "menu_length_weeks": "1",
+        },
+        follow_redirects=False,
+    )
+    menu_id = int(create_response.headers["Location"].rstrip("/").split("/")[-1])
+    base_food_id = create_base_food(item_name="Bulk Day Clear Item")
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id = ?", (base_food_id,))
+    cursor.execute(
+        """
+        SELECT menu_slot_id
+        FROM menu_slot
+        WHERE menu_id = ?
+          AND week_number = 1
+          AND day_of_week = 'monday'
+        ORDER BY menu_slot_id ASC
+        """,
+        (menu_id,),
+    )
+    monday_slot_id = cursor.fetchone()[0]
+    cursor.execute("SELECT menu_slot_id FROM menu_slot WHERE menu_id = ?", (menu_id,))
+    all_slot_ids = [row[0] for row in cursor.fetchall()]
+    conn.commit()
+    conn.close()
+
+    for slot_id in all_slot_ids:
+        app_client.post(
+            f"/menus/{menu_id}/slots/{slot_id}/assign",
+            data={"week": "1", "selected_item_ids": [str(base_food_id)]},
+            follow_redirects=False,
+        )
+
+    response = app_client.post(
+        f"/menus/{menu_id}/bulk-action",
+        data={
+            "week": "1",
+            "action": "clear",
+            "scope": "day",
+            "selected_slot_ids": [str(monday_slot_id)],
+        },
+        follow_redirects=True,
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT COUNT(*)
+        FROM menu_slot_item msi
+        JOIN menu_slot ms ON ms.menu_slot_id = msi.menu_slot_id
+        WHERE ms.menu_id = ?
+          AND ms.day_of_week = 'monday'
+        """,
+        (menu_id,),
+    )
+    monday_count = cursor.fetchone()[0]
+    conn.close()
+
+    assert response.status_code == 200
+    assert "Cleared 2 slots." in response.get_data(as_text=True)
+    assert monday_count == 0
 
 
 def test_clear_menu_slot_route_removes_assignments(app_client, isolated_db):

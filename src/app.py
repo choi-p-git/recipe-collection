@@ -29,15 +29,19 @@ from services.mock_auth_service import (
     update_current_user_preferences,
 )
 from services.menu_service import (
+    DAY_OF_WEEK_ORDER,
     InvalidMenuPayloadError,
     InvalidMenuDeleteError,
     InvalidMenuSlotActionError,
     InvalidMenuSlotAssignmentError,
+    clear_menu_slots,
     clear_menu_slot,
+    copy_menu_slots,
     create_menu,
     delete_menu,
     get_menu_slot_assignment_ids,
     paste_menu_slot_assignment_ids,
+    paste_menu_slots,
     replace_menu_slot_items,
 )
 from services.item_note_service import (
@@ -150,7 +154,19 @@ def get_menu_slot_clipboard() -> dict | None:
     clipboard = session.get("menu_slot_clipboard")
     if not isinstance(clipboard, dict):
         return None
-    if not isinstance(clipboard.get("item_ids"), list):
+    if isinstance(clipboard.get("entries"), list) and clipboard.get("mode") in {"cell", "concept"}:
+        return clipboard
+    if isinstance(clipboard.get("item_ids"), list):
+        return {
+            "mode": "cell",
+            "entries": [
+                {
+                    "item_ids": clipboard["item_ids"],
+                }
+            ],
+            "copied_count": 1,
+        }
+    if not isinstance(clipboard.get("entries"), list):
         return None
     return clipboard
 
@@ -315,6 +331,16 @@ def menu_detail(menu_id: int):
         selected_week_number = 1
 
     week_slots = [slot for slot in menu["slots"] if slot["week_number"] == selected_week_number]
+    bulk_action = request.args.get("bulk_action", "").strip()
+    bulk_scope = request.args.get("bulk_scope", "").strip()
+    if bulk_action not in {"copy", "paste", "clear"}:
+        bulk_action = ""
+    if bulk_action == "copy" and bulk_scope not in {"cell", "concept"}:
+        bulk_scope = "cell"
+    elif bulk_action == "clear" and bulk_scope not in {"cell", "concept", "day", "week"}:
+        bulk_scope = "cell"
+    elif bulk_action == "paste":
+        bulk_scope = ""
 
     return render_template(
         "menu_detail.html",
@@ -325,6 +351,9 @@ def menu_detail(menu_id: int):
         day_options=DAY_OF_WEEK_OPTIONS,
         meal_period_options=MEAL_PERIOD_OPTIONS,
         menu_slot_clipboard=get_menu_slot_clipboard(),
+        bulk_action=bulk_action,
+        bulk_scope=bulk_scope,
+        day_order=DAY_OF_WEEK_ORDER,
     )
 
 
@@ -351,9 +380,12 @@ def copy_menu_slot_route(menu_id: int, menu_slot_id: int):
             actor_user_id=current_user["user_id"],
         )
         session["menu_slot_clipboard"] = {
-            "item_ids": copied_item_ids,
-            "source_menu_id": menu_id,
-            "source_slot_id": menu_slot_id,
+            "mode": "cell",
+            "entries": [
+                {
+                    "item_ids": copied_item_ids,
+                }
+            ],
             "copied_count": len(copied_item_ids),
         }
         flash(
@@ -377,7 +409,7 @@ def paste_menu_slot_route(menu_id: int, menu_slot_id: int):
     clipboard = get_menu_slot_clipboard()
 
     try:
-        copied_item_ids = clipboard["item_ids"] if clipboard else []
+        copied_item_ids = clipboard["entries"][0]["item_ids"] if clipboard else []
         paste_menu_slot_assignment_ids(
             menu_slot_id=menu_slot_id,
             actor_user_id=current_user["user_id"],
@@ -400,6 +432,57 @@ def clear_menu_slot_route(menu_id: int, menu_slot_id: int):
             actor_user_id=current_user["user_id"],
         )
         flash("Cleared slot assignments.", "success")
+    except InvalidMenuSlotActionError as exc:
+        flash(str(exc), "error")
+
+    return redirect(url_for("menu_detail", menu_id=menu_id, week=week))
+
+
+@app.route("/menus/<int:menu_id>/bulk-action", methods=["POST"])
+def menu_bulk_action_route(menu_id: int):
+    current_user = get_current_mock_user(session)
+    action = request.form.get("action", "").strip()
+    scope = request.form.get("scope", "").strip()
+    week = request.form.get("week", "1")
+    selected_slot_ids = request.form.getlist("selected_slot_ids")
+
+    try:
+        if action == "copy":
+            clipboard = copy_menu_slots(
+                menu_id=menu_id,
+                actor_user_id=current_user["user_id"],
+                selected_slot_ids=selected_slot_ids,
+                scope=scope,
+            )
+            session["menu_slot_clipboard"] = clipboard
+            flash(
+                f"Copied {clipboard['copied_count']} {scope}{'s' if clipboard['copied_count'] != 1 else ''}.",
+                "success",
+            )
+        elif action == "paste":
+            pasted_count = paste_menu_slots(
+                menu_id=menu_id,
+                actor_user_id=current_user["user_id"],
+                selected_slot_ids=selected_slot_ids,
+                clipboard=get_menu_slot_clipboard(),
+            )
+            flash(
+                f"Pasted into {pasted_count} slot{'s' if pasted_count != 1 else ''}.",
+                "success",
+            )
+        elif action == "clear":
+            cleared_count = clear_menu_slots(
+                menu_id=menu_id,
+                actor_user_id=current_user["user_id"],
+                selected_slot_ids=selected_slot_ids,
+                scope=scope,
+            )
+            flash(
+                f"Cleared {cleared_count} slot{'s' if cleared_count != 1 else ''}.",
+                "success",
+            )
+        else:
+            flash("Select a valid bulk action.", "error")
     except InvalidMenuSlotActionError as exc:
         flash(str(exc), "error")
 

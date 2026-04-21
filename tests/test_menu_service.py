@@ -5,14 +5,18 @@ import pytest
 from services.item_service import create_base_food
 from services.recipe_service import create_recipe
 from services.menu_service import (
+    DAY_OF_WEEK_ORDER,
     InvalidMenuDeleteError,
     InvalidMenuPayloadError,
     InvalidMenuSlotActionError,
     InvalidMenuSlotAssignmentError,
+    clear_menu_slots,
     clear_menu_slot,
+    copy_menu_slots,
     create_menu,
     delete_menu,
     get_menu_slot_assignment_ids,
+    paste_menu_slots,
     paste_menu_slot_assignment_ids,
     replace_menu_slot_items,
 )
@@ -326,3 +330,237 @@ def test_paste_menu_slot_assignments_requires_clipboard_data():
             actor_user_id="dev_user_001",
             copied_item_ids=[],
         )
+
+
+def test_copy_menu_slots_by_cell_and_paste_to_multiple_targets(isolated_db):
+    menu_id = create_menu(
+        menu_name="Bulk Cell Menu",
+        author_user_id="dev_user_001",
+        author_display_name="Plato Choi",
+        service_days=["monday", "tuesday"],
+        meal_periods=["lunch"],
+        concepts=["hot_line"],
+        menu_length_weeks=1,
+        allowed_service_days=["monday", "tuesday"],
+        allowed_meal_periods=["lunch"],
+        allowed_concepts=["hot_line"],
+    )
+    base_food_id = create_base_food(item_name="Bulk Cell Lettuce")
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT menu_slot_id FROM menu_slot WHERE menu_id = ? ORDER BY menu_slot_id ASC",
+        (menu_id,),
+    )
+    source_slot_id, target_slot_id = [row[0] for row in cursor.fetchall()]
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id = ?", (base_food_id,))
+    conn.commit()
+    conn.close()
+
+    replace_menu_slot_items(
+        menu_slot_id=source_slot_id,
+        selected_item_ids=[base_food_id],
+        actor_user_id="dev_user_001",
+    )
+
+    clipboard = copy_menu_slots(
+        menu_id=menu_id,
+        actor_user_id="dev_user_001",
+        selected_slot_ids=[source_slot_id],
+        scope="cell",
+    )
+    pasted_count = paste_menu_slots(
+        menu_id=menu_id,
+        actor_user_id="dev_user_001",
+        selected_slot_ids=[target_slot_id],
+        clipboard=clipboard,
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT item_id FROM menu_slot_item WHERE menu_slot_id = ?", (target_slot_id,))
+    target_item_id = cursor.fetchone()[0]
+    conn.close()
+
+    assert clipboard["mode"] == "cell"
+    assert clipboard["copied_count"] == 1
+    assert pasted_count == 1
+    assert target_item_id == base_food_id
+
+
+def test_copy_menu_slots_by_concept_and_paste_to_target_concept(isolated_db):
+    menu_id = create_menu(
+        menu_name="Bulk Concept Menu",
+        author_user_id="dev_user_001",
+        author_display_name="Plato Choi",
+        service_days=["monday", "tuesday"],
+        meal_periods=["lunch"],
+        concepts=["hot_line", "salad_bar"],
+        menu_length_weeks=1,
+        allowed_service_days=["monday", "tuesday"],
+        allowed_meal_periods=["lunch"],
+        allowed_concepts=["hot_line", "salad_bar"],
+    )
+    monday_item_id = create_base_food(item_name="Concept Monday Item")
+    tuesday_item_id = create_base_food(item_name="Concept Tuesday Item")
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT menu_slot_id, day_of_week, concept_name
+        FROM menu_slot
+        WHERE menu_id = ?
+        ORDER BY menu_slot_id ASC
+        """,
+        (menu_id,),
+    )
+    slot_rows = cursor.fetchall()
+    cursor.execute(
+        "UPDATE item SET status = 'live' WHERE item_id IN (?, ?)",
+        (monday_item_id, tuesday_item_id),
+    )
+    conn.commit()
+    conn.close()
+
+    hot_line_slots = {
+        day: slot_id for slot_id, day, concept in slot_rows if concept == "hot_line"
+    }
+    salad_bar_slots = {
+        day: slot_id for slot_id, day, concept in slot_rows if concept == "salad_bar"
+    }
+
+    replace_menu_slot_items(
+        menu_slot_id=hot_line_slots["monday"],
+        selected_item_ids=[monday_item_id],
+        actor_user_id="dev_user_001",
+    )
+    replace_menu_slot_items(
+        menu_slot_id=hot_line_slots["tuesday"],
+        selected_item_ids=[tuesday_item_id],
+        actor_user_id="dev_user_001",
+    )
+
+    clipboard = copy_menu_slots(
+        menu_id=menu_id,
+        actor_user_id="dev_user_001",
+        selected_slot_ids=[hot_line_slots["monday"]],
+        scope="concept",
+    )
+    pasted_count = paste_menu_slots(
+        menu_id=menu_id,
+        actor_user_id="dev_user_001",
+        selected_slot_ids=[salad_bar_slots["monday"]],
+        clipboard=clipboard,
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT item_id FROM menu_slot_item WHERE menu_slot_id = ?",
+        (salad_bar_slots["monday"],),
+    )
+    monday_pasted = cursor.fetchone()[0]
+    cursor.execute(
+        "SELECT item_id FROM menu_slot_item WHERE menu_slot_id = ?",
+        (salad_bar_slots["tuesday"],),
+    )
+    tuesday_pasted = cursor.fetchone()[0]
+    conn.close()
+
+    assert clipboard["mode"] == "concept"
+    assert clipboard["copied_count"] == 1
+    assert pasted_count == 2
+    assert monday_pasted == monday_item_id
+    assert tuesday_pasted == tuesday_item_id
+
+
+def test_clear_menu_slots_by_day_and_week(isolated_db):
+    menu_id = create_menu(
+        menu_name="Bulk Clear Menu",
+        author_user_id="dev_user_001",
+        author_display_name="Plato Choi",
+        service_days=["monday", "tuesday"],
+        meal_periods=["lunch", "dinner"],
+        concepts=["hot_line"],
+        menu_length_weeks=2,
+        allowed_service_days=["monday", "tuesday"],
+        allowed_meal_periods=["lunch", "dinner"],
+        allowed_concepts=["hot_line"],
+    )
+    base_food_id = create_base_food(item_name="Bulk Clear Item")
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id = ?", (base_food_id,))
+    cursor.execute(
+        "SELECT menu_slot_id, week_number, day_of_week FROM menu_slot WHERE menu_id = ? ORDER BY menu_slot_id ASC",
+        (menu_id,),
+    )
+    slot_rows = cursor.fetchall()
+    conn.commit()
+    conn.close()
+
+    for menu_slot_id, _, _ in slot_rows:
+        replace_menu_slot_items(
+            menu_slot_id=menu_slot_id,
+            selected_item_ids=[base_food_id],
+            actor_user_id="dev_user_001",
+        )
+
+    week_one_monday_slot = next(
+        menu_slot_id
+        for menu_slot_id, week_number, day_of_week in slot_rows
+        if week_number == 1 and day_of_week == "monday"
+    )
+    week_two_slot = next(
+        menu_slot_id
+        for menu_slot_id, week_number, _ in slot_rows
+        if week_number == 2
+    )
+
+    cleared_day_count = clear_menu_slots(
+        menu_id=menu_id,
+        actor_user_id="dev_user_001",
+        selected_slot_ids=[week_one_monday_slot],
+        scope="day",
+    )
+    cleared_week_count = clear_menu_slots(
+        menu_id=menu_id,
+        actor_user_id="dev_user_001",
+        selected_slot_ids=[week_two_slot],
+        scope="week",
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT COUNT(*)
+        FROM menu_slot_item msi
+        JOIN menu_slot ms ON ms.menu_slot_id = msi.menu_slot_id
+        WHERE ms.menu_id = ?
+          AND ms.week_number = 1
+          AND ms.day_of_week = 'monday'
+        """,
+        (menu_id,),
+    )
+    remaining_day_items = cursor.fetchone()[0]
+    cursor.execute(
+        """
+        SELECT COUNT(*)
+        FROM menu_slot_item msi
+        JOIN menu_slot ms ON ms.menu_slot_id = msi.menu_slot_id
+        WHERE ms.menu_id = ?
+          AND ms.week_number = 2
+        """,
+        (menu_id,),
+    )
+    remaining_week_items = cursor.fetchone()[0]
+    conn.close()
+
+    assert cleared_day_count == 2
+    assert cleared_week_count == 4
+    assert remaining_day_items == 0
+    assert remaining_week_items == 0
