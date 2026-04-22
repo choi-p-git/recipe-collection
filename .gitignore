@@ -9,6 +9,7 @@ __pycache__/
 # test / tooling
 .pytest_cache/
 .ruff_cache/
+.test_tmp/
 
 # environment files
 .env

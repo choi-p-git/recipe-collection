@@ -225,7 +225,9 @@ def test_menu_detail_route_shows_delete_action(app_client):
     assert response.status_code == 200
     assert "Delete Menu" in page
     assert "Bulk Slot Actions" in page
-    assert "Enable Selection" in page
+    assert "Update Bulk Mode" in page
+    assert "menu_detail.js" in page
+    assert "Menu Summary" in page
 
 
 def test_menu_slot_assign_route_renders_search_results(app_client, isolated_db):
@@ -408,6 +410,77 @@ def test_menu_detail_route_renders_bulk_selection_mode(app_client):
     assert response.status_code == 200
     assert "Copy Selected Cells" in page
     assert "Select Slot" in page
+    assert "Copy by Cells keeps the selected slots only." in page
+
+
+def test_menu_detail_route_renders_concept_header_selection_mode(app_client):
+    create_response = app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "Bulk Concept Selection Menu",
+            "service_days": ["monday"],
+            "meal_periods": ["lunch"],
+            "concepts": ["hot_line"],
+            "menu_length_weeks": "1",
+        },
+        follow_redirects=False,
+    )
+    menu_location = create_response.headers["Location"]
+
+    response = app_client.get(f"{menu_location}?bulk_action=copy&bulk_scope=concept")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Copy Selected Concepts" in page
+    assert "Select Concept" in page
+    assert "Select Slot" not in page
+
+
+def test_menu_detail_route_renders_day_header_selection_mode(app_client):
+    create_response = app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "Bulk Day Selection Menu",
+            "service_days": ["monday", "tuesday"],
+            "meal_periods": ["lunch"],
+            "concepts": ["hot_line"],
+            "menu_length_weeks": "1",
+        },
+        follow_redirects=False,
+    )
+    menu_location = create_response.headers["Location"]
+
+    response = app_client.get(f"{menu_location}?bulk_action=clear&bulk_scope=day")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Select Day" in page
+    assert "Select Slot" not in page
+
+
+def test_menu_detail_route_renders_week_clear_confirmation_without_checkboxes(app_client):
+    create_response = app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "Bulk Week Clear Menu",
+            "service_days": ["monday", "tuesday"],
+            "meal_periods": ["lunch"],
+            "concepts": ["hot_line"],
+            "menu_length_weeks": "1",
+        },
+        follow_redirects=False,
+    )
+    menu_location = create_response.headers["Location"]
+
+    response = app_client.get(f"{menu_location}?bulk_action=clear&bulk_scope=week")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Clear Week 1" in page
+    assert "No cell selection is needed here." in page
+    assert "Select Slot" not in page
+    assert "Select Day" not in page
+    assert "Select Concept" not in page
 
 
 def test_menu_bulk_copy_and_paste_routes_work_for_cell_mode(app_client, isolated_db):

@@ -4,6 +4,10 @@
 {% block main_class %}container container-menu-builder{% endblock %}
 
 {% block content %}
+    {% set clipboard_mode = menu_slot_clipboard.mode if menu_slot_clipboard else '' %}
+    {% set use_concept_headers = (bulk_action == 'copy' and bulk_scope == 'concept') or (bulk_action == 'clear' and bulk_scope == 'concept') or (bulk_action == 'paste' and clipboard_mode == 'concept') %}
+    {% set use_day_headers = bulk_action == 'clear' and bulk_scope == 'day' %}
+    {% set use_week_confirm = bulk_action == 'clear' and bulk_scope == 'week' %}
     <div class="page-header">
         <div>
             <h2>{{ menu.menu_name }}</h2>
@@ -19,9 +23,17 @@
         </div>
     </div>
 
-    <section class="item-detail-section">
-        <h3>Menu Summary</h3>
-        <div class="detail-stat-grid">
+    <details class="item-detail-section menu-summary-toggle">
+        <summary class="menu-summary-toggle-summary">
+            <span class="menu-summary-toggle-title">Menu Summary</span>
+            <span class="menu-summary-toggle-pills">
+                <span class="detail-pill">Weeks: {{ menu.menu_length_weeks }}</span>
+                <span class="detail-pill">Days: {{ menu.service_days|length }}</span>
+                <span class="detail-pill">Meals: {{ menu.meal_periods|length }}</span>
+                <span class="detail-pill">Concepts: {{ menu.concepts|length }}</span>
+            </span>
+        </summary>
+        <div class="detail-stat-grid menu-summary-stat-grid">
             <article class="detail-stat-card">
                 <p class="detail-stat-label">Weeks</p>
                 <p class="detail-stat-value">{{ menu.menu_length_weeks }}</p>
@@ -39,7 +51,7 @@
                 <p class="detail-stat-value">{{ menu.concepts|length }}</p>
             </article>
         </div>
-    </section>
+    </details>
 
     <section class="item-detail-section">
         <h3>Weeks</h3>
@@ -57,11 +69,11 @@
 
     <section class="item-detail-section">
         <h3>Bulk Slot Actions</h3>
-        <form method="get" class="filter-form menu-bulk-config-form">
+        <form method="get" class="filter-form menu-bulk-config-form" data-menu-bulk-config>
             <input type="hidden" name="week" value="{{ selected_week_number }}">
             <div class="filter-row">
                 <label for="bulk_action">Action</label>
-                <select id="bulk_action" name="bulk_action">
+                <select id="bulk_action" name="bulk_action" data-bulk-action-select>
                     <option value="">Select Action</option>
                     <option value="copy" {% if bulk_action == 'copy' %}selected{% endif %}>Copy</option>
                     <option value="paste" {% if bulk_action == 'paste' %}selected{% endif %}>Paste</option>
@@ -71,7 +83,7 @@
             {% if bulk_action == 'copy' %}
                 <div class="filter-row">
                     <label for="bulk_scope">Copy Scope</label>
-                    <select id="bulk_scope" name="bulk_scope">
+                    <select id="bulk_scope" name="bulk_scope" data-bulk-scope-select>
                         <option value="cell" {% if bulk_scope == 'cell' %}selected{% endif %}>By Cells</option>
                         <option value="concept" {% if bulk_scope == 'concept' %}selected{% endif %}>By Concepts</option>
                     </select>
@@ -79,7 +91,7 @@
             {% elif bulk_action == 'clear' %}
                 <div class="filter-row">
                     <label for="bulk_scope">Clear Scope</label>
-                    <select id="bulk_scope" name="bulk_scope">
+                    <select id="bulk_scope" name="bulk_scope" data-bulk-scope-select>
                         <option value="cell" {% if bulk_scope == 'cell' %}selected{% endif %}>By Cell</option>
                         <option value="concept" {% if bulk_scope == 'concept' %}selected{% endif %}>By Concept</option>
                         <option value="day" {% if bulk_scope == 'day' %}selected{% endif %}>By Day</option>
@@ -87,11 +99,47 @@
                     </select>
                 </div>
             {% endif %}
-            <button type="submit">Enable Selection</button>
+            <noscript>
+                <button type="submit">Update Bulk Mode</button>
+            </noscript>
             {% if bulk_action %}
                 <a class="page-action-link secondary" href="{{ url_for('menu_detail', menu_id=menu.menu_id, week=selected_week_number) }}">Exit Bulk Mode</a>
             {% endif %}
         </form>
+
+        {% if not bulk_action %}
+            <p class="muted menu-bulk-helper-text">
+                Choose an action first, then select slots in the grid to confirm the operation.
+            </p>
+        {% elif bulk_action == 'copy' and bulk_scope == 'cell' %}
+            <p class="muted menu-bulk-helper-text">
+                Copy by Cells keeps the selected slots only. Select one cell to reuse it across many targets, or select multiple cells to paste them into the same number of destination cells.
+            </p>
+        {% elif bulk_action == 'copy' and bulk_scope == 'concept' %}
+            <p class="muted menu-bulk-helper-text">
+                Copy by Concepts copies the full concept line for the selected week and meal period. Select one slot from that line to copy the whole concept across all service days.
+            </p>
+        {% elif bulk_action == 'paste' %}
+            <p class="muted menu-bulk-helper-text">
+                Paste uses the current clipboard mode automatically. Cell copies paste into selected cells; concept copies paste into selected concept lines.
+            </p>
+        {% elif bulk_action == 'clear' and bulk_scope == 'cell' %}
+            <p class="muted menu-bulk-helper-text">
+                Clear by Cell only removes assignments from the exact selected slots.
+            </p>
+        {% elif bulk_action == 'clear' and bulk_scope == 'concept' %}
+            <p class="muted menu-bulk-helper-text">
+                Clear by Concept removes assignments from the full concept line for the selected week and meal period. Select one slot from that line.
+            </p>
+        {% elif bulk_action == 'clear' and bulk_scope == 'day' %}
+            <p class="muted menu-bulk-helper-text">
+                Clear by Day removes assignments from every concept and meal slot that belongs to the selected day within the current week. Select a day header to target that column.
+            </p>
+        {% elif bulk_action == 'clear' and bulk_scope == 'week' %}
+            <p class="muted menu-bulk-helper-text">
+                Clear by Week removes assignments from every slot in the selected week. No cell selection is needed here. Use the confirm action below when you are ready.
+            </p>
+        {% endif %}
 
         {% if menu_slot_clipboard %}
             <p class="muted">
@@ -104,13 +152,20 @@
                 <input type="hidden" name="week" value="{{ selected_week_number }}">
                 <input type="hidden" name="action" value="{{ bulk_action }}">
                 <input type="hidden" name="scope" value="{{ bulk_scope }}">
+                {% if use_week_confirm and week_slots %}
+                    <input type="hidden" name="selected_slot_ids" value="{{ week_slots[0].menu_slot_id }}">
+                {% endif %}
                 <button type="submit" class="workflow-button workflow-button-primary">
                     {% if bulk_action == 'copy' %}
                         Copy Selected {{ 'Concepts' if bulk_scope == 'concept' else 'Cells' }}
                     {% elif bulk_action == 'paste' %}
-                        Paste Selected Cell(s)
+                        Paste Selected {{ 'Concept(s)' if clipboard_mode == 'concept' else 'Cell(s)' }}
                     {% else %}
-                        Clear Selected {{ bulk_scope|title }}{% if bulk_scope != 'week' %}(s){% endif %}
+                        {% if use_week_confirm %}
+                            Clear Week {{ selected_week_number }}
+                        {% else %}
+                            Clear Selected {{ bulk_scope|title }}{% if bulk_scope != 'week' %}(s){% endif %}
+                        {% endif %}
                     {% endif %}
                 </button>
         {% endif %}
@@ -131,16 +186,34 @@
                     <div class="menu-grid-shell" style="--menu-day-count: {{ menu.service_days|length }};">
                         <div class="menu-grid-corner">Concept / Day</div>
                         {% for day in day_options if day.value in menu.service_days %}
-                            <div class="menu-grid-day-header">{{ day.label }}</div>
+                            {% set day_slots = week_slots | selectattr('day_of_week', 'equalto', day.value) | selectattr('meal_period', 'equalto', meal.value) | list %}
+                            <div class="menu-grid-day-header">
+                                <span>{{ day.label }}</span>
+                                {% if use_day_headers and day_slots %}
+                                    <label class="menu-header-selector">
+                                        <input type="checkbox" name="selected_slot_ids" value="{{ day_slots[0].menu_slot_id }}">
+                                        <span>Select Day</span>
+                                    </label>
+                                {% endif %}
+                            </div>
                         {% endfor %}
 
                         {% for concept_name in menu.concepts %}
-                            <div class="menu-grid-concept-header">{{ concept_name|replace('_', ' ')|title }}</div>
+                            {% set concept_slots = week_slots | selectattr('meal_period', 'equalto', meal.value) | selectattr('concept_name', 'equalto', concept_name) | list %}
+                            <div class="menu-grid-concept-header">
+                                <span>{{ concept_name|replace('_', ' ')|title }}</span>
+                                {% if use_concept_headers and concept_slots %}
+                                    <label class="menu-header-selector">
+                                        <input type="checkbox" name="selected_slot_ids" value="{{ concept_slots[0].menu_slot_id }}">
+                                        <span>Select Concept</span>
+                                    </label>
+                                {% endif %}
+                            </div>
                             {% for day in day_options if day.value in menu.service_days %}
                                 {% set slot = (week_slots | selectattr('day_of_week', 'equalto', day.value) | selectattr('meal_period', 'equalto', meal.value) | selectattr('concept_name', 'equalto', concept_name) | list | first) %}
                                 <div class="menu-grid-cell">
                                     {% if slot %}
-                                        {% if bulk_action %}
+                                        {% if bulk_action and not use_concept_headers and not use_day_headers and not use_week_confirm %}
                                             <label class="menu-slot-selector">
                                                 <input type="checkbox" name="selected_slot_ids" value="{{ slot.menu_slot_id }}">
                                                 <span>Select Slot</span>
@@ -174,4 +247,8 @@
     {% if bulk_action %}
             </form>
     {% endif %}
+{% endblock %}
+
+{% block scripts %}
+    <script src="{{ url_for('static', filename='menu_detail.js') }}"></script>
 {% endblock %}
