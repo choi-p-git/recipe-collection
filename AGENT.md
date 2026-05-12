@@ -244,6 +244,12 @@ MVP governance:
 MVP units are controlled string values selected from dropdowns in the web app.
 Stored as text in DB.
 
+Current unit governance:
+
+* standard authoring units are available in recipe/base-food create and edit flows
+* advanced hotel-pan volume units are canonical conversion units reserved for live recipe scaling, Forecasting, and future production-record workflows
+* advanced hotel-pan units must not be accepted for recipe component units, recipe authoring yield units, recipe authoring measurement authority fields, or base-food authority fields
+
 ## Current Database Design
 
 ### Tables
@@ -670,6 +676,12 @@ Reasoning:
 
 * JSON lists are acceptable in v0.1 because selected days, meal periods, and concepts are menu-level configuration state rather than cross-menu relational data
 * concept order matters for overview rendering, so preserving concept list order at the menu level is useful
+* concept order is a menu-level layout contract:
+
+  * it drives overview render sequence
+  * it should later drive print / export sequence
+  * reordering concepts changes display order only and does not change slot identity or assigned items
+  * concept-targeted operations continue to match by `concept_name`, not by row position
 
 #### `menu_slot`
 
@@ -844,6 +856,7 @@ Locked direction for the first post-MVP implementation slice:
   * dietitian-defined portion scaling
 
 * submitted portion-related values are provisional
+* operational hotel-pan units are scaling/forecast units, not recipe authoring units
 * final analyzed/live recipe should eventually store official dietitian-defined portion fields
 * user-defined portion calculation will live in a separate later service layer
 * first flattening pass preserves original units rather than converting units
@@ -923,6 +936,7 @@ Locked direction for the first conversion implementation:
   * recipes may use their own authoritative mass/volume fields as a bridge during live scaling
   * base foods may use their official mass/volume fields as a bridge in the shared conversion layer
   * base-food bridge conversion is defined for future reuse by modules such as Menu Builder or Inventory, even if current recipe rendering does not yet depend on it directly
+  * hotel-pan units are modeled as approximate volume units with pan-size/depth UI controls for live scaling and Forecasting only
 
 ### 5D. Measurement Authority Model v0.1
 

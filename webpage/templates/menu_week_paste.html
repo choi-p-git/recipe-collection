@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}Paste Week | {{ menu.menu_name }}{% endblock %}
+{% block main_class %}container container-menu-builder{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <div>
+            <h2>Paste Week Across Menu Cycle</h2>
+            <p class="page-subtitle">
+                Week {{ source_week_number }} has been copied from {{ menu.menu_name }}. Choose one or more destination weeks to apply that same weekly layout.
+            </p>
+        </div>
+        <div>
+            <a class="page-action-link secondary" href="{{ url_for('menu_detail', menu_id=menu.menu_id, week=source_week_number) }}">Back To Menu</a>
+        </div>
+    </div>
+
+    <section class="item-detail-section">
+        <h3>Destination Weeks</h3>
+        <p class="muted menu-bulk-helper-text">
+            Weeks are grouped in rows of four to match the standard operating cycle. Use the shortcut below to select the same cycle-position weeks automatically, or choose individual weeks manually.
+        </p>
+
+        <form method="post" class="menu-week-paste-form" data-week-paste-form>
+            <input type="hidden" name="source_week" value="{{ source_week_number }}">
+            <div class="menu-week-paste-actions">
+                <button type="button" class="workflow-button workflow-button-secondary" data-select-cycle-weeks>
+                    Select Matching Cycle Weeks
+                </button>
+                <button type="submit" class="workflow-button workflow-button-primary">
+                    Paste Into Selected Weeks
+                </button>
+            </div>
+
+            <div class="menu-week-grid" data-source-week="{{ source_week_number }}">
+                {% for week_row in week_rows %}
+                    <div class="menu-week-grid-row">
+                        {% for week_number in week_row %}
+                            <label class="menu-week-card {% if week_number == source_week_number %}is-source-week{% endif %}">
+                                <input
+                                    type="checkbox"
+                                    name="selected_weeks"
+                                    value="{{ week_number }}"
+                                    {% if week_number == source_week_number %}disabled{% endif %}
+                                >
+                                <span class="menu-week-card-label">Week {{ week_number }}</span>
+                                {% if week_number == source_week_number %}
+                                    <span class="menu-week-card-note">Source Week</span>
+                                {% endif %}
+                            </label>
+                        {% endfor %}
+                    </div>
+                {% endfor %}
+            </div>
+        </form>
+    </section>
+{% endblock %}
+
+{% block scripts %}
+    <script src="{{ url_for('static', filename='menu_week_paste.js') }}"></script>
+{% endblock %}

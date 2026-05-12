@@ -2,6 +2,7 @@ from services.unit_conversion_service import (
     convert_unit_value,
     convert_with_item_mass_volume_bridge,
     get_unit_measurement_profile,
+    normalize_unit_symbol,
 )
 
 
@@ -21,7 +22,7 @@ DISPLAY_UNIT_CASCADES = {
     },
     UNIT_SYSTEM_METRIC: {
         "mass": ["kg", "g"],
-        "volume": ["l", "ml"],
+        "volume": ["L", "ml"],
     },
 }
 
@@ -100,7 +101,7 @@ def build_display_measurement(
         return {
             "quantity": float(quantity),
             "quantity_display": format_display_quantity(float(quantity)),
-            "unit": source_unit,
+            "unit": normalize_unit_symbol(source_unit),
             "status": "original",
             "is_converted": False,
         }
@@ -127,7 +128,7 @@ def build_display_measurement(
         return {
             "quantity": float(quantity),
             "quantity_display": format_display_quantity(float(quantity)),
-            "unit": source_unit,
+            "unit": normalize_unit_symbol(source_unit),
             "status": "fallback_original",
             "warning": (
                 f"{target_measurement_type.title()} display unavailable for item in unit '{source_unit}'. "

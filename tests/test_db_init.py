@@ -15,6 +15,7 @@ def test_initialize_database_creates_expected_tables(isolated_db):
     assert "schema_migration" in tables
     assert "item_event" in tables
     assert "item_notification" in tables
+    assert "menu_forecast" in tables
 
 
 def test_initialize_database_creates_expected_indexes(isolated_db):
@@ -30,6 +31,7 @@ def test_initialize_database_creates_expected_indexes(isolated_db):
     assert "idx_recipe_component_parent" in indexes
     assert "idx_item_event_item" in indexes
     assert "idx_item_notification_item" in indexes
+    assert "idx_menu_forecast_slot_item_id" in indexes
 
 
 def test_initialize_database_records_applied_migration_versions(isolated_db):
@@ -46,6 +48,8 @@ def test_initialize_database_records_applied_migration_versions(isolated_db):
         "0004_add_measurement_authority_fields.sql",
         "0005_add_base_food_nutrition_fields.sql",
         "0006_add_menu_builder_tables.sql",
+        "0007_add_menu_forecast.sql",
+        "0008_normalize_liter_unit_symbol.sql",
     ]
 
 

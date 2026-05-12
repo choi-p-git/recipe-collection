@@ -132,6 +132,33 @@ button {
     color: #2563eb;
 }
 
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.icon-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border: 1px solid #2563eb;
+    border-radius: 6px;
+    background: #fff;
+    color: #2563eb;
+    font-weight: 700;
+    text-decoration: none;
+    cursor: pointer;
+}
+
 .text-link {
     color: #2563eb;
     text-decoration: none;
@@ -477,9 +504,39 @@ button:disabled {
     align-items: center;
 }
 
+.advanced-unit-picker {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.4rem;
+}
+
+.advanced-unit-picker.hidden {
+    display: none;
+}
+
+.advanced-unit-picker select {
+    min-width: 8rem;
+}
+
 .scale-form-row input,
 .scale-form-row select {
     width: 180px;
+}
+
+.ingredient-scale-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    margin-top: 0.75rem;
+}
+
+.ingredient-scale-form input {
+    width: 7rem;
+}
+
+.ingredient-scale-form button {
+    border-radius: 6px;
 }
 
 .is-current-toggle {
@@ -619,6 +676,64 @@ button:disabled {
     padding: 0.75rem;
 }
 
+.concept-order-builder-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+    gap: 1rem;
+    align-items: start;
+}
+
+.concept-order-panel {
+    display: grid;
+    gap: 0.75rem;
+    border: 1px solid #e5e7eb;
+    background: #f8fafc;
+    border-radius: 10px;
+    padding: 1rem;
+}
+
+.concept-order-panel h4 {
+    margin: 0;
+}
+
+.concept-order-option-list,
+.concept-order-selected-list {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.concept-order-selected-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.concept-order-selected-item,
+.concept-order-empty-state {
+    border: 1px solid #d1d5db;
+    background: #fff;
+    border-radius: 10px;
+    padding: 0.85rem;
+}
+
+.concept-order-selected-item {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: center;
+}
+
+.concept-order-selected-label {
+    font-weight: 700;
+    color: #111827;
+}
+
+.concept-order-selected-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
 .menu-overview-shell {
     display: grid;
     gap: 1rem;
@@ -636,6 +751,11 @@ button:disabled {
 
 .menu-header-action-form {
     margin-top: 0.75rem;
+}
+
+.menu-overview-action-form {
+    gap: 0.5rem;
+    align-items: center;
 }
 
 .menu-future-shells {
@@ -779,6 +899,59 @@ button:disabled {
     align-items: start;
 }
 
+.menu-week-paste-form {
+    display: grid;
+    gap: 1rem;
+}
+
+.menu-week-paste-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.menu-week-grid {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.menu-week-grid-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.75rem;
+}
+
+.menu-week-card {
+    display: grid;
+    gap: 0.45rem;
+    align-items: start;
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    background: #f8fafc;
+    padding: 1rem;
+    cursor: pointer;
+}
+
+.menu-week-card input {
+    margin: 0;
+}
+
+.menu-week-card-label {
+    font-weight: 700;
+    color: #111827;
+}
+
+.menu-week-card-note {
+    font-size: 0.88rem;
+    color: #6b7280;
+}
+
+.menu-week-card.is-source-week {
+    background: #eef2ff;
+    border-color: #a5b4fc;
+    cursor: default;
+}
+
 .menu-assignment-form {
     margin-top: 1rem;
 }
@@ -806,6 +979,139 @@ button:disabled {
     flex-wrap: wrap;
     gap: 0.75rem;
     margin-top: 1rem;
+}
+
+.container-menu-forecast {
+    max-width: 1320px;
+}
+
+.menu-forecast-calendar-section {
+    display: grid;
+    gap: 1rem;
+}
+
+.menu-forecast-cycle-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.menu-forecast-cycle-header h3 {
+    margin: 0;
+}
+
+.menu-forecast-calendar {
+    --menu-day-cell-width: minmax(96px, 1fr);
+    display: grid;
+    grid-template-columns: 96px repeat(var(--menu-day-count), var(--menu-day-cell-width));
+    gap: 0.5rem;
+}
+
+.menu-forecast-calendar-corner,
+.menu-forecast-calendar-heading,
+.menu-forecast-week-label,
+.menu-forecast-day-button {
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 0.75rem;
+}
+
+.menu-forecast-calendar-corner,
+.menu-forecast-calendar-heading,
+.menu-forecast-week-label {
+    background: #f8fafc;
+    font-weight: 700;
+    color: #1f2937;
+}
+
+.menu-forecast-calendar-heading,
+.menu-forecast-day-button {
+    text-align: center;
+}
+
+.menu-forecast-day-button {
+    background: #fff;
+    color: #2563eb;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.menu-forecast-day-button.is-selected {
+    background: #2563eb;
+    color: #fff;
+    border-color: #2563eb;
+}
+
+.menu-forecast-control-form {
+    display: block;
+}
+
+.menu-forecast-title-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: end;
+}
+
+.menu-forecast-title-row h3 {
+    flex: 1 1 280px;
+    margin: 0 1rem 0 0;
+}
+
+.menu-forecast-table-shell {
+    overflow-x: auto;
+}
+
+.menu-forecast-table {
+    width: 100%;
+    min-width: 920px;
+    border-collapse: collapse;
+    background: #fff;
+}
+
+.menu-forecast-table th,
+.menu-forecast-table td {
+    border-bottom: 1px solid #e5e7eb;
+    padding: 0.8rem;
+    text-align: left;
+    vertical-align: middle;
+}
+
+.menu-forecast-table th {
+    background: #f8fafc;
+    color: #1f2937;
+}
+
+.menu-forecast-scale-control {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.menu-forecast-scale-control input {
+    width: 7rem;
+}
+
+.menu-forecast-sync-status {
+    min-width: 5.5rem;
+    font-size: 0.86rem;
+    font-weight: 700;
+    color: #6b7280;
+}
+
+.menu-forecast-sync-status[data-state="saved"] {
+    color: #15803d;
+}
+
+.menu-forecast-sync-status[data-state="dirty"],
+.menu-forecast-sync-status[data-state="saving"] {
+    color: #92400e;
+}
+
+.menu-forecast-sync-status[data-state="error"] {
+    color: #be123c;
 }
 
 .status-chip-row {
@@ -1082,5 +1388,27 @@ button:disabled {
 
     .menu-assign-shell {
         grid-template-columns: 1fr;
+    }
+
+    .menu-week-grid-row {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .menu-forecast-calendar {
+        grid-template-columns: 80px repeat(var(--menu-day-count), minmax(84px, 1fr));
+        overflow-x: auto;
+    }
+
+    .menu-forecast-title-row {
+        align-items: stretch;
+    }
+
+    .concept-order-builder-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .concept-order-selected-item {
+        flex-direction: column;
+        align-items: start;
     }
 }

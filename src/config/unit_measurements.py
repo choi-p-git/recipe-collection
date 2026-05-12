@@ -1,3 +1,6 @@
+from config.hotel_pan_units import HOTEL_PAN_UNIT_DEFINITIONS
+
+
 UNIT_MEASUREMENT_DEFINITIONS = {
     "g": {
         "measurement_type": "mass",
@@ -24,7 +27,7 @@ UNIT_MEASUREMENT_DEFINITIONS = {
         "canonical_unit": "ml",
         "canonical_factor": 1.0,
     },
-    "l": {
+    "L": {
         "measurement_type": "volume",
         "canonical_unit": "ml",
         "canonical_factor": 1000.0,
@@ -64,6 +67,7 @@ UNIT_MEASUREMENT_DEFINITIONS = {
         "canonical_unit": "each",
         "canonical_factor": 1.0,
     },
+    **HOTEL_PAN_UNIT_DEFINITIONS,
 }
 
 MEASUREMENT_TYPE_LABELS = {

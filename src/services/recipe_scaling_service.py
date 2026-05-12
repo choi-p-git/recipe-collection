@@ -180,7 +180,8 @@ def build_scaled_recipe_view(
                 mass_quantity,
                 mass_unit,
                 volume_quantity,
-                volume_unit
+                volume_unit,
+                serving_count
             FROM item
             WHERE item_id = ?
             """,
@@ -195,6 +196,7 @@ def build_scaled_recipe_view(
             """
             SELECT
                 rc.component_item_id,
+                rc.recipe_component_id,
                 i.item_name,
                 i.item_type,
                 i.mass_quantity,
@@ -268,6 +270,15 @@ def build_scaled_recipe_view(
         if target_profile and target_profile["measurement_type"] in {"mass", "volume"}
         else None
     )
+    scaled_snapshot = {
+        "yield_quantity": normalized_target_quantity,
+        "yield_unit": normalized_target_unit,
+        "mass_quantity": float(recipe_row[6]) * scale_factor if recipe_row[6] and recipe_row[7] else None,
+        "mass_unit": recipe_row[7],
+        "volume_quantity": float(recipe_row[8]) * scale_factor if recipe_row[8] and recipe_row[9] else None,
+        "volume_unit": recipe_row[9],
+        "serving_count": float(recipe_row[10]) * scale_factor if recipe_row[10] else None,
+    }
 
     if ingredient_view == "flattened":
         flattened_view = build_flattened_recipe_view(
@@ -286,6 +297,7 @@ def build_scaled_recipe_view(
             "conversion_status": scale_basis_result["status"],
             "scale_basis_quantity": scale_basis_result["basis_quantity"],
             "scale_basis_unit": scale_basis_result["basis_unit"],
+            "scaled_snapshot": scaled_snapshot,
             "warnings": flattened_view["warnings"],
             "rows": flattened_view["rows"],
             "row_mode": "flattened",
@@ -302,35 +314,300 @@ def build_scaled_recipe_view(
         "conversion_status": scale_basis_result["status"],
         "scale_basis_quantity": scale_basis_result["basis_quantity"],
         "scale_basis_unit": scale_basis_result["basis_unit"],
+        "scaled_snapshot": scaled_snapshot,
         "warnings": [],
         "row_mode": "hierarchical",
         "rows": [
             {
                 "component_item_id": row[0],
-                "component_item_name": row[1],
-                "component_item_type": row[2],
-                "mass_quantity": row[3],
-                "mass_unit": row[4],
-                "volume_quantity": row[5],
-                "volume_unit": row[6],
-                "component_quantity": float(row[7]) * scale_factor,
-                "component_unit": row[8],
-                "quantity_display": _format_scaled_quantity(float(row[7]) * scale_factor),
-                "component_sequence": row[9],
+                "recipe_component_id": row[1],
+                "component_item_name": row[2],
+                "component_item_type": row[3],
+                "mass_quantity": row[4],
+                "mass_unit": row[5],
+                "volume_quantity": row[6],
+                "volume_unit": row[7],
+                "component_quantity": float(row[8]) * scale_factor,
+                "component_unit": row[9],
+                "quantity_display": _format_scaled_quantity(float(row[8]) * scale_factor),
+                "component_sequence": row[10],
                 "measurement_equivalent": _build_measurement_equivalent(
-                    quantity=float(row[7]) * scale_factor,
-                    source_unit=row[8],
-                    item_type=row[2],
+                    quantity=float(row[8]) * scale_factor,
+                    source_unit=row[9],
+                    item_type=row[3],
                     target_measurement_type=preferred_measurement_type,
-                    mass_quantity=row[3],
-                    mass_unit=row[4],
-                    volume_quantity=row[5],
-                    volume_unit=row[6],
+                    mass_quantity=row[4],
+                    mass_unit=row[5],
+                    volume_quantity=row[6],
+                    volume_unit=row[7],
                 ),
             }
             for row in component_rows
         ],
     }
+
+
+def _convert_ingredient_target_to_base_quantity(
+    *,
+    target_quantity: float,
+    target_unit: str,
+    base_unit: str,
+    item_type: str,
+    mass_quantity: float | None,
+    mass_unit: str | None,
+    volume_quantity: float | None,
+    volume_unit: str | None,
+) -> dict:
+    result = convert_unit_value(
+        quantity=target_quantity,
+        from_unit=target_unit,
+        to_unit=base_unit,
+    )
+    if result["ok"]:
+        return result
+
+    return convert_with_item_mass_volume_bridge(
+        quantity=target_quantity,
+        from_unit=target_unit,
+        to_unit=base_unit,
+        item_type=item_type,
+        mass_quantity=mass_quantity,
+        mass_unit=mass_unit,
+        volume_quantity=volume_quantity,
+        volume_unit=volume_unit,
+    )
+
+
+def _load_live_recipe_basis(recipe_item_id: int) -> tuple | None:
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT
+                item_id,
+                item_name,
+                item_type,
+                status,
+                yield_quantity,
+                yield_unit,
+                mass_quantity,
+                mass_unit,
+                volume_quantity,
+                volume_unit
+            FROM item
+            WHERE item_id = ?
+            """,
+            (recipe_item_id,),
+        )
+        recipe_row = cursor.fetchone()
+
+    if recipe_row is None or recipe_row[2] != "recipe" or recipe_row[3] != "live":
+        return None
+    return recipe_row
+
+
+def _build_forecast_yield_target_from_scale(
+    *,
+    recipe_row: tuple,
+    scale_factor: float,
+    preferred_unit: str,
+) -> tuple[float, str]:
+    preferred_profile = get_unit_measurement_profile(preferred_unit)
+    if preferred_profile and preferred_profile["measurement_type"] == "mass" and recipe_row[6] and recipe_row[7]:
+        scaled_mass_quantity = float(recipe_row[6]) * scale_factor
+        mass_result = convert_unit_value(
+            quantity=scaled_mass_quantity,
+            from_unit=recipe_row[7],
+            to_unit=preferred_unit,
+        )
+        if mass_result["ok"]:
+            return float(mass_result["quantity"]), preferred_unit
+
+    if preferred_profile and preferred_profile["measurement_type"] == "volume" and recipe_row[8] and recipe_row[9]:
+        scaled_volume_quantity = float(recipe_row[8]) * scale_factor
+        volume_result = convert_unit_value(
+            quantity=scaled_volume_quantity,
+            from_unit=recipe_row[9],
+            to_unit=preferred_unit,
+        )
+        if volume_result["ok"]:
+            return float(volume_result["quantity"]), preferred_unit
+
+    return float(recipe_row[4]) * scale_factor, recipe_row[5]
+
+
+def _find_hierarchical_scale_target(recipe_item_id: int, row_key: str) -> dict | None:
+    try:
+        recipe_component_id = int(row_key)
+    except (TypeError, ValueError):
+        return None
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT
+                rc.recipe_component_id,
+                rc.component_item_id,
+                i.item_name,
+                i.item_type,
+                i.mass_quantity,
+                i.mass_unit,
+                i.volume_quantity,
+                i.volume_unit,
+                rc.component_quantity,
+                rc.component_unit
+            FROM recipe_component rc
+            JOIN item i
+              ON i.item_id = rc.component_item_id
+            WHERE rc.parent_recipe_item_id = ?
+              AND rc.recipe_component_id = ?
+            """,
+            (recipe_item_id, recipe_component_id),
+        )
+        row = cursor.fetchone()
+
+    if row is None:
+        return None
+
+    return {
+        "row_key": str(row[0]),
+        "component_item_id": row[1],
+        "component_item_name": row[2],
+        "component_item_type": row[3],
+        "mass_quantity": row[4],
+        "mass_unit": row[5],
+        "volume_quantity": row[6],
+        "volume_unit": row[7],
+        "base_quantity": float(row[8]),
+        "base_unit": row[9],
+    }
+
+
+def _find_flattened_scale_target(recipe_item_id: int, row_key: str) -> dict | None:
+    try:
+        row_index = int(row_key)
+    except (TypeError, ValueError):
+        return None
+
+    flattened_view = build_flattened_recipe_view(recipe_item_id)
+    if row_index < 0 or row_index >= len(flattened_view["rows"]):
+        return None
+
+    row = flattened_view["rows"][row_index]
+    return {
+        "row_key": str(row_index),
+        "component_item_id": row["component_item_id"],
+        "component_item_name": row["component_item_name"],
+        "component_item_type": row["component_item_type"],
+        "mass_quantity": row.get("mass_quantity"),
+        "mass_unit": row.get("mass_unit"),
+        "volume_quantity": row.get("volume_quantity"),
+        "volume_unit": row.get("volume_unit"),
+        "base_quantity": float(row["total_quantity"]),
+        "base_unit": row["component_unit"],
+    }
+
+
+def build_bottom_up_scaled_recipe_view(
+    recipe_item_id: int,
+    *,
+    ingredient_view: str,
+    target_row_key: str,
+    target_quantity,
+    target_unit: str | None,
+) -> dict | None:
+    recipe_row = _load_live_recipe_basis(recipe_item_id)
+    if recipe_row is None:
+        return None
+
+    try:
+        normalized_target_quantity = float(target_quantity)
+    except (TypeError, ValueError):
+        return {
+            "available": True,
+            "is_scaled": False,
+            "warnings": ["Ingredient target quantity must be a valid number."],
+            "rows": [],
+        }
+
+    normalized_target_unit = str(target_unit or "").strip()
+    if normalized_target_quantity <= 0:
+        return {
+            "available": True,
+            "is_scaled": False,
+            "warnings": ["Ingredient target quantity must be greater than 0."],
+            "rows": [],
+        }
+    if not normalized_target_unit:
+        return {
+            "available": True,
+            "is_scaled": False,
+            "warnings": ["Ingredient target unit is required."],
+            "rows": [],
+        }
+
+    target = (
+        _find_flattened_scale_target(recipe_item_id, target_row_key)
+        if ingredient_view == "flattened"
+        else _find_hierarchical_scale_target(recipe_item_id, target_row_key)
+    )
+    if target is None:
+        return {
+            "available": True,
+            "is_scaled": False,
+            "warnings": ["Select a valid ingredient to scale from."],
+            "rows": [],
+        }
+
+    conversion = _convert_ingredient_target_to_base_quantity(
+        target_quantity=normalized_target_quantity,
+        target_unit=normalized_target_unit,
+        base_unit=target["base_unit"],
+        item_type=target["component_item_type"],
+        mass_quantity=target["mass_quantity"],
+        mass_unit=target["mass_unit"],
+        volume_quantity=target["volume_quantity"],
+        volume_unit=target["volume_unit"],
+    )
+    if not conversion["ok"]:
+        return {
+            "available": True,
+            "is_scaled": False,
+            "warnings": [
+                f"Ingredient target unit '{normalized_target_unit}' is not convertible to "
+                f"'{target['base_unit']}' for {target['component_item_name']}."
+            ],
+            "rows": [],
+            "target_ingredient": target,
+        }
+
+    scale_factor = float(conversion["quantity"]) / target["base_quantity"]
+    forecast_yield_quantity = float(recipe_row[4]) * scale_factor
+    forecast_save_quantity, forecast_save_unit = _build_forecast_yield_target_from_scale(
+        recipe_row=recipe_row,
+        scale_factor=scale_factor,
+        preferred_unit=normalized_target_unit,
+    )
+    scaled_view = build_scaled_recipe_view(
+        recipe_item_id,
+        target_quantity=forecast_yield_quantity,
+        target_unit=recipe_row[5],
+        ingredient_view=ingredient_view,
+    )
+    if scaled_view is None:
+        return None
+
+    scaled_view["scale_mode"] = "ingredient"
+    scaled_view["target_ingredient"] = target
+    scaled_view["ingredient_target_quantity"] = normalized_target_quantity
+    scaled_view["ingredient_target_unit"] = normalized_target_unit
+    scaled_view["forecast_yield_quantity"] = forecast_yield_quantity
+    scaled_view["forecast_yield_unit"] = recipe_row[5]
+    scaled_view["forecast_save_quantity"] = forecast_save_quantity
+    scaled_view["forecast_save_unit"] = forecast_save_unit
+    scaled_view["ingredient_conversion_status"] = conversion["status"]
+    return scaled_view
 
 
 def build_recipe_scaling_foundation(recipe_item_id: int) -> dict | None:

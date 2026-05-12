@@ -36,7 +36,7 @@
                     <p>
                         <a
                             class="page-action-link secondary"
-                            href="{{ url_for('item_detail', item_id=item.item_id, workflow_view='default' if advanced_workflow_enabled else 'advanced', ingredient_view=ingredient_view_mode if item.item_type == 'recipe' else None, scale_quantity=scale_quantity or None, scale_unit=scale_unit or None, technical_view='advanced' if technical_details_enabled else 'default', display_mode=display_mode if item.item_type == 'recipe' else None, unit_system=unit_system if item.item_type == 'recipe' else None) }}"
+                            href="{{ url_for('item_detail', item_id=item.item_id, workflow_view='default' if advanced_workflow_enabled else 'advanced', ingredient_view=ingredient_view_mode if item.item_type == 'recipe' else None, scale_quantity=scale_quantity or None, scale_unit=scale_unit or None, technical_view='advanced' if technical_details_enabled else 'default', display_mode=display_mode if item.item_type == 'recipe' else None, unit_system=unit_system if item.item_type == 'recipe' else None, scale_mode=scale_mode if item.item_type == 'recipe' and scale_mode == 'ingredient' else None, advanced_scale_row_key=advanced_scale_row_key or None, advanced_scale_quantity=advanced_scale_quantity or None, advanced_scale_unit=advanced_scale_unit or None, forecast_menu_id=forecast_context.menu_id or None, forecast_menu_slot_item_id=forecast_context.menu_slot_item_id or None, forecast_week=forecast_context.week or None, forecast_day=forecast_context.day or None) }}"
                         >
                             {% if advanced_workflow_enabled %}Hide Advanced Workflow{% else %}Show Advanced Workflow{% endif %}
                         </a>
@@ -46,7 +46,7 @@
                     <p>
                         <a
                             class="page-action-link secondary"
-                            href="{{ url_for('item_detail', item_id=item.item_id, technical_view='default' if technical_details_enabled else 'advanced', workflow_view='advanced' if advanced_workflow_enabled else 'default', ingredient_view=ingredient_view_mode if item.item_type == 'recipe' else None, scale_quantity=scale_quantity or None, scale_unit=scale_unit or None, display_mode=display_mode if item.item_type == 'recipe' else None, unit_system=unit_system if item.item_type == 'recipe' else None) }}"
+                            href="{{ url_for('item_detail', item_id=item.item_id, technical_view='default' if technical_details_enabled else 'advanced', workflow_view='advanced' if advanced_workflow_enabled else 'default', ingredient_view=ingredient_view_mode if item.item_type == 'recipe' else None, scale_quantity=scale_quantity or None, scale_unit=scale_unit or None, display_mode=display_mode if item.item_type == 'recipe' else None, unit_system=unit_system if item.item_type == 'recipe' else None, scale_mode=scale_mode if item.item_type == 'recipe' and scale_mode == 'ingredient' else None, advanced_scale_row_key=advanced_scale_row_key or None, advanced_scale_quantity=advanced_scale_quantity or None, advanced_scale_unit=advanced_scale_unit or None, forecast_menu_id=forecast_context.menu_id or None, forecast_menu_slot_item_id=forecast_context.menu_slot_item_id or None, forecast_week=forecast_context.week or None, forecast_day=forecast_context.day or None) }}"
                         >
                             {% if technical_details_enabled %}Hide Technical Details{% else %}Show Technical Details{% endif %}
                         </a>
@@ -63,12 +63,19 @@
         {% endif %}
 
         <section class="item-detail-section">
+            {% set recipe_snapshot = scaled_recipe_view.scaled_snapshot if item.item_type == "recipe" and scaled_recipe_view and scaled_recipe_view.is_scaled else None %}
             <h3>{{ "Recipe Snapshot" if item.item_type == "recipe" else "Base Food Snapshot" }}</h3>
             <div class="detail-stat-grid">
                 {% if item.item_type == "recipe" %}
                     <article class="detail-stat-card">
                         <p class="detail-stat-label">Yield</p>
-                        <p class="detail-stat-value">{{ item.yield_quantity }} {{ item.yield_unit }}</p>
+                        <p class="detail-stat-value">
+                            {% if recipe_snapshot %}
+                                {{ recipe_snapshot.yield_quantity|round(3) }} {{ recipe_snapshot.yield_unit|unit_label }}
+                            {% else %}
+                                {{ item.yield_quantity }} {{ item.yield_unit|unit_label }}
+                            {% endif %}
+                        </p>
                     </article>
                     <article class="detail-stat-card">
                         <p class="detail-stat-label">Primary Method</p>
@@ -77,8 +84,12 @@
                     <article class="detail-stat-card">
                         <p class="detail-stat-label">Yield Mass</p>
                         <p class="detail-stat-value">
-                            {% if item.mass_quantity and item.mass_unit %}
-                                {{ item.mass_quantity }} {{ item.mass_unit }}
+                            {% if recipe_snapshot and recipe_snapshot.mass_quantity and recipe_snapshot.mass_unit %}
+                                {{ recipe_snapshot.mass_display_quantity_display or recipe_snapshot.mass_quantity|round(3) }}
+                                {{ (recipe_snapshot.mass_display_unit or recipe_snapshot.mass_unit)|unit_label }}
+                            {% elif item.mass_quantity and item.mass_unit %}
+                                {{ item.mass_display_quantity_display or item.mass_quantity }}
+                                {{ (item.mass_display_unit or item.mass_unit)|unit_label }}
                             {% else %}
                                 Pending Measurement Review
                             {% endif %}
@@ -87,8 +98,12 @@
                     <article class="detail-stat-card">
                         <p class="detail-stat-label">Yield Volume</p>
                         <p class="detail-stat-value">
-                            {% if item.volume_quantity and item.volume_unit %}
-                                {{ item.volume_quantity }} {{ item.volume_unit }}
+                            {% if recipe_snapshot and recipe_snapshot.volume_quantity and recipe_snapshot.volume_unit %}
+                                {{ recipe_snapshot.volume_display_quantity_display or recipe_snapshot.volume_quantity|round(3) }}
+                                {{ (recipe_snapshot.volume_display_unit or recipe_snapshot.volume_unit)|unit_label }}
+                            {% elif item.volume_quantity and item.volume_unit %}
+                                {{ item.volume_display_quantity_display or item.volume_quantity }}
+                                {{ (item.volume_display_unit or item.volume_unit)|unit_label }}
                             {% else %}
                                 Pending Measurement Review
                             {% endif %}
@@ -134,17 +149,19 @@
         {% if item.item_type == "recipe" %}
             {% if item.status == "live" %}
                 <section class="item-detail-section">
+                    {% set ingredient_view_toggle_scale_quantity = scaled_recipe_view.forecast_yield_quantity if scaled_recipe_view and scaled_recipe_view.scale_mode == 'ingredient' and scaled_recipe_view.is_scaled else scale_quantity %}
+                    {% set ingredient_view_toggle_scale_unit = scaled_recipe_view.forecast_yield_unit if scaled_recipe_view and scaled_recipe_view.scale_mode == 'ingredient' and scaled_recipe_view.is_scaled else scale_unit %}
                     <h3>Ingredient View</h3>
                     <div class="detail-toggle-row">
                         <a
                             class="page-action-link secondary {% if ingredient_view_mode == 'hierarchical' %}is-current-toggle{% endif %}"
-                            href="{{ url_for('item_detail', item_id=item.item_id, ingredient_view='hierarchical', workflow_view='advanced' if advanced_workflow_enabled else 'default', scale_quantity=scale_quantity or None, scale_unit=scale_unit or None, display_mode=display_mode, unit_system=unit_system, technical_view='advanced' if technical_details_enabled else 'default') }}"
+                            href="{{ url_for('item_detail', item_id=item.item_id, ingredient_view='hierarchical', workflow_view='advanced' if advanced_workflow_enabled else 'default', scale_quantity=ingredient_view_toggle_scale_quantity or None, scale_unit=ingredient_view_toggle_scale_unit or None, display_mode=display_mode, unit_system=unit_system, technical_view='advanced' if technical_details_enabled else 'default', scale_mode=scale_mode if scale_mode == 'ingredient' else None, forecast_menu_id=forecast_context.menu_id or None, forecast_menu_slot_item_id=forecast_context.menu_slot_item_id or None, forecast_week=forecast_context.week or None, forecast_day=forecast_context.day or None) }}"
                         >
                             Hierarchical Ingredients
                         </a>
                         <a
                             class="page-action-link secondary {% if ingredient_view_mode == 'flattened' %}is-current-toggle{% endif %}"
-                            href="{{ url_for('item_detail', item_id=item.item_id, ingredient_view='flattened', workflow_view='advanced' if advanced_workflow_enabled else 'default', scale_quantity=scale_quantity or None, scale_unit=scale_unit or None, display_mode=display_mode, unit_system=unit_system, technical_view='advanced' if technical_details_enabled else 'default') }}"
+                            href="{{ url_for('item_detail', item_id=item.item_id, ingredient_view='flattened', workflow_view='advanced' if advanced_workflow_enabled else 'default', scale_quantity=ingredient_view_toggle_scale_quantity or None, scale_unit=ingredient_view_toggle_scale_unit or None, display_mode=display_mode, unit_system=unit_system, technical_view='advanced' if technical_details_enabled else 'default', scale_mode=scale_mode if scale_mode == 'ingredient' else None, forecast_menu_id=forecast_context.menu_id or None, forecast_menu_slot_item_id=forecast_context.menu_slot_item_id or None, forecast_week=forecast_context.week or None, forecast_day=forecast_context.day or None) }}"
                         >
                             Flattened Ingredients
                         </a>
@@ -153,19 +170,19 @@
                         <span class="detail-toggle-label">Display Mode</span>
                         <a
                             class="page-action-link secondary {% if display_mode == 'default' %}is-current-toggle{% endif %}"
-                            href="{{ url_for('item_detail', item_id=item.item_id, ingredient_view=ingredient_view_mode, workflow_view='advanced' if advanced_workflow_enabled else 'default', scale_quantity=scale_quantity or None, scale_unit=scale_unit or None, display_mode='default', unit_system=unit_system, technical_view='advanced' if technical_details_enabled else 'default') }}"
+                            href="{{ url_for('item_detail', item_id=item.item_id, ingredient_view=ingredient_view_mode, workflow_view='advanced' if advanced_workflow_enabled else 'default', scale_quantity=scale_quantity or None, scale_unit=scale_unit or None, display_mode='default', unit_system=unit_system, technical_view='advanced' if technical_details_enabled else 'default', scale_mode=scale_mode if scale_mode == 'ingredient' else None, advanced_scale_row_key=advanced_scale_row_key or None, advanced_scale_quantity=advanced_scale_quantity or None, advanced_scale_unit=advanced_scale_unit or None, forecast_menu_id=forecast_context.menu_id or None, forecast_menu_slot_item_id=forecast_context.menu_slot_item_id or None, forecast_week=forecast_context.week or None, forecast_day=forecast_context.day or None) }}"
                         >
                             Default
                         </a>
                         <a
                             class="page-action-link secondary {% if display_mode == 'volume' %}is-current-toggle{% endif %}"
-                            href="{{ url_for('item_detail', item_id=item.item_id, ingredient_view=ingredient_view_mode, workflow_view='advanced' if advanced_workflow_enabled else 'default', scale_quantity=scale_quantity or None, scale_unit=scale_unit or None, display_mode='volume', unit_system=unit_system, technical_view='advanced' if technical_details_enabled else 'default') }}"
+                            href="{{ url_for('item_detail', item_id=item.item_id, ingredient_view=ingredient_view_mode, workflow_view='advanced' if advanced_workflow_enabled else 'default', scale_quantity=scale_quantity or None, scale_unit=scale_unit or None, display_mode='volume', unit_system=unit_system, technical_view='advanced' if technical_details_enabled else 'default', scale_mode=scale_mode if scale_mode == 'ingredient' else None, advanced_scale_row_key=advanced_scale_row_key or None, advanced_scale_quantity=advanced_scale_quantity or None, advanced_scale_unit=advanced_scale_unit or None, forecast_menu_id=forecast_context.menu_id or None, forecast_menu_slot_item_id=forecast_context.menu_slot_item_id or None, forecast_week=forecast_context.week or None, forecast_day=forecast_context.day or None) }}"
                         >
                             Volume
                         </a>
                         <a
                             class="page-action-link secondary {% if display_mode == 'mass' %}is-current-toggle{% endif %}"
-                            href="{{ url_for('item_detail', item_id=item.item_id, ingredient_view=ingredient_view_mode, workflow_view='advanced' if advanced_workflow_enabled else 'default', scale_quantity=scale_quantity or None, scale_unit=scale_unit or None, display_mode='mass', unit_system=unit_system, technical_view='advanced' if technical_details_enabled else 'default') }}"
+                            href="{{ url_for('item_detail', item_id=item.item_id, ingredient_view=ingredient_view_mode, workflow_view='advanced' if advanced_workflow_enabled else 'default', scale_quantity=scale_quantity or None, scale_unit=scale_unit or None, display_mode='mass', unit_system=unit_system, technical_view='advanced' if technical_details_enabled else 'default', scale_mode=scale_mode if scale_mode == 'ingredient' else None, advanced_scale_row_key=advanced_scale_row_key or None, advanced_scale_quantity=advanced_scale_quantity or None, advanced_scale_unit=advanced_scale_unit or None, forecast_menu_id=forecast_context.menu_id or None, forecast_menu_slot_item_id=forecast_context.menu_slot_item_id or None, forecast_week=forecast_context.week or None, forecast_day=forecast_context.day or None) }}"
                         >
                             Mass
                         </a>
@@ -174,13 +191,13 @@
                         <span class="detail-toggle-label">Unit System</span>
                         <a
                             class="page-action-link secondary {% if unit_system == 'imperial' %}is-current-toggle{% endif %}"
-                            href="{{ url_for('item_detail', item_id=item.item_id, ingredient_view=ingredient_view_mode, workflow_view='advanced' if advanced_workflow_enabled else 'default', scale_quantity=scale_quantity or None, scale_unit=scale_unit or None, display_mode=display_mode, unit_system='imperial', technical_view='advanced' if technical_details_enabled else 'default') }}"
+                            href="{{ url_for('item_detail', item_id=item.item_id, ingredient_view=ingredient_view_mode, workflow_view='advanced' if advanced_workflow_enabled else 'default', scale_quantity=scale_quantity or None, scale_unit=scale_unit or None, display_mode=display_mode, unit_system='imperial', technical_view='advanced' if technical_details_enabled else 'default', scale_mode=scale_mode if scale_mode == 'ingredient' else None, advanced_scale_row_key=advanced_scale_row_key or None, advanced_scale_quantity=advanced_scale_quantity or None, advanced_scale_unit=advanced_scale_unit or None, forecast_menu_id=forecast_context.menu_id or None, forecast_menu_slot_item_id=forecast_context.menu_slot_item_id or None, forecast_week=forecast_context.week or None, forecast_day=forecast_context.day or None) }}"
                         >
                             Imperial
                         </a>
                         <a
                             class="page-action-link secondary {% if unit_system == 'metric' %}is-current-toggle{% endif %}"
-                            href="{{ url_for('item_detail', item_id=item.item_id, ingredient_view=ingredient_view_mode, workflow_view='advanced' if advanced_workflow_enabled else 'default', scale_quantity=scale_quantity or None, scale_unit=scale_unit or None, display_mode=display_mode, unit_system='metric', technical_view='advanced' if technical_details_enabled else 'default') }}"
+                            href="{{ url_for('item_detail', item_id=item.item_id, ingredient_view=ingredient_view_mode, workflow_view='advanced' if advanced_workflow_enabled else 'default', scale_quantity=scale_quantity or None, scale_unit=scale_unit or None, display_mode=display_mode, unit_system='metric', technical_view='advanced' if technical_details_enabled else 'default', scale_mode=scale_mode if scale_mode == 'ingredient' else None, advanced_scale_row_key=advanced_scale_row_key or None, advanced_scale_quantity=advanced_scale_quantity or None, advanced_scale_unit=advanced_scale_unit or None, forecast_menu_id=forecast_context.menu_id or None, forecast_menu_slot_item_id=forecast_context.menu_slot_item_id or None, forecast_week=forecast_context.week or None, forecast_day=forecast_context.day or None) }}"
                         >
                             Metric
                         </a>
@@ -189,12 +206,40 @@
 
                 <section class="item-detail-section">
                     <h3>Scale Recipe</h3>
+                    <div class="detail-toggle-row">
+                        <a
+                            class="page-action-link secondary {% if scale_mode != 'ingredient' %}is-current-toggle{% endif %}"
+                            href="{{ url_for('item_detail', item_id=item.item_id, ingredient_view=ingredient_view_mode, workflow_view='advanced' if advanced_workflow_enabled else 'default', technical_view='advanced' if technical_details_enabled else 'default', display_mode=display_mode, unit_system=unit_system, forecast_menu_id=forecast_context.menu_id or None, forecast_menu_slot_item_id=forecast_context.menu_slot_item_id or None, forecast_week=forecast_context.week or None, forecast_day=forecast_context.day or None) }}"
+                        >
+                            Scale by Yield
+                        </a>
+                        <a
+                            class="page-action-link secondary {% if scale_mode == 'ingredient' %}is-current-toggle{% endif %}"
+                            href="{{ url_for('item_detail', item_id=item.item_id, ingredient_view=ingredient_view_mode, workflow_view='advanced' if advanced_workflow_enabled else 'default', technical_view='advanced' if technical_details_enabled else 'default', display_mode=display_mode, unit_system=unit_system, scale_mode='ingredient', forecast_menu_id=forecast_context.menu_id or None, forecast_menu_slot_item_id=forecast_context.menu_slot_item_id or None, forecast_week=forecast_context.week or None, forecast_day=forecast_context.day or None) }}"
+                        >
+                            Advanced Ingredient Scaling
+                        </a>
+                    </div>
+                    {% if scale_mode == "ingredient" %}
+                        <p class="muted">
+                            Enter a target amount next to an ingredient below and scale from that ingredient upward.
+                        </p>
+                    {% else %}
                     <form method="get" class="scale-form">
                         <input type="hidden" name="ingredient_view" value="{{ ingredient_view_mode }}">
                         <input type="hidden" name="workflow_view" value="{{ 'advanced' if advanced_workflow_enabled else 'default' }}">
                         <input type="hidden" name="technical_view" value="{{ 'advanced' if technical_details_enabled else 'default' }}">
                         <input type="hidden" name="display_mode" value="{{ display_mode }}">
                         <input type="hidden" name="unit_system" value="{{ unit_system }}">
+                        {% if has_forecast_context %}
+                            <input type="hidden" name="forecast_menu_id" value="{{ forecast_context.menu_id }}">
+                            <input type="hidden" name="forecast_menu_slot_item_id" value="{{ forecast_context.menu_slot_item_id }}">
+                            <input type="hidden" name="forecast_week" value="{{ forecast_context.week }}">
+                            <input type="hidden" name="forecast_day" value="{{ forecast_context.day }}">
+                        {% endif %}
+                        {% if scale_mode == "ingredient" %}
+                            <input type="hidden" name="scale_mode" value="yield">
+                        {% endif %}
                         <div class="detail-toggle-row scale-form-row">
                             <input
                                 type="number"
@@ -206,7 +251,7 @@
                             <select name="scale_unit">
                                 <option value="">-- Select Unit --</option>
                                 {% for unit in approved_units %}
-                                    <option value="{{ unit }}" {% if scale_unit == unit %}selected{% endif %}>{{ unit }}</option>
+                                    <option value="{{ unit }}" {% if scale_unit == unit %}selected{% endif %}>{{ unit|unit_label }}</option>
                                 {% endfor %}
                             </select>
                             <button type="submit">Apply Scaling</button>
@@ -220,16 +265,41 @@
                             {% endif %}
                         </div>
                     </form>
+                    {% endif %}
                     {% if scaled_recipe_view and scaled_recipe_view.is_scaled %}
                         <p class="muted">
-                            Scaling to {{ scaled_recipe_view.target_quantity }} {{ scaled_recipe_view.target_unit }}
-                            from base yield {{ scaled_recipe_view.recipe_yield_quantity }} {{ scaled_recipe_view.recipe_yield_unit }}.
+                            {% if scaled_recipe_view.scale_mode == "ingredient" %}
+                                Scaling from {{ scaled_recipe_view.ingredient_target_quantity }} {{ scaled_recipe_view.ingredient_target_unit|unit_label }}
+                                {{ scaled_recipe_view.target_ingredient.component_item_name }}
+                                to recipe yield {{ scaled_recipe_view.forecast_yield_quantity|round(3) }} {{ scaled_recipe_view.forecast_yield_unit|unit_label }}.
+                            {% else %}
+                                Scaling to {{ scaled_recipe_view.target_quantity }} {{ scaled_recipe_view.target_unit|unit_label }}
+                                from base yield {{ scaled_recipe_view.recipe_yield_quantity }} {{ scaled_recipe_view.recipe_yield_unit|unit_label }}.
+                            {% endif %}
                         </p>
                         {% if scaled_recipe_view.scale_basis_unit != scaled_recipe_view.recipe_yield_unit %}
                             <p class="muted">
                                 Scaling factor anchored through official batch basis
-                                {{ scaled_recipe_view.scale_basis_quantity }} {{ scaled_recipe_view.scale_basis_unit }}.
+                                {{ scaled_recipe_view.scale_basis_quantity }} {{ scaled_recipe_view.scale_basis_unit|unit_label }}.
                             </p>
+                        {% endif %}
+                        {% if has_forecast_context %}
+                            <form
+                                method="post"
+                                action="{{ url_for('confirm_menu_forecast_scaling', menu_id=forecast_context.menu_id|int, menu_slot_item_id=forecast_context.menu_slot_item_id|int) }}"
+                                class="scale-form"
+                            >
+                                {% if scaled_recipe_view.scale_mode == "ingredient" %}
+                                    <input type="hidden" name="forecast_yield_quantity" value="{{ scaled_recipe_view.forecast_save_quantity }}">
+                                    <input type="hidden" name="forecast_yield_unit" value="{{ scaled_recipe_view.forecast_save_unit }}">
+                                {% else %}
+                                    <input type="hidden" name="forecast_yield_quantity" value="{{ scaled_recipe_view.target_quantity }}">
+                                    <input type="hidden" name="forecast_yield_unit" value="{{ scaled_recipe_view.target_unit }}">
+                                {% endif %}
+                                <input type="hidden" name="forecast_week" value="{{ forecast_context.week }}">
+                                <input type="hidden" name="forecast_day" value="{{ forecast_context.day }}">
+                                <button type="submit" class="workflow-button workflow-button-primary">Confirm Scaling</button>
+                            </form>
                         {% endif %}
                     {% endif %}
                 </section>
@@ -243,7 +313,7 @@
                         <article class="detail-stat-card">
                             <p class="detail-stat-label">Yield Basis</p>
                             <p class="detail-stat-value">
-                                {{ scaling_foundation.yield_quantity }} {{ scaling_foundation.yield_unit }}
+                                {{ scaling_foundation.yield_quantity }} {{ scaling_foundation.yield_unit|unit_label }}
                             </p>
                             <p class="muted">
                                 {{ scaling_foundation.yield_profile.measurement_type_label if scaling_foundation.yield_profile else "Unknown" }}
@@ -254,7 +324,7 @@
                             <p class="detail-stat-label">Serving Basis</p>
                             <p class="detail-stat-value">
                                 {% if scaling_foundation.serving_size_quantity and scaling_foundation.serving_size_unit %}
-                                    {{ scaling_foundation.serving_size_quantity }} {{ scaling_foundation.serving_size_unit }}
+                                    {{ scaling_foundation.serving_size_quantity }} {{ scaling_foundation.serving_size_unit|unit_label }}
                                 {% else %}
                                     Provisional / Optional
                                 {% endif %}
@@ -282,10 +352,10 @@
                                     <p class="detail-stat-label">Sub-Recipe</p>
                                     <p class="detail-stat-value">{{ sub_recipe.component_item_name }}</p>
                                     <p class="muted">
-                                        Parent call: {{ sub_recipe.component_quantity }} {{ sub_recipe.component_unit }}
+                                        Parent call: {{ sub_recipe.component_quantity }} {{ sub_recipe.component_unit|unit_label }}
                                     </p>
                                     <p class="muted">
-                                        Child yield: {{ sub_recipe.child_yield_quantity }} {{ sub_recipe.child_yield_unit }}
+                                        Child yield: {{ sub_recipe.child_yield_quantity }} {{ sub_recipe.child_yield_unit|unit_label }}
                                     </p>
                                     <p class="muted">
                                         {{ sub_recipe.relationship_label }}
@@ -306,22 +376,48 @@
             <section class="item-detail-section detail-section-split">
                 <h3>Yield</h3>
                 <div class="detail-copy-stack">
-                    <p><strong>Yield:</strong> {{ item.yield_quantity }} {{ item.yield_unit }}</p>
-
-                    {% if item.status == "live" and item.serving_size_quantity and item.serving_size_unit %}
-                        <p><strong>Serving Size:</strong> {{ item.serving_size_quantity }} {{ item.serving_size_unit }}</p>
+                    {% if recipe_snapshot %}
+                        <p><strong>Yield:</strong> {{ recipe_snapshot.yield_quantity|round(3) }} {{ recipe_snapshot.yield_unit|unit_label }}</p>
+                    {% else %}
+                        <p><strong>Yield:</strong> {{ item.yield_quantity }} {{ item.yield_unit|unit_label }}</p>
                     {% endif %}
 
-                    {% if item.serving_count and item.status == "live" %}
+                    {% if item.status == "live" and item.serving_size_quantity and item.serving_size_unit %}
+                        <p><strong>Serving Size:</strong> {{ item.serving_size_quantity }} {{ item.serving_size_unit|unit_label }}</p>
+                    {% endif %}
+
+                    {% if recipe_snapshot and recipe_snapshot.serving_count and item.status == "live" %}
+                        <p><strong>Serving Count:</strong> {{ recipe_snapshot.serving_count|round(3) }}</p>
+                    {% elif item.serving_count and item.status == "live" %}
                         <p><strong>Serving Count:</strong> {{ item.serving_count }}</p>
                     {% endif %}
 
-                    {% if item.mass_quantity and item.mass_unit %}
-                        <p><strong>Yield Mass:</strong> {{ item.mass_quantity }} {{ item.mass_unit }}</p>
+                    {% if recipe_snapshot and recipe_snapshot.mass_quantity and recipe_snapshot.mass_unit %}
+                        <p>
+                            <strong>Yield Mass:</strong>
+                            {{ recipe_snapshot.mass_display_quantity_display or recipe_snapshot.mass_quantity|round(3) }}
+                            {{ (recipe_snapshot.mass_display_unit or recipe_snapshot.mass_unit)|unit_label }}
+                        </p>
+                    {% elif item.mass_quantity and item.mass_unit %}
+                        <p>
+                            <strong>Yield Mass:</strong>
+                            {{ item.mass_display_quantity_display or item.mass_quantity }}
+                            {{ (item.mass_display_unit or item.mass_unit)|unit_label }}
+                        </p>
                     {% endif %}
 
-                    {% if item.volume_quantity and item.volume_unit %}
-                        <p><strong>Yield Volume:</strong> {{ item.volume_quantity }} {{ item.volume_unit }}</p>
+                    {% if recipe_snapshot and recipe_snapshot.volume_quantity and recipe_snapshot.volume_unit %}
+                        <p>
+                            <strong>Yield Volume:</strong>
+                            {{ recipe_snapshot.volume_display_quantity_display or recipe_snapshot.volume_quantity|round(3) }}
+                            {{ (recipe_snapshot.volume_display_unit or recipe_snapshot.volume_unit)|unit_label }}
+                        </p>
+                    {% elif item.volume_quantity and item.volume_unit %}
+                        <p>
+                            <strong>Yield Volume:</strong>
+                            {{ item.volume_display_quantity_display or item.volume_quantity }}
+                            {{ (item.volume_display_unit or item.volume_unit)|unit_label }}
+                        </p>
                     {% endif %}
                 </div>
             </section>
@@ -382,6 +478,8 @@
                     {% if active_flattened_view and active_flattened_view.rows %}
                         <div class="flattened-tree">
                             {% for ingredient in active_flattened_view.rows %}
+                                {% set flattened_scale_row_key = loop.index0|string %}
+                                {% set flattened_scale_row_is_active = advanced_scale_row_key == flattened_scale_row_key %}
                                 <article
                                     class="ingredient-detail-card flattened-tree-row {% if ingredient.row_type == 'sub_recipe' %}flattened-tree-row-sub-recipe{% endif %}"
                                     style="--flatten-depth: {{ ingredient.depth }};"
@@ -389,7 +487,7 @@
                                     <p class="ingredient-detail-quantity">
                                         {{ ingredient.display_quantity_display or ingredient.quantity_display }}
                                         {% if (ingredient.display_quantity_display or ingredient.quantity_display) != "according to taste" %}
-                                            {{ ingredient.display_unit or ingredient.component_unit }}
+                                            {{ (ingredient.display_unit or ingredient.component_unit)|unit_label }}
                                         {% endif %}
                                     </p>
                                     <h4>
@@ -403,7 +501,7 @@
                                             | Called from {{ ingredient.source_recipe_name }}
                                         </p>
                                         <p class="muted">
-                                            Child yield: {{ ingredient.child_yield_quantity }} {{ ingredient.child_yield_unit }}
+                                            Child yield: {{ ingredient.child_yield_quantity }} {{ ingredient.child_yield_unit|unit_label }}
                                         </p>
                                     {% else %}
                                         <p class="muted">
@@ -416,9 +514,41 @@
                                             {{ ingredient.measurement_equivalent.label }}:
                                             {{ ingredient.measurement_equivalent.quantity_display }}
                                             {% if ingredient.measurement_equivalent.quantity_display != "according to taste" %}
-                                                {{ ingredient.measurement_equivalent.unit }}
+                                                {{ ingredient.measurement_equivalent.unit|unit_label }}
                                             {% endif %}
                                         </p>
+                                    {% endif %}
+                                    {% if scale_mode == "ingredient" %}
+                                        <form method="get" class="ingredient-scale-form">
+                                            <input type="hidden" name="ingredient_view" value="flattened">
+                                            <input type="hidden" name="workflow_view" value="{{ 'advanced' if advanced_workflow_enabled else 'default' }}">
+                                            <input type="hidden" name="technical_view" value="{{ 'advanced' if technical_details_enabled else 'default' }}">
+                                            <input type="hidden" name="display_mode" value="{{ display_mode }}">
+                                            <input type="hidden" name="unit_system" value="{{ unit_system }}">
+                                            <input type="hidden" name="scale_mode" value="ingredient">
+                                            <input type="hidden" name="advanced_scale_submit" value="1">
+                                            <input type="hidden" name="advanced_scale_row_key" value="{{ flattened_scale_row_key }}">
+                                            {% if has_forecast_context %}
+                                                <input type="hidden" name="forecast_menu_id" value="{{ forecast_context.menu_id }}">
+                                                <input type="hidden" name="forecast_menu_slot_item_id" value="{{ forecast_context.menu_slot_item_id }}">
+                                                <input type="hidden" name="forecast_week" value="{{ forecast_context.week }}">
+                                                <input type="hidden" name="forecast_day" value="{{ forecast_context.day }}">
+                                            {% endif %}
+                                            <input
+                                                type="number"
+                                                step="0.01"
+                                                min="0"
+                                                name="advanced_scale_quantity"
+                                                placeholder="Target qty"
+                                                value="{{ advanced_scale_quantity if flattened_scale_row_is_active else '' }}"
+                                            >
+                                            <select name="advanced_scale_unit">
+                                                {% for unit in approved_units %}
+                                                    <option value="{{ unit }}" {% if (flattened_scale_row_is_active and advanced_scale_unit == unit) or (not flattened_scale_row_is_active and ingredient.component_unit == unit) %}selected{% endif %}>{{ unit|unit_label }}</option>
+                                                {% endfor %}
+                                            </select>
+                                            <button type="submit">Scale</button>
+                                        </form>
                                     {% endif %}
                                 </article>
                             {% endfor %}
@@ -432,6 +562,8 @@
                     {% if active_ingredient_rows %}
                         <div class="ingredient-detail-grid">
                             {% for ingredient in active_ingredient_rows %}
+                                {% set hierarchical_scale_row_key = ingredient.recipe_component_id|string %}
+                                {% set hierarchical_scale_row_is_active = advanced_scale_row_key == hierarchical_scale_row_key %}
                                 <article class="ingredient-detail-card">
                                     <p class="ingredient-detail-quantity">
                                         {% if scaled_mode %}
@@ -440,7 +572,7 @@
                                             {{ ingredient.display_quantity_display or ingredient.component_quantity }}
                                         {% endif %}
                                         {% if (ingredient.display_quantity_display or ingredient.quantity_display or ingredient.component_quantity) != "according to taste" %}
-                                            {{ ingredient.display_unit or ingredient.component_unit }}
+                                            {{ (ingredient.display_unit or ingredient.component_unit)|unit_label }}
                                         {% endif %}
                                     </p>
                                     <h4>
@@ -460,9 +592,41 @@
                                             {{ ingredient.measurement_equivalent.label }}:
                                             {{ ingredient.measurement_equivalent.quantity_display }}
                                             {% if ingredient.measurement_equivalent.quantity_display != "according to taste" %}
-                                                {{ ingredient.measurement_equivalent.unit }}
+                                                {{ ingredient.measurement_equivalent.unit|unit_label }}
                                             {% endif %}
                                         </p>
+                                    {% endif %}
+                                    {% if scale_mode == "ingredient" %}
+                                        <form method="get" class="ingredient-scale-form">
+                                            <input type="hidden" name="ingredient_view" value="hierarchical">
+                                            <input type="hidden" name="workflow_view" value="{{ 'advanced' if advanced_workflow_enabled else 'default' }}">
+                                            <input type="hidden" name="technical_view" value="{{ 'advanced' if technical_details_enabled else 'default' }}">
+                                            <input type="hidden" name="display_mode" value="{{ display_mode }}">
+                                            <input type="hidden" name="unit_system" value="{{ unit_system }}">
+                                            <input type="hidden" name="scale_mode" value="ingredient">
+                                            <input type="hidden" name="advanced_scale_submit" value="1">
+                                            <input type="hidden" name="advanced_scale_row_key" value="{{ hierarchical_scale_row_key }}">
+                                            {% if has_forecast_context %}
+                                                <input type="hidden" name="forecast_menu_id" value="{{ forecast_context.menu_id }}">
+                                                <input type="hidden" name="forecast_menu_slot_item_id" value="{{ forecast_context.menu_slot_item_id }}">
+                                                <input type="hidden" name="forecast_week" value="{{ forecast_context.week }}">
+                                                <input type="hidden" name="forecast_day" value="{{ forecast_context.day }}">
+                                            {% endif %}
+                                            <input
+                                                type="number"
+                                                step="0.01"
+                                                min="0"
+                                                name="advanced_scale_quantity"
+                                                placeholder="Target qty"
+                                                value="{{ advanced_scale_quantity if hierarchical_scale_row_is_active else '' }}"
+                                            >
+                                            <select name="advanced_scale_unit">
+                                                {% for unit in approved_units %}
+                                                    <option value="{{ unit }}" {% if (hierarchical_scale_row_is_active and advanced_scale_unit == unit) or (not hierarchical_scale_row_is_active and ingredient.component_unit == unit) %}selected{% endif %}>{{ unit|unit_label }}</option>
+                                                {% endfor %}
+                                            </select>
+                                            <button type="submit">Scale</button>
+                                        </form>
                                     {% endif %}
                                 </article>
                             {% endfor %}
@@ -546,7 +710,7 @@
                         <select name="convert_unit">
                             <option value="">-- Select Unit --</option>
                             {% for unit in approved_units %}
-                                <option value="{{ unit }}" {% if base_food_convert_unit == unit %}selected{% endif %}>{{ unit }}</option>
+                                <option value="{{ unit }}" {% if base_food_convert_unit == unit %}selected{% endif %}>{{ unit|unit_label }}</option>
                             {% endfor %}
                         </select>
                         <button type="submit">Preview Conversion</button>
@@ -562,9 +726,9 @@
                 </form>
                 {% if base_food_conversion_preview and base_food_conversion_preview.is_converted %}
                     <p class="muted">
-                        {{ base_food_conversion_preview.target_quantity }} {{ base_food_conversion_preview.target_unit }}
+                        {{ base_food_conversion_preview.target_quantity }} {{ base_food_conversion_preview.target_unit|unit_label }}
                         maps to {{ base_food_conversion_preview.reference_equivalent_quantity|round(3) }}
-                        {{ base_food_conversion_preview.reference_unit }}
+                        {{ base_food_conversion_preview.reference_unit|unit_label }}
                         against the base food's {{ base_food_conversion_preview.source_basis_label }}.
                     </p>
                 {% elif base_food_conversion_preview and base_food_conversion_preview.warnings %}
@@ -600,7 +764,7 @@
                         <p class="detail-stat-label">Serving Mass</p>
                         <p class="detail-stat-value">
                             {% if item.nutrition_serving_mass_quantity and item.nutrition_serving_mass_unit %}
-                                {{ item.nutrition_serving_mass_quantity }} {{ item.nutrition_serving_mass_unit }}
+                                {{ item.nutrition_serving_mass_quantity }} {{ item.nutrition_serving_mass_unit|unit_label }}
                             {% else %}
                                 -
                             {% endif %}
@@ -610,7 +774,7 @@
                         <p class="detail-stat-label">Serving Volume</p>
                         <p class="detail-stat-value">
                             {% if item.nutrition_serving_volume_quantity and item.nutrition_serving_volume_unit %}
-                                {{ item.nutrition_serving_volume_quantity }} {{ item.nutrition_serving_volume_unit }}
+                                {{ item.nutrition_serving_volume_quantity }} {{ item.nutrition_serving_volume_unit|unit_label }}
                             {% else %}
                                 -
                             {% endif %}

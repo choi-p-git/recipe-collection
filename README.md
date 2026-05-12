@@ -13,6 +13,8 @@ Current MVP behavior
 - Reviewer, dietitian, and admin workflow portals support status movement across the MVP lifecycle.
 - Workflow history, note threads, and notifications are active across the review lifecycle.
 - Dietitian-owned official serving fields are separated from submitter-facing recipe entry.
+- Menu Builder and Forecasting shells are active for live menu planning and recipe production scaling.
+- Advanced hotel-pan units are available only in live recipe scaling, forecasting, and future production-record workflows; recipe/base-food authoring remains limited to standard mass, volume, and count units.
 
 System priorities
 
@@ -58,6 +60,7 @@ Instruction codec stores ordered method steps as numbered text
 Recipe submit flow now captures yield mass and yield volume fields
 Official serving fields are reserved for privileged dietitian/admin/super-user editing
 When recipe yield unit is not `each`, the generic yield quantity is derived from the matching authoritative mass or volume basis instead of being user-entered directly
+Recipe authoring unit fields deliberately exclude advanced hotel-pan units; backend validation rejects pan units for recipe yield, official recipe measurements, serving fields, and ingredient component rows
 
 5. Item viewing
 Shared item detail route at `/items/<item_id>`
@@ -115,8 +118,12 @@ Menu Builder foundation note
 - Current schema draft keeps menu-level day/meal/concept selections on the `menu` record and uses explicit `menu_slot` rows plus ordered `menu_slot_item` rows for overview rendering and assignment actions
 - The first implemented Menu Builder slice now includes migration-backed `menu`/`menu_slot`/`menu_slot_item` tables plus a create-menu flow that materializes slots up front and redirects into a week-based overview shell
 - The next implemented slice now supports first-pass slot assignment for `live` recipes and base foods, with slot cells linking into an assignment shell and the overview reflecting current assigned items
+- Concept order is now treated as a menu-level layout contract: the stored concept list order drives overview rendering now and should later drive print/export sequence too
+- Menu overview action selection can open Forecasting directly in a new browser tab
+- Forecasting renders a 4-week cycle selector, search/filter/sort controls, and default recipe ordering by the menu configuration contract
+- Forecasting scale-by-yield fields autosave with a 500ms debounce, saved-state feedback, and an unload warning when sync is pending or failed
 - First release planning is aimed at menu creation, week/day/meal/concept overview rendering, slot assignment, and assignment-only copy/paste actions
-- Drag-and-drop, rules checks, slot-level scaling persistence, and inventory-facing rollups remain deferred until the base Menu Builder behavior is stable
+- Print, drag-and-drop, rules checks, batch-count logic, and inventory-facing rollups remain deferred until the base Menu Builder/Forecasting behavior is stable
 
 Scaling foundation note
 
@@ -132,9 +139,15 @@ Scaling foundation note
 - Recipes with `yield_unit = each` can still scale to mass or volume targets by anchoring the scale factor through the recipe's official batch mass or batch volume
 - The shared conversion layer now also defines base-food mass<->volume bridge conversion using a base food's official mass and volume fields for future module reuse
 - Scaling currently supports hierarchical and flattened output modes with warning-based fallback for unsupported target units
+- Advanced ingredient scaling is available on live recipe detail pages, including bottom-up scaling from a selected ingredient in hierarchical or flattened views
+- Forecast-launched scaling can confirm the scaled recipe yield back to the Forecasting page, preserving the selected target unit where possible
+- Advanced hotel-pan volume units are modeled as canonical conversion units for live scaling and forecasting, with pan size/depth UI controls and internal ml conversion factors
+- Advanced hotel-pan units are intentionally excluded from recipe/base-food authoring controls and service-layer authoring validation
 - Richer scaled recipe rendering now preserves original ingredient units while also surfacing official mass/volume equivalents when the scaling target is measurement-aware and the ingredient or sub-recipe has authoritative bridge data
+- Once a recipe is scaled, recipe snapshot/yield fields render the scaled yield, mass, volume, and serving count while preserving serving size
 - Live recipe detail pages now support display-mode toggles for `default`, `volume`, and `mass`, plus separate `imperial` / `metric` unit-system selection
 - Volume and mass display modes use full unit-cascade rendering, choosing the largest logical unit that keeps the rendered quantity at or above `1` and stepping down to smaller units when needed
+- Metric liter display uses `L`; legacy lowercase `l` values are normalized by migration and conversion helpers
 - `each` components remain rendered in `each` across display modes so count-based items such as tortillas can still scale fractionally without forced mass/volume display
 - Scaling Foundation and Audit panels are now hidden behind a privileged technical-details toggle on the item detail page
 - Base-food nutrition authority metadata is also hidden behind the privileged technical-details toggle
@@ -147,6 +160,7 @@ MVP validation checklist
 4. Verify recipe create, edit, return-to-submitter, resubmit, analyze, and live flow
 5. Verify notes, automatic workflow notifications, and notification clearing on item view
 6. Verify live item default view hides workflow notes/history, with advanced toggle for privileged roles
+7. Verify Forecasting autosave, advanced scaling confirm-back, and hotel-pan unit availability only on live scaling/forecast controls
 
 Schema Change Checklist
 

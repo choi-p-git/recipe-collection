@@ -2,12 +2,15 @@ import re
 import sqlite3
 
 from db import get_connection, initialize_database
+from config.units import STANDARD_UNITS
 from services.item_event_service import build_creation_summary, build_update_summary, record_item_event
 from services.notification_service import create_post_live_edit_notifications
+from services.unit_conversion_service import normalize_unit_symbol
 
 
 SYSTEM_BASE_FOOD_USER_ID = "system_base_food"
 SYSTEM_BASE_FOOD_DISPLAY_NAME = "Base Food Submission"
+STANDARD_UNIT_SET = set(STANDARD_UNITS)
 
 
 class DuplicateItemNameError(ValueError):
@@ -31,6 +34,15 @@ def normalize_item_name(name: str) -> str:
     - collapsing repeated internal whitespace to a single space
     """
     return " ".join(name.split())
+
+
+def normalize_authoring_unit(unit: str | None, field_label: str) -> str | None:
+    normalized_unit = normalize_unit_symbol(unit)
+    if not normalized_unit:
+        return None
+    if normalized_unit not in STANDARD_UNIT_SET:
+        raise InvalidNumericValueError(f"{field_label} must use a standard authoring unit.")
+    return normalized_unit
 
 
 def get_next_available_item_name(base_name: str) -> str:
@@ -110,6 +122,19 @@ def create_base_food(
 
     if not item_name:
         raise InvalidItemNameError("Item name cannot be empty or only whitespace.")
+
+    yield_unit = normalize_authoring_unit(yield_unit, "Yield unit")
+    mass_unit = normalize_authoring_unit(mass_unit, "Mass unit")
+    volume_unit = normalize_authoring_unit(volume_unit, "Volume unit")
+    nutrition_serving_mass_unit = normalize_authoring_unit(
+        nutrition_serving_mass_unit,
+        "Nutrition serving mass unit",
+    )
+    nutrition_serving_volume_unit = normalize_authoring_unit(
+        nutrition_serving_volume_unit,
+        "Nutrition serving volume unit",
+    )
+    serving_size_unit = normalize_authoring_unit(serving_size_unit, "Serving size unit")
 
     try:
         with get_connection() as conn:
@@ -254,6 +279,9 @@ def update_base_food(
     if volume_quantity is not None and volume_quantity <= 0:
         raise InvalidNumericValueError("Volume quantity must be greater than 0.")
 
+    mass_unit = normalize_authoring_unit(mass_unit, "Mass unit")
+    volume_unit = normalize_authoring_unit(volume_unit, "Volume unit")
+
     nutrition_group = str(nutrition_group).strip() if nutrition_group else None
 
     if kcal_per_serving in ("", None):
@@ -282,7 +310,9 @@ def update_base_food(
         raise InvalidNumericValueError("Nutrition serving mass quantity must be greater than 0.")
 
     nutrition_serving_mass_unit = (
-        str(nutrition_serving_mass_unit).strip() if nutrition_serving_mass_unit else None
+        normalize_authoring_unit(nutrition_serving_mass_unit, "Nutrition serving mass unit")
+        if nutrition_serving_mass_unit
+        else None
     )
 
     if nutrition_serving_volume_quantity in ("", None):
@@ -300,7 +330,9 @@ def update_base_food(
         raise InvalidNumericValueError("Nutrition serving volume quantity must be greater than 0.")
 
     nutrition_serving_volume_unit = (
-        str(nutrition_serving_volume_unit).strip() if nutrition_serving_volume_unit else None
+        normalize_authoring_unit(nutrition_serving_volume_unit, "Nutrition serving volume unit")
+        if nutrition_serving_volume_unit
+        else None
     )
 
     try:

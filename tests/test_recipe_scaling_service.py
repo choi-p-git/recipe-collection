@@ -1,4 +1,8 @@
-from services.recipe_scaling_service import build_recipe_scaling_foundation, build_scaled_recipe_view
+from services.recipe_scaling_service import (
+    build_bottom_up_scaled_recipe_view,
+    build_recipe_scaling_foundation,
+    build_scaled_recipe_view,
+)
 from services.unit_conversion_service import (
     convert_unit_value,
     convert_with_item_mass_volume_bridge,
@@ -7,11 +11,14 @@ from services.unit_conversion_service import (
     get_unit_measurement_profile,
 )
 from services.unit_display_service import build_display_measurement
+from services.unit_label_service import format_unit_label
 
 
 def test_get_unit_measurement_profile_returns_mass_volume_and_count_units():
     assert get_unit_measurement_profile("g")["measurement_type"] == "mass"
     assert get_unit_measurement_profile("cup")["measurement_type"] == "volume"
+    assert get_unit_measurement_profile("l")["unit"] == "L"
+    assert get_unit_measurement_profile("L")["measurement_type"] == "volume"
     assert get_unit_measurement_profile("each")["measurement_type"] == "count"
 
 
@@ -24,12 +31,19 @@ def test_describe_unit_conversion_identifies_direct_ratio_and_same_family_conver
 def test_convert_unit_value_supports_same_family_conversions():
     cup_to_qt = convert_unit_value(4, "cup", "qt")
     lb_to_oz = convert_unit_value(1, "lb", "oz")
+    lowercase_liter_to_ml = convert_unit_value(1, "l", "ml")
+    full_pan_to_qt = convert_unit_value(1, "pan_full_4", "qt")
 
     assert cup_to_qt["ok"] is True
     assert round(cup_to_qt["quantity"], 3) == 1.0
     assert cup_to_qt["status"] == "same_family_conversion"
     assert lb_to_oz["ok"] is True
     assert round(lb_to_oz["quantity"], 3) == 16.0
+    assert lowercase_liter_to_ml["ok"] is True
+    assert round(lowercase_liter_to_ml["quantity"], 3) == 1000.0
+    assert full_pan_to_qt["ok"] is True
+    assert round(full_pan_to_qt["quantity"], 1) == 11.2
+    assert format_unit_label("pan_full_4") == 'Full pan, 4"'
 
 
 def test_convert_unit_value_rejects_cross_family_conversion():
@@ -227,6 +241,61 @@ def test_build_scaled_recipe_view_returns_scaled_hierarchical_rows(isolated_db):
     assert scaled_view["row_mode"] == "hierarchical"
     assert scaled_view["rows"][0]["quantity_display"] == "4"
     assert scaled_view["rows"][1]["quantity_display"] == "according to taste"
+
+
+def test_build_bottom_up_scaled_recipe_view_uses_hierarchical_ingredient_target(isolated_db):
+    import sqlite3
+
+    from services.item_service import create_base_food
+    from services.recipe_service import create_recipe
+
+    oil_id = create_base_food(item_name="Bottom Up Oil")
+    spice_id = create_base_food(item_name="Bottom Up Spice")
+    recipe_id = create_recipe(
+        {
+            "item_name": "Bottom Up Recipe",
+            "yield_quantity": 2,
+            "yield_unit": "qt",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Mix"],
+            "ingredients": [
+                {"component_item_id": oil_id, "component_quantity": 8, "component_unit": "oz"},
+                {"component_item_id": spice_id, "component_quantity": 2, "component_unit": "tsp"},
+            ],
+        }
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id IN (?, ?, ?)", (oil_id, spice_id, recipe_id))
+    cursor.execute(
+        """
+        SELECT recipe_component_id
+        FROM recipe_component
+        WHERE parent_recipe_item_id = ?
+          AND component_item_id = ?
+        """,
+        (recipe_id, oil_id),
+    )
+    oil_component_id = cursor.fetchone()[0]
+    conn.commit()
+    conn.close()
+
+    scaled_view = build_bottom_up_scaled_recipe_view(
+        recipe_id,
+        ingredient_view="hierarchical",
+        target_row_key=str(oil_component_id),
+        target_quantity=16,
+        target_unit="oz",
+    )
+
+    assert scaled_view is not None
+    assert scaled_view["is_scaled"] is True
+    assert scaled_view["scale_mode"] == "ingredient"
+    assert scaled_view["forecast_yield_quantity"] == 4
+    assert scaled_view["forecast_yield_unit"] == "qt"
+    assert scaled_view["rows"][0]["quantity_display"] == "16"
+    assert scaled_view["rows"][1]["quantity_display"] == "4"
 
 
 def test_build_scaled_recipe_view_returns_scaled_flattened_rows(isolated_db):

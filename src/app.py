@@ -2,7 +2,12 @@ from pathlib import Path
 
 from flask import Flask, flash, jsonify, redirect, render_template, request, session, url_for
 
-from config.units import APPROVED_UNITS
+from config.units import APPROVED_UNITS, STANDARD_UNITS
+from config.hotel_pan_units import (
+    HOTEL_PAN_DEPTH_OPTIONS,
+    HOTEL_PAN_SIZE_OPTIONS,
+    HOTEL_PAN_UNITS,
+)
 from config.cooking_methods import APPROVED_COOKING_METHODS
 from config.menu_builder import CONCEPT_OPTIONS, DAY_OF_WEEK_OPTIONS, MEAL_PERIOD_OPTIONS
 from config.roles import ROLE_LABELS
@@ -42,7 +47,13 @@ from services.menu_service import (
     get_menu_slot_assignment_ids,
     paste_menu_slot_assignment_ids,
     paste_menu_slots,
+    paste_menu_weeks,
     replace_menu_slot_items,
+    update_menu_config,
+)
+from services.menu_forecast_service import (
+    InvalidMenuForecastError,
+    save_menu_forecast_yield,
 )
 from services.item_note_service import (
     ItemNoteError,
@@ -64,14 +75,21 @@ from services.policy_service import (
     can_view_advanced_workflow,
 )
 from services.recipe_flattening_service import build_flattened_recipe_view
-from services.recipe_scaling_service import build_recipe_scaling_foundation, build_scaled_recipe_view
+from services.recipe_scaling_service import (
+    build_bottom_up_scaled_recipe_view,
+    build_recipe_scaling_foundation,
+    build_scaled_recipe_view,
+)
 from services.unit_display_service import (
     DISPLAY_MODE_DEFAULT,
     UNIT_SYSTEM_IMPERIAL,
     apply_display_preferences_to_rows,
+    build_display_measurement,
     normalize_display_mode,
     normalize_unit_system,
 )
+from services.unit_conversion_service import get_unit_measurement_profile
+from services.unit_label_service import format_unit_label
 from services.workflow_service import (
     WorkflowPermissionError,
     ensure_portal_access,
@@ -84,6 +102,7 @@ from queries.item_edit import get_item_edit_payload
 from queries.item_events import get_item_events
 from queries.live_collection import get_live_collection_page
 from queries.menu_detail import get_menu_detail
+from queries.menu_forecast import get_menu_forecast_page
 from queries.my_menus import get_my_menus
 from queries.menu_slot_detail import get_menu_slot_detail
 from queries.my_recipes import get_my_recipes
@@ -102,6 +121,11 @@ app = Flask(
 )
 
 app.secret_key = "dev-secret-key"
+
+
+@app.template_filter("unit_label")
+def unit_label_filter(unit: str | None) -> str:
+    return format_unit_label(unit)
 
 
 def get_base_food_form_data() -> dict:
@@ -171,6 +195,72 @@ def get_menu_slot_clipboard() -> dict | None:
     return clipboard
 
 
+def apply_unit_system_to_recipe_snapshot(scaled_recipe_view: dict | None, unit_system: str) -> list[str]:
+    if not scaled_recipe_view or not scaled_recipe_view.get("is_scaled"):
+        return []
+
+    snapshot = scaled_recipe_view.get("scaled_snapshot")
+    if not snapshot:
+        return []
+
+    warnings: list[str] = []
+    for measurement_type in ("mass", "volume"):
+        quantity = snapshot.get(f"{measurement_type}_quantity")
+        unit = snapshot.get(f"{measurement_type}_unit")
+        if not quantity or not unit:
+            continue
+
+        display_measurement = build_display_measurement(
+            quantity=float(quantity),
+            source_unit=unit,
+            item_type="recipe",
+            display_mode=measurement_type,
+            unit_system=unit_system,
+            mass_quantity=snapshot.get("mass_quantity"),
+            mass_unit=snapshot.get("mass_unit"),
+            volume_quantity=snapshot.get("volume_quantity"),
+            volume_unit=snapshot.get("volume_unit"),
+        )
+        snapshot[f"{measurement_type}_display_quantity"] = display_measurement["quantity"]
+        snapshot[f"{measurement_type}_display_quantity_display"] = display_measurement["quantity_display"]
+        snapshot[f"{measurement_type}_display_unit"] = display_measurement["unit"]
+        if display_measurement.get("warning") and display_measurement["warning"] not in warnings:
+            warnings.append(display_measurement["warning"])
+
+    return warnings
+
+
+def apply_unit_system_to_recipe_item_snapshot(item: dict, unit_system: str) -> list[str]:
+    if item.get("item_type") != "recipe":
+        return []
+
+    warnings: list[str] = []
+    for measurement_type in ("mass", "volume"):
+        quantity = item.get(f"{measurement_type}_quantity")
+        unit = item.get(f"{measurement_type}_unit")
+        if not quantity or not unit:
+            continue
+
+        display_measurement = build_display_measurement(
+            quantity=float(quantity),
+            source_unit=unit,
+            item_type="recipe",
+            display_mode=measurement_type,
+            unit_system=unit_system,
+            mass_quantity=item.get("mass_quantity"),
+            mass_unit=item.get("mass_unit"),
+            volume_quantity=item.get("volume_quantity"),
+            volume_unit=item.get("volume_unit"),
+        )
+        item[f"{measurement_type}_display_quantity"] = display_measurement["quantity"]
+        item[f"{measurement_type}_display_quantity_display"] = display_measurement["quantity_display"]
+        item[f"{measurement_type}_display_unit"] = display_measurement["unit"]
+        if display_measurement.get("warning") and display_measurement["warning"] not in warnings:
+            warnings.append(display_measurement["warning"])
+
+    return warnings
+
+
 @app.context_processor
 def inject_mock_auth_context():
     current_user = get_current_mock_user(session)
@@ -180,6 +270,19 @@ def inject_mock_auth_context():
         "current_user_preferences": current_user.get("preferences", {}),
         "available_workflow_portals": get_available_workflow_portals(current_user["role"]),
         "notification_count": get_notification_count(current_user),
+        "advanced_unit_options": {
+            "sizes": HOTEL_PAN_SIZE_OPTIONS,
+            "depths": HOTEL_PAN_DEPTH_OPTIONS,
+            "units": HOTEL_PAN_UNITS,
+        },
+        "approved_unit_options": [
+            {"value": unit, "label": format_unit_label(unit)}
+            for unit in APPROVED_UNITS
+        ],
+        "recipe_authoring_unit_options": [
+            {"value": unit, "label": format_unit_label(unit)}
+            for unit in STANDARD_UNITS
+        ],
     }
 
 
@@ -243,7 +346,7 @@ def new_base_food():
         "new_base_food.html",
         form_data=form_data,
         form_mode="create",
-        approved_units=APPROVED_UNITS,
+        approved_units=STANDARD_UNITS,
         can_manage_official_measurements_for_current_user=False,
     )
 
@@ -252,7 +355,7 @@ def new_recipe():
     current_user = get_current_mock_user(session)
     return render_template(
         "new_recipe.html",
-        approved_units=APPROVED_UNITS,
+        approved_units=STANDARD_UNITS,
         approved_cooking_methods=APPROVED_COOKING_METHODS,
         editor_mode="create",
         recipe=None,
@@ -300,6 +403,58 @@ def new_menu():
         day_options=DAY_OF_WEEK_OPTIONS,
         meal_period_options=MEAL_PERIOD_OPTIONS,
         concept_options=CONCEPT_OPTIONS,
+        page_mode="create",
+        menu_id=None,
+    )
+
+
+@app.route("/menus/<int:menu_id>/edit", methods=["GET", "POST"])
+def edit_menu(menu_id: int):
+    menu = get_menu_detail(menu_id)
+    if menu is None:
+        return "Menu not found.", 404
+
+    current_user = get_current_mock_user(session)
+    if menu["author_user_id"] != current_user["user_id"]:
+        flash("You can only edit menus you created.", "error")
+        return redirect(url_for("menu_detail", menu_id=menu_id))
+
+    form_data = {
+        "menu_name": menu["menu_name"],
+        "service_days": menu["service_days"],
+        "meal_periods": menu["meal_periods"],
+        "concepts": menu["concepts"],
+        "menu_length_weeks": str(menu["menu_length_weeks"]),
+    }
+
+    if request.method == "POST":
+        form_data = get_menu_form_data()
+        try:
+            update_menu_config(
+                menu_id=menu_id,
+                actor_user_id=current_user["user_id"],
+                menu_name=form_data["menu_name"],
+                service_days=form_data["service_days"],
+                meal_periods=form_data["meal_periods"],
+                concepts=form_data["concepts"],
+                menu_length_weeks=form_data["menu_length_weeks"],
+                allowed_service_days=[option["value"] for option in DAY_OF_WEEK_OPTIONS],
+                allowed_meal_periods=[option["value"] for option in MEAL_PERIOD_OPTIONS],
+                allowed_concepts=[option["value"] for option in CONCEPT_OPTIONS],
+            )
+            flash(f"Menu '{form_data['menu_name']}' config updated successfully.", "success")
+            return redirect(url_for("menu_detail", menu_id=menu_id))
+        except InvalidMenuPayloadError as exc:
+            flash(str(exc), "error")
+
+    return render_template(
+        "new_menu.html",
+        form_data=form_data,
+        day_options=DAY_OF_WEEK_OPTIONS,
+        meal_period_options=MEAL_PERIOD_OPTIONS,
+        concept_options=CONCEPT_OPTIONS,
+        page_mode="edit",
+        menu_id=menu_id,
     )
 
 
@@ -335,7 +490,7 @@ def menu_detail(menu_id: int):
     bulk_scope = request.args.get("bulk_scope", "").strip()
     if bulk_action not in {"copy", "paste", "clear"}:
         bulk_action = ""
-    if bulk_action == "copy" and bulk_scope not in {"cell", "concept"}:
+    if bulk_action == "copy" and bulk_scope not in {"cell", "concept", "day", "week"}:
         bulk_scope = "cell"
     elif bulk_action == "clear" and bulk_scope not in {"cell", "concept", "day", "week"}:
         bulk_scope = "cell"
@@ -355,6 +510,94 @@ def menu_detail(menu_id: int):
         bulk_scope=bulk_scope,
         day_order=DAY_OF_WEEK_ORDER,
     )
+
+
+@app.route("/menus/<int:menu_id>/forecast")
+def menu_forecast(menu_id: int):
+    week = request.args.get("week", "1").strip()
+    try:
+        week_number = int(week)
+    except ValueError:
+        week_number = 1
+
+    page_data = get_menu_forecast_page(
+        menu_id,
+        week_number=week_number,
+        day_of_week=request.args.get("day", "").strip(),
+        search_term=request.args.get("q", "").strip(),
+        meal_period=request.args.get("meal_period", "").strip(),
+        concept=request.args.get("concept", "").strip(),
+        sort_by=request.args.get("sort", "").strip(),
+        sort_order=request.args.get("order", "").strip(),
+    )
+    if page_data is None:
+        return "Menu not found.", 404
+
+    return render_template(
+        "menu_forecast.html",
+        page_data=page_data,
+        day_options=DAY_OF_WEEK_OPTIONS,
+        meal_period_options=MEAL_PERIOD_OPTIONS,
+        approved_units=APPROVED_UNITS,
+    )
+
+
+@app.route("/menus/<int:menu_id>/forecast/recipes/<int:item_id>/advanced")
+def menu_forecast_recipe_advanced(menu_id: int, item_id: int):
+    return redirect(
+        url_for(
+            "item_detail",
+            item_id=item_id,
+            forecast_menu_id=menu_id,
+            forecast_menu_slot_item_id=request.args.get("menu_slot_item_id", None),
+            forecast_week=request.args.get("week", None),
+            forecast_day=request.args.get("day", None),
+            ingredient_view=request.args.get("ingredient_view", "hierarchical"),
+            scale_mode="ingredient",
+        )
+    )
+
+
+@app.route("/api/menus/<int:menu_id>/forecast/<int:menu_slot_item_id>", methods=["PUT"])
+def api_update_menu_forecast(menu_id: int, menu_slot_item_id: int):
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"ok": False, "error": "Missing JSON payload."}), 400
+
+    current_user = get_current_mock_user(session)
+    try:
+        forecast = save_menu_forecast_yield(
+            menu_id=menu_id,
+            menu_slot_item_id=menu_slot_item_id,
+            actor_user_id=current_user["user_id"],
+            forecast_yield_quantity=payload.get("forecast_yield_quantity"),
+            forecast_yield_unit=payload.get("forecast_yield_unit"),
+        )
+        return jsonify({"ok": True, "forecast": forecast})
+    except InvalidMenuForecastError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"ok": False, "error": f"Unexpected error: {exc}"}), 500
+
+
+@app.route("/menus/<int:menu_id>/forecast/<int:menu_slot_item_id>/confirm-scaling", methods=["POST"])
+def confirm_menu_forecast_scaling(menu_id: int, menu_slot_item_id: int):
+    current_user = get_current_mock_user(session)
+    forecast_week = request.form.get("forecast_week", "1")
+    forecast_day = request.form.get("forecast_day", "")
+    try:
+        save_menu_forecast_yield(
+            menu_id=menu_id,
+            menu_slot_item_id=menu_slot_item_id,
+            actor_user_id=current_user["user_id"],
+            forecast_yield_quantity=request.form.get("forecast_yield_quantity"),
+            forecast_yield_unit=request.form.get("forecast_yield_unit"),
+        )
+        flash("Forecast scaling confirmed.", "success")
+        return redirect(url_for("menu_forecast", menu_id=menu_id, week=forecast_week, day=forecast_day))
+    except InvalidMenuForecastError as exc:
+        flash(str(exc), "error")
+        return redirect(request.referrer or url_for("menu_forecast", menu_id=menu_id, week=forecast_week, day=forecast_day))
 
 
 @app.route("/menus/<int:menu_id>/delete", methods=["POST"])
@@ -459,6 +702,8 @@ def menu_bulk_action_route(menu_id: int):
                 f"Copied {clipboard['copied_count']} {scope}{'s' if clipboard['copied_count'] != 1 else ''}.",
                 "success",
             )
+            if scope == "week":
+                return redirect(url_for("menu_week_paste", menu_id=menu_id, source_week=week))
         elif action == "paste":
             pasted_count = paste_menu_slots(
                 menu_id=menu_id,
@@ -487,6 +732,69 @@ def menu_bulk_action_route(menu_id: int):
         flash(str(exc), "error")
 
     return redirect(url_for("menu_detail", menu_id=menu_id, week=week))
+
+
+@app.route("/menus/<int:menu_id>/paste-weeks")
+def menu_week_paste(menu_id: int):
+    menu = get_menu_detail(menu_id)
+    if menu is None:
+        return "Menu not found.", 404
+
+    clipboard = get_menu_slot_clipboard()
+    if not clipboard or clipboard.get("mode") != "week":
+        flash("Copy a week first before choosing destination weeks.", "error")
+        return redirect(url_for("menu_detail", menu_id=menu_id, week=1))
+
+    source_week = request.args.get("source_week", "1").strip()
+    try:
+        source_week_number = int(source_week)
+    except ValueError:
+        source_week_number = 1
+
+    week_numbers = list(range(1, menu["menu_length_weeks"] + 1))
+    if source_week_number not in week_numbers:
+        source_week_number = 1
+
+    week_rows = [
+        week_numbers[index:index + 4]
+        for index in range(0, len(week_numbers), 4)
+    ]
+
+    return render_template(
+        "menu_week_paste.html",
+        menu=menu,
+        source_week_number=source_week_number,
+        week_rows=week_rows,
+    )
+
+
+@app.route("/menus/<int:menu_id>/paste-weeks", methods=["POST"])
+def menu_week_paste_post(menu_id: int):
+    current_user = get_current_mock_user(session)
+    source_week = request.form.get("source_week", "1").strip()
+    try:
+        source_week_number = int(source_week)
+    except ValueError:
+        source_week_number = 1
+
+    selected_weeks = request.form.getlist("selected_weeks")
+
+    try:
+        pasted_week_count = paste_menu_weeks(
+            menu_id=menu_id,
+            actor_user_id=current_user["user_id"],
+            selected_week_numbers=selected_weeks,
+            clipboard=get_menu_slot_clipboard(),
+        )
+        flash(
+            f"Pasted copied week into {pasted_week_count} destination week{'s' if pasted_week_count != 1 else ''}.",
+            "success",
+        )
+    except InvalidMenuSlotActionError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("menu_week_paste", menu_id=menu_id, source_week=source_week_number))
+
+    return redirect(url_for("menu_detail", menu_id=menu_id, week=source_week_number))
 
 
 @app.route("/menus/<int:menu_id>/slots/<int:menu_slot_id>/assign", methods=["GET", "POST"])
@@ -839,13 +1147,13 @@ def edit_item(item_id: int):
             form_data=form_data,
             form_mode="edit",
             item_id=item_id,
-            approved_units=APPROVED_UNITS,
+            approved_units=STANDARD_UNITS,
             can_manage_official_measurements_for_current_user=can_manage_measurements,
         )
 
     return render_template(
         "new_recipe.html",
-        approved_units=APPROVED_UNITS,
+        approved_units=STANDARD_UNITS,
         approved_cooking_methods=APPROVED_COOKING_METHODS,
         editor_mode="edit",
         recipe=item,
@@ -1001,9 +1309,45 @@ def item_detail(item_id: int):
     )
     scale_quantity = request.args.get("scale_quantity", "").strip()
     scale_unit = request.args.get("scale_unit", "").strip()
+    scale_mode = request.args.get("scale_mode", "yield").strip()
+    advanced_scale_row_key = request.args.get("advanced_scale_row_key", "").strip()
+    advanced_scale_quantity = request.args.get("advanced_scale_quantity", "").strip()
+    advanced_scale_unit = request.args.get("advanced_scale_unit", "").strip()
+    advanced_unit_profile = get_unit_measurement_profile(advanced_scale_unit)
+    if (
+        item["item_type"] == "recipe"
+        and item["status"] == "live"
+        and scale_mode == "ingredient"
+        and advanced_scale_quantity
+        and advanced_unit_profile
+        and advanced_unit_profile["measurement_type"] in {"mass", "volume"}
+        and request.args.get("advanced_scale_submit", "").strip() == "1"
+    ):
+        display_mode = advanced_unit_profile["measurement_type"]
+    forecast_context = {
+        "menu_id": request.args.get("forecast_menu_id", "").strip(),
+        "menu_slot_item_id": request.args.get("forecast_menu_slot_item_id", "").strip(),
+        "week": request.args.get("forecast_week", "").strip(),
+        "day": request.args.get("forecast_day", "").strip(),
+    }
+    has_forecast_context = bool(forecast_context["menu_id"] and forecast_context["menu_slot_item_id"])
     base_food_convert_quantity = request.args.get("convert_quantity", "").strip()
     base_food_convert_unit = request.args.get("convert_unit", "").strip()
-    scaled_recipe_view = (
+    bottom_up_scaled_recipe_view = (
+        build_bottom_up_scaled_recipe_view(
+            item_id,
+            ingredient_view=ingredient_view_mode,
+            target_row_key=advanced_scale_row_key,
+            target_quantity=advanced_scale_quantity,
+            target_unit=advanced_scale_unit,
+        )
+        if item["item_type"] == "recipe"
+        and item["status"] == "live"
+        and scale_mode == "ingredient"
+        and (advanced_scale_row_key or advanced_scale_quantity or advanced_scale_unit)
+        else None
+    )
+    scaled_recipe_view = bottom_up_scaled_recipe_view or (
         build_scaled_recipe_view(
             item_id,
             target_quantity=scale_quantity,
@@ -1040,7 +1384,15 @@ def item_detail(item_id: int):
 
     ingredient_display_warnings: list[str] = []
     if item["item_type"] == "recipe" and item["status"] == "live":
+        item_snapshot_display_warnings = apply_unit_system_to_recipe_item_snapshot(
+            item,
+            unit_system,
+        )
         if scaled_recipe_view is not None:
+            snapshot_display_warnings = apply_unit_system_to_recipe_snapshot(
+                scaled_recipe_view,
+                unit_system,
+            )
             processed_scaled = apply_display_preferences_to_rows(
                 rows=scaled_recipe_view.get("rows", []),
                 row_mode=scaled_recipe_view.get("row_mode", "hierarchical"),
@@ -1048,7 +1400,7 @@ def item_detail(item_id: int):
                 unit_system=unit_system,
             )
             scaled_recipe_view["rows"] = processed_scaled["rows"]
-            ingredient_display_warnings = processed_scaled["warnings"]
+            ingredient_display_warnings = [*item_snapshot_display_warnings, *snapshot_display_warnings, *processed_scaled["warnings"]]
         elif ingredient_view_mode == "flattened" and flattened_recipe_view is not None:
             processed_flattened = apply_display_preferences_to_rows(
                 rows=flattened_recipe_view["rows"],
@@ -1057,7 +1409,7 @@ def item_detail(item_id: int):
                 unit_system=unit_system,
             )
             flattened_recipe_view["rows"] = processed_flattened["rows"]
-            ingredient_display_warnings = processed_flattened["warnings"]
+            ingredient_display_warnings = [*item_snapshot_display_warnings, *processed_flattened["warnings"]]
         else:
             processed_hierarchical = apply_display_preferences_to_rows(
                 rows=item["ingredients"],
@@ -1066,7 +1418,7 @@ def item_detail(item_id: int):
                 unit_system=unit_system,
             )
             item["ingredients"] = processed_hierarchical["rows"]
-            ingredient_display_warnings = processed_hierarchical["warnings"]
+            ingredient_display_warnings = [*item_snapshot_display_warnings, *processed_hierarchical["warnings"]]
 
     return render_template(
         "item_detail.html",
@@ -1084,6 +1436,12 @@ def item_detail(item_id: int):
         unit_system=unit_system,
         scale_quantity=scale_quantity,
         scale_unit=scale_unit,
+        scale_mode=scale_mode,
+        advanced_scale_row_key=advanced_scale_row_key,
+        advanced_scale_quantity=advanced_scale_quantity,
+        advanced_scale_unit=advanced_scale_unit,
+        forecast_context=forecast_context,
+        has_forecast_context=has_forecast_context,
         base_food_convert_quantity=base_food_convert_quantity,
         base_food_convert_unit=base_food_convert_unit,
         base_food_conversion_preview=base_food_conversion_preview,

@@ -5,9 +5,12 @@
 
 {% block content %}
     {% set clipboard_mode = menu_slot_clipboard.mode if menu_slot_clipboard else '' %}
+    {% set clipboard_source_week = menu_slot_clipboard.entries[0].week_signature.week_number if menu_slot_clipboard and clipboard_mode == 'week' and menu_slot_clipboard.entries else selected_week_number %}
     {% set use_concept_headers = (bulk_action == 'copy' and bulk_scope == 'concept') or (bulk_action == 'clear' and bulk_scope == 'concept') or (bulk_action == 'paste' and clipboard_mode == 'concept') %}
-    {% set use_day_headers = bulk_action == 'clear' and bulk_scope == 'day' %}
+    {% set use_day_headers = (bulk_action == 'copy' and bulk_scope == 'day') or (bulk_action == 'clear' and bulk_scope == 'day') or (bulk_action == 'paste' and clipboard_mode == 'day') %}
     {% set use_week_confirm = bulk_action == 'clear' and bulk_scope == 'week' %}
+    {% set use_week_copy = bulk_action == 'copy' and bulk_scope == 'week' %}
+    {% set use_week_paste_redirect = bulk_action == 'paste' and clipboard_mode == 'week' %}
     <div class="page-header">
         <div>
             <h2>{{ menu.menu_name }}</h2>
@@ -17,6 +20,15 @@
         </div>
         <div>
             <span class="status-badge status-chip-submitted">{{ menu.status_label }}</span>
+            <form class="menu-header-action-form menu-overview-action-form" data-menu-overview-action-form>
+                <label class="sr-only" for="menu_overview_action">Menu action</label>
+                <select id="menu_overview_action" data-menu-overview-action-select>
+                    <option value="">Menu Actions</option>
+                    <option value="{{ url_for('menu_forecast', menu_id=menu.menu_id, week=selected_week_number, day=menu.service_days[0] if menu.service_days else None) }}">Forecasting</option>
+                    <option value="">Print</option>
+                </select>
+            </form>
+            <a class="page-action-link secondary" href="{{ url_for('edit_menu', menu_id=menu.menu_id) }}">Edit Menu Config</a>
             <form method="post" action="{{ url_for('delete_menu_route', menu_id=menu.menu_id) }}" class="menu-header-action-form">
                 <button type="submit" class="workflow-button workflow-button-danger">Delete Menu</button>
             </form>
@@ -86,6 +98,8 @@
                     <select id="bulk_scope" name="bulk_scope" data-bulk-scope-select>
                         <option value="cell" {% if bulk_scope == 'cell' %}selected{% endif %}>By Cells</option>
                         <option value="concept" {% if bulk_scope == 'concept' %}selected{% endif %}>By Concepts</option>
+                        <option value="day" {% if bulk_scope == 'day' %}selected{% endif %}>By Day</option>
+                        <option value="week" {% if bulk_scope == 'week' %}selected{% endif %}>By Week</option>
                     </select>
                 </div>
             {% elif bulk_action == 'clear' %}
@@ -119,9 +133,21 @@
             <p class="muted menu-bulk-helper-text">
                 Copy by Concepts copies the full concept line for the selected week and meal period. Select one slot from that line to copy the whole concept across all service days.
             </p>
+        {% elif bulk_action == 'copy' and bulk_scope == 'day' %}
+            <p class="muted menu-bulk-helper-text">
+                Copy by Day copies the full selected day for the current week across every meal period and concept. Select a day header to copy that full day layout.
+            </p>
+        {% elif bulk_action == 'copy' and bulk_scope == 'week' %}
+            <p class="muted menu-bulk-helper-text">
+                Copy by Week copies every slot in the current week. No cell selection is needed. After copying, you will choose destination weeks from a separate cycle-selection screen.
+            </p>
         {% elif bulk_action == 'paste' %}
             <p class="muted menu-bulk-helper-text">
-                Paste uses the current clipboard mode automatically. Cell copies paste into selected cells; concept copies paste into selected concept lines.
+                {% if use_week_paste_redirect %}
+                    A copied week uses the dedicated week-selection screen instead of slot selection. Continue there to choose destination weeks for the full weekly layout.
+                {% else %}
+                    Paste uses the current clipboard mode automatically. Cell copies paste into selected cells; concept copies paste into selected concept lines; day copies paste into selected day columns.
+                {% endif %}
             </p>
         {% elif bulk_action == 'clear' and bulk_scope == 'cell' %}
             <p class="muted menu-bulk-helper-text">
@@ -152,22 +178,32 @@
                 <input type="hidden" name="week" value="{{ selected_week_number }}">
                 <input type="hidden" name="action" value="{{ bulk_action }}">
                 <input type="hidden" name="scope" value="{{ bulk_scope }}">
-                {% if use_week_confirm and week_slots %}
+                {% if (use_week_confirm or use_week_copy) and week_slots %}
                     <input type="hidden" name="selected_slot_ids" value="{{ week_slots[0].menu_slot_id }}">
                 {% endif %}
-                <button type="submit" class="workflow-button workflow-button-primary">
-                    {% if bulk_action == 'copy' %}
-                        Copy Selected {{ 'Concepts' if bulk_scope == 'concept' else 'Cells' }}
-                    {% elif bulk_action == 'paste' %}
-                        Paste Selected {{ 'Concept(s)' if clipboard_mode == 'concept' else 'Cell(s)' }}
-                    {% else %}
-                        {% if use_week_confirm %}
-                            Clear Week {{ selected_week_number }}
+                {% if use_week_paste_redirect %}
+                    <a class="page-action-link" href="{{ url_for('menu_week_paste', menu_id=menu.menu_id, source_week=clipboard_source_week) }}">
+                        Choose Destination Weeks
+                    </a>
+                {% else %}
+                    <button type="submit" class="workflow-button workflow-button-primary">
+                        {% if bulk_action == 'copy' %}
+                            {% if use_week_copy %}
+                                Copy Week {{ selected_week_number }}
+                            {% else %}
+                                Copy Selected {{ 'Concepts' if bulk_scope == 'concept' else 'Days' if bulk_scope == 'day' else 'Cells' }}
+                            {% endif %}
+                        {% elif bulk_action == 'paste' %}
+                            Paste Selected {{ 'Concept(s)' if clipboard_mode == 'concept' else 'Day(s)' if clipboard_mode == 'day' else 'Cell(s)' }}
                         {% else %}
-                            Clear Selected {{ bulk_scope|title }}{% if bulk_scope != 'week' %}(s){% endif %}
+                            {% if use_week_confirm %}
+                                Clear Week {{ selected_week_number }}
+                            {% else %}
+                                Clear Selected {{ bulk_scope|title }}{% if bulk_scope != 'week' %}(s){% endif %}
+                            {% endif %}
                         {% endif %}
-                    {% endif %}
-                </button>
+                    </button>
+                {% endif %}
         {% endif %}
     </section>
 
@@ -213,7 +249,7 @@
                                 {% set slot = (week_slots | selectattr('day_of_week', 'equalto', day.value) | selectattr('meal_period', 'equalto', meal.value) | selectattr('concept_name', 'equalto', concept_name) | list | first) %}
                                 <div class="menu-grid-cell">
                                     {% if slot %}
-                                        {% if bulk_action and not use_concept_headers and not use_day_headers and not use_week_confirm %}
+                                        {% if bulk_action and not use_concept_headers and not use_day_headers and not use_week_confirm and not use_week_copy and not use_week_paste_redirect %}
                                             <label class="menu-slot-selector">
                                                 <input type="checkbox" name="selected_slot_ids" value="{{ slot.menu_slot_id }}">
                                                 <span>Select Slot</span>

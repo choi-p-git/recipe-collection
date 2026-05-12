@@ -56,6 +56,50 @@ def _normalize_unique_concepts(values: list[str], allowed_values: list[str]) -> 
     return _normalize_unique_values(values, allowed_values)
 
 
+def _validate_menu_payload(
+    *,
+    menu_name: str,
+    service_days: list[str],
+    meal_periods: list[str],
+    concepts: list[str],
+    menu_length_weeks,
+    allowed_service_days: list[str],
+    allowed_meal_periods: list[str],
+    allowed_concepts: list[str],
+) -> tuple[str, list[str], list[str], list[str], int]:
+    normalized_name = _normalize_name(menu_name)
+    if not normalized_name:
+        raise InvalidMenuPayloadError("Menu name is required.")
+
+    normalized_service_days = _normalize_unique_values(service_days, allowed_service_days)
+    if not normalized_service_days:
+        raise InvalidMenuPayloadError("Select at least one service day.")
+
+    normalized_meal_periods = _normalize_unique_values(meal_periods, allowed_meal_periods)
+    if not normalized_meal_periods:
+        raise InvalidMenuPayloadError("Select at least one meal period.")
+
+    normalized_concepts = _normalize_unique_concepts(concepts, allowed_concepts)
+    if not normalized_concepts:
+        raise InvalidMenuPayloadError("Select at least one concept.")
+
+    try:
+        normalized_menu_length_weeks = int(menu_length_weeks)
+    except (TypeError, ValueError):
+        raise InvalidMenuPayloadError("Menu length in weeks must be a whole number.")
+
+    if normalized_menu_length_weeks <= 0:
+        raise InvalidMenuPayloadError("Menu length in weeks must be greater than 0.")
+
+    return (
+        normalized_name,
+        normalized_service_days,
+        normalized_meal_periods,
+        normalized_concepts,
+        normalized_menu_length_weeks,
+    )
+
+
 def _get_menu_slot_context(cursor, menu_slot_id: int) -> tuple[int, str]:
     cursor.execute(
         """
@@ -88,29 +132,22 @@ def create_menu(
 ) -> int:
     initialize_database()
 
-    normalized_name = _normalize_name(menu_name)
-    if not normalized_name:
-        raise InvalidMenuPayloadError("Menu name is required.")
-
-    normalized_service_days = _normalize_unique_values(service_days, allowed_service_days)
-    if not normalized_service_days:
-        raise InvalidMenuPayloadError("Select at least one service day.")
-
-    normalized_meal_periods = _normalize_unique_values(meal_periods, allowed_meal_periods)
-    if not normalized_meal_periods:
-        raise InvalidMenuPayloadError("Select at least one meal period.")
-
-    normalized_concepts = _normalize_unique_concepts(concepts, allowed_concepts)
-    if not normalized_concepts:
-        raise InvalidMenuPayloadError("Select at least one concept.")
-
-    try:
-        normalized_menu_length_weeks = int(menu_length_weeks)
-    except (TypeError, ValueError):
-        raise InvalidMenuPayloadError("Menu length in weeks must be a whole number.")
-
-    if normalized_menu_length_weeks <= 0:
-        raise InvalidMenuPayloadError("Menu length in weeks must be greater than 0.")
+    (
+        normalized_name,
+        normalized_service_days,
+        normalized_meal_periods,
+        normalized_concepts,
+        normalized_menu_length_weeks,
+    ) = _validate_menu_payload(
+        menu_name=menu_name,
+        service_days=service_days,
+        meal_periods=meal_periods,
+        concepts=concepts,
+        menu_length_weeks=menu_length_weeks,
+        allowed_service_days=allowed_service_days,
+        allowed_meal_periods=allowed_meal_periods,
+        allowed_concepts=allowed_concepts,
+    )
 
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -170,6 +207,136 @@ def create_menu(
 
         conn.commit()
         return menu_id
+
+
+def update_menu_config(
+    *,
+    menu_id: int,
+    actor_user_id: str,
+    menu_name: str,
+    service_days: list[str],
+    meal_periods: list[str],
+    concepts: list[str],
+    menu_length_weeks,
+    allowed_service_days: list[str],
+    allowed_meal_periods: list[str],
+    allowed_concepts: list[str],
+) -> None:
+    initialize_database()
+
+    (
+        normalized_name,
+        normalized_service_days,
+        normalized_meal_periods,
+        normalized_concepts,
+        normalized_menu_length_weeks,
+    ) = _validate_menu_payload(
+        menu_name=menu_name,
+        service_days=service_days,
+        meal_periods=meal_periods,
+        concepts=concepts,
+        menu_length_weeks=menu_length_weeks,
+        allowed_service_days=allowed_service_days,
+        allowed_meal_periods=allowed_meal_periods,
+        allowed_concepts=allowed_concepts,
+    )
+
+    desired_slot_keys = {
+        (week_number, day_of_week, meal_period, concept_name)
+        for week_number in range(1, normalized_menu_length_weeks + 1)
+        for day_of_week in normalized_service_days
+        for meal_period in normalized_meal_periods
+        for concept_name in normalized_concepts
+    }
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT author_user_id
+            FROM menu
+            WHERE menu_id = ?
+            """,
+            (menu_id,),
+        )
+        menu_row = cursor.fetchone()
+        if menu_row is None:
+            raise InvalidMenuPayloadError("Menu not found.")
+        if menu_row[0] != actor_user_id:
+            raise InvalidMenuPayloadError("You can only edit menus you created.")
+
+        cursor.execute(
+            """
+            SELECT menu_slot_id, week_number, day_of_week, meal_period, concept_name
+            FROM menu_slot
+            WHERE menu_id = ?
+            """,
+            (menu_id,),
+        )
+        existing_slots = cursor.fetchall()
+        existing_slot_lookup = {
+            (row[1], row[2], row[3], row[4]): row[0]
+            for row in existing_slots
+        }
+
+        slot_ids_to_delete = [
+            row[0]
+            for row in existing_slots
+            if (row[1], row[2], row[3], row[4]) not in desired_slot_keys
+        ]
+        if slot_ids_to_delete:
+            cursor.execute(
+                "DELETE FROM menu_slot WHERE menu_slot_id IN ({})".format(
+                    ", ".join("?" for _ in slot_ids_to_delete)
+                ),
+                slot_ids_to_delete,
+            )
+
+        missing_slot_keys = sorted(desired_slot_keys - set(existing_slot_lookup.keys()))
+        for week_number, day_of_week, meal_period, concept_name in missing_slot_keys:
+            cursor.execute(
+                """
+                INSERT INTO menu_slot (
+                    menu_id,
+                    week_number,
+                    day_of_week,
+                    meal_period,
+                    concept_name,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+                """,
+                (
+                    menu_id,
+                    week_number,
+                    day_of_week,
+                    meal_period,
+                    concept_name,
+                ),
+            )
+
+        cursor.execute(
+            """
+            UPDATE menu
+            SET menu_name = ?,
+                service_days_json = ?,
+                meal_periods_json = ?,
+                concepts_json = ?,
+                menu_length_weeks = ?,
+                updated_at = datetime('now')
+            WHERE menu_id = ?
+            """,
+            (
+                normalized_name,
+                json.dumps(normalized_service_days),
+                json.dumps(normalized_meal_periods),
+                json.dumps(normalized_concepts),
+                normalized_menu_length_weeks,
+                menu_id,
+            ),
+        )
+        conn.commit()
 
 
 def replace_menu_slot_items(
@@ -580,6 +747,65 @@ def copy_menu_slots(
                         },
                     }
                 )
+        elif scope == "day":
+            entries = []
+            seen_days: set[tuple[int, str]] = set()
+            for slot in _sort_slots(selected_slots):
+                day_key = (slot["week_number"], slot["day_of_week"])
+                if day_key in seen_days:
+                    continue
+                seen_days.add(day_key)
+                day_slots = _sort_slots(
+                    [
+                        candidate
+                        for candidate in slots
+                        if candidate["week_number"] == slot["week_number"]
+                        and candidate["day_of_week"] == slot["day_of_week"]
+                    ]
+                )
+                entries.append(
+                    {
+                        "day_signature": {
+                            "week_number": slot["week_number"],
+                            "day_of_week": slot["day_of_week"],
+                        },
+                        "slots": [
+                            {
+                                "meal_period": day_slot["meal_period"],
+                                "concept_name": day_slot["concept_name"],
+                                "item_ids": slot_item_lookup.get(day_slot["menu_slot_id"], []),
+                            }
+                            for day_slot in day_slots
+                        ],
+                    }
+                )
+        elif scope == "week":
+            entries = []
+            seen_weeks: set[int] = set()
+            for slot in _sort_slots(selected_slots):
+                week_number = slot["week_number"]
+                if week_number in seen_weeks:
+                    continue
+                seen_weeks.add(week_number)
+                week_slots = _sort_slots(
+                    [candidate for candidate in slots if candidate["week_number"] == week_number]
+                )
+                entries.append(
+                    {
+                        "week_signature": {
+                            "week_number": week_number,
+                        },
+                        "slots": [
+                            {
+                                "day_of_week": week_slot["day_of_week"],
+                                "meal_period": week_slot["meal_period"],
+                                "concept_name": week_slot["concept_name"],
+                                "item_ids": slot_item_lookup.get(week_slot["menu_slot_id"], []),
+                            }
+                            for week_slot in week_slots
+                        ],
+                    }
+                )
         else:
             raise InvalidMenuSlotActionError("Unsupported copy scope.")
 
@@ -670,6 +896,50 @@ def paste_menu_slots(
                             source_entry["days"].get(group_slot["day_of_week"], []),
                         )
                     )
+        elif clipboard.get("mode") == "day":
+            target_days: list[dict] = []
+            seen_days: set[tuple[int, str]] = set()
+            for slot in _sort_slots(selected_slots):
+                day_key = (slot["week_number"], slot["day_of_week"])
+                if day_key in seen_days:
+                    continue
+                seen_days.add(day_key)
+                target_days.append(
+                    {
+                        "week_number": slot["week_number"],
+                        "day_of_week": slot["day_of_week"],
+                        "slots": _sort_slots(
+                            [
+                                candidate
+                                for candidate in slots
+                                if candidate["week_number"] == slot["week_number"]
+                                and candidate["day_of_week"] == slot["day_of_week"]
+                            ]
+                        ),
+                    }
+                )
+
+            entries = clipboard["entries"]
+            if len(entries) == 1:
+                source_entries = entries * len(target_days)
+            elif len(entries) == len(target_days):
+                source_entries = entries
+            else:
+                raise InvalidMenuSlotActionError("Select the same number of target days as copied days, or copy a single day.")
+
+            target_payloads = []
+            for target_day, source_entry in zip(target_days, source_entries):
+                source_lookup = {
+                    (slot_entry["meal_period"], slot_entry["concept_name"]): slot_entry["item_ids"]
+                    for slot_entry in source_entry["slots"]
+                }
+                for day_slot in target_day["slots"]:
+                    target_payloads.append(
+                        (
+                            day_slot["menu_slot_id"],
+                            source_lookup.get((day_slot["meal_period"], day_slot["concept_name"]), []),
+                        )
+                    )
         else:
             raise InvalidMenuSlotActionError("No copied slot items are available to paste.")
 
@@ -688,3 +958,82 @@ def paste_menu_slots(
         conn.commit()
 
     return len(target_payloads)
+
+
+def paste_menu_weeks(
+    *,
+    menu_id: int,
+    actor_user_id: str,
+    selected_week_numbers: list[str | int],
+    clipboard: dict | None,
+) -> int:
+    initialize_database()
+
+    if not clipboard or clipboard.get("mode") != "week" or not clipboard.get("entries"):
+        raise InvalidMenuSlotActionError("No copied week is available to paste.")
+
+    normalized_weeks: list[int] = []
+    seen_weeks: set[int] = set()
+    for week_number in selected_week_numbers:
+        try:
+            normalized_week_number = int(week_number)
+        except (TypeError, ValueError):
+            raise InvalidMenuSlotActionError("Select valid destination weeks.")
+        if normalized_week_number not in seen_weeks:
+            normalized_weeks.append(normalized_week_number)
+            seen_weeks.add(normalized_week_number)
+
+    if not normalized_weeks:
+        raise InvalidMenuSlotActionError("Select at least one destination week.")
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        slots = _load_menu_slots(cursor, menu_id=menu_id, actor_user_id=actor_user_id)
+        available_weeks = {slot["week_number"] for slot in slots}
+        invalid_weeks = [week_number for week_number in normalized_weeks if week_number not in available_weeks]
+        if invalid_weeks:
+            raise InvalidMenuSlotActionError("One or more destination weeks are not available in this menu.")
+
+        entries = clipboard["entries"]
+        if len(entries) == 1:
+            source_entries = entries * len(normalized_weeks)
+        elif len(entries) == len(normalized_weeks):
+            source_entries = entries
+        else:
+            raise InvalidMenuSlotActionError("Select the same number of target weeks as copied weeks, or copy a single week.")
+
+        target_payloads = []
+        for target_week_number, source_entry in zip(normalized_weeks, source_entries):
+            source_lookup = {
+                (slot_entry["day_of_week"], slot_entry["meal_period"], slot_entry["concept_name"]): slot_entry["item_ids"]
+                for slot_entry in source_entry["slots"]
+            }
+            target_week_slots = _sort_slots(
+                [slot for slot in slots if slot["week_number"] == target_week_number]
+            )
+            for week_slot in target_week_slots:
+                target_payloads.append(
+                    (
+                        week_slot["menu_slot_id"],
+                        source_lookup.get(
+                            (week_slot["day_of_week"], week_slot["meal_period"], week_slot["concept_name"]),
+                            [],
+                        ),
+                    )
+                )
+
+        unique_item_ids = sorted(
+            {
+                item_id
+                for _, item_ids in target_payloads
+                for item_id in item_ids
+            }
+        )
+        _validate_live_menu_items(cursor, unique_item_ids)
+
+        for menu_slot_id, item_ids in target_payloads:
+            _replace_slot_items(cursor, menu_slot_id, item_ids)
+
+        conn.commit()
+
+    return len(normalized_weeks)

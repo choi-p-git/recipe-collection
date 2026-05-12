@@ -2,6 +2,7 @@ from typing import Any
 import sqlite3
 
 from db import get_connection, initialize_database
+from config.units import STANDARD_UNITS
 from services.item_service import (
     DuplicateItemNameError,
     InvalidItemNameError,
@@ -17,15 +18,31 @@ from services.item_event_service import (
 )
 from services.notification_service import create_post_live_edit_notifications
 from services.recipe_instruction_codec import encode_instruction_steps_to_text
-from services.unit_conversion_service import convert_unit_value, get_unit_measurement_profile
+from services.unit_conversion_service import (
+    convert_unit_value,
+    get_unit_measurement_profile,
+    normalize_unit_symbol,
+)
 
 
 MOCK_RECIPE_AUTHOR_USER_ID = "dev_user_001"
 MOCK_RECIPE_AUTHOR_DISPLAY_NAME = "Plato Choi"
+STANDARD_UNIT_SET = set(STANDARD_UNITS)
 
 
 class InvalidRecipePayloadError(ValueError):
     """Raised when the recipe payload is structurally invalid."""
+
+
+def _validate_authoring_unit(unit: str | None, field_label: str, *, required: bool = False) -> str | None:
+    normalized_unit = normalize_unit_symbol(unit)
+    if not normalized_unit:
+        if required:
+            raise InvalidRecipePayloadError(f"{field_label} is required.")
+        return None
+    if normalized_unit not in STANDARD_UNIT_SET:
+        raise InvalidRecipePayloadError(f"{field_label} must use a standard recipe-authoring unit.")
+    return normalized_unit
 
 
 def _validate_recipe_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -33,10 +50,11 @@ def _validate_recipe_payload(payload: dict[str, Any]) -> dict[str, Any]:
     if not recipe_name:
         raise InvalidItemNameError("Recipe name cannot be empty or only whitespace.")
 
-    yield_unit = str(payload.get("yield_unit", "")).strip()
-
-    if not yield_unit:
-        raise InvalidRecipePayloadError("Yield unit is required.")
+    yield_unit = _validate_authoring_unit(
+        payload.get("yield_unit", ""),
+        "Yield unit",
+        required=True,
+    )
 
     mass_quantity = payload.get("mass_quantity")
     if mass_quantity not in (None, ""):
@@ -50,7 +68,7 @@ def _validate_recipe_payload(payload: dict[str, Any]) -> dict[str, Any]:
     else:
         mass_quantity = None
 
-    mass_unit = str(payload.get("mass_unit", "")).strip() or None
+    mass_unit = _validate_authoring_unit(payload.get("mass_unit", ""), "Yield mass unit")
 
     volume_quantity = payload.get("volume_quantity")
     if volume_quantity not in (None, ""):
@@ -64,7 +82,7 @@ def _validate_recipe_payload(payload: dict[str, Any]) -> dict[str, Any]:
     else:
         volume_quantity = None
 
-    volume_unit = str(payload.get("volume_unit", "")).strip() or None
+    volume_unit = _validate_authoring_unit(payload.get("volume_unit", ""), "Yield volume unit")
 
     yield_quantity = payload.get("yield_quantity")
     yield_profile = get_unit_measurement_profile(yield_unit)
@@ -128,7 +146,7 @@ def _validate_recipe_payload(payload: dict[str, Any]) -> dict[str, Any]:
         serving_size_quantity = None
 
     serving_size_unit = payload.get("serving_size_unit")
-    serving_size_unit = str(serving_size_unit).strip() if serving_size_unit else None
+    serving_size_unit = _validate_authoring_unit(serving_size_unit, "Serving size unit")
 
     serving_count = payload.get("serving_count")
     if serving_count not in (None, ""):
@@ -167,7 +185,11 @@ def _validate_recipe_payload(payload: dict[str, Any]) -> dict[str, Any]:
             raise InvalidRecipePayloadError("Each ingredient must be an object.")
 
         component_item_id = ingredient.get("component_item_id")
-        component_unit = str(ingredient.get("component_unit", "")).strip()
+        component_unit = _validate_authoring_unit(
+            ingredient.get("component_unit", ""),
+            "Ingredient unit",
+            required=True,
+        )
         component_quantity = ingredient.get("component_quantity")
 
         try:
@@ -182,9 +204,6 @@ def _validate_recipe_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
         if component_quantity <= 0:
             raise InvalidNumericValueError("Ingredient quantity must be greater than 0.")
-
-        if not component_unit:
-            raise InvalidRecipePayloadError("Ingredient unit is required.")
 
         validated_ingredients.append(
             {

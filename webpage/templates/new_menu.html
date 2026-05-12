@@ -1,15 +1,24 @@
 {% extends "base.html" %}
 
-{% block title %}New Menu{% endblock %}
+{% block title %}{{ "Edit Menu Config" if page_mode == "edit" else "New Menu" }}{% endblock %}
 
 {% block content %}
     <div class="page-header">
         <div>
-            <h2>Create Menu</h2>
+            <h2>{{ "Edit Menu Config" if page_mode == "edit" else "Create Menu" }}</h2>
             <p class="page-subtitle">
-                Build the base menu structure by selecting service days, meal periods, concepts, and menu length.
+                {% if page_mode == "edit" %}
+                    Update the base menu structure by adjusting service days, meal periods, concepts, and menu length. Changes are only applied when you click Update Config.
+                {% else %}
+                    Build the base menu structure by selecting service days, meal periods, concepts, and menu length.
+                {% endif %}
             </p>
         </div>
+        {% if page_mode == "edit" %}
+            <div>
+                <a class="page-action-link secondary" href="{{ url_for('menu_detail', menu_id=menu_id) }}">Back To Menu</a>
+            </div>
+        {% endif %}
     </div>
 
     <form method="post" class="form-section">
@@ -58,20 +67,41 @@
             </div>
         </fieldset>
 
-        <fieldset class="form-checkbox-group">
-            <legend>Concept Availability</legend>
-            <div class="checkbox-grid">
-                {% for option in concept_options %}
-                    <label class="checkbox-card">
-                        <input
-                            type="checkbox"
-                            name="concepts"
-                            value="{{ option.value }}"
-                            {% if option.value in form_data.concepts %}checked{% endif %}
-                        >
-                        <span>{{ option.label }}</span>
-                    </label>
-                {% endfor %}
+        <fieldset class="form-checkbox-group concept-order-builder" data-concept-builder>
+            <legend>Concept Availability And Order</legend>
+            <p class="muted">
+                Add concepts to the selected list, then move them up or down to match the physical line layout for this venue. That saved order will drive the menu overview and future printed outputs.
+            </p>
+            <div class="concept-order-builder-grid">
+                <section class="concept-order-panel">
+                    <h4>Available Concepts</h4>
+                    <div class="concept-order-option-list">
+                        {% for option in concept_options %}
+                            <button
+                                type="button"
+                                class="workflow-button workflow-button-secondary concept-order-option"
+                                data-concept-value="{{ option.value }}"
+                                data-concept-label="{{ option.label }}"
+                            >
+                                Add {{ option.label }}
+                            </button>
+                        {% endfor %}
+                    </div>
+                </section>
+                <section class="concept-order-panel">
+                    <h4>Selected Concepts In Display Order</h4>
+                    <div class="concept-order-hidden-inputs" data-concept-hidden-inputs></div>
+                    <ul class="concept-order-selected-list" data-concept-selected-list>
+                        {% for concept_value in form_data.concepts %}
+                            {% set concept_label = (concept_options | selectattr('value', 'equalto', concept_value) | map(attribute='label') | list | first) %}
+                            <li
+                                class="concept-order-selected-item"
+                                data-concept-value="{{ concept_value }}"
+                                data-concept-label="{{ concept_label or concept_value }}"
+                            ></li>
+                        {% endfor %}
+                    </ul>
+                </section>
             </div>
         </fieldset>
 
@@ -90,9 +120,17 @@
         <section class="item-detail-section">
             <h3>Confirmation</h3>
             <p class="muted">
-                Saving this menu will create the base slot structure for every selected week, day, meal period, and concept.
+                {% if page_mode == "edit" %}
+                    Updating this menu will sync the slot structure to the selected weeks, days, meal periods, and concepts. Slots that no longer fit the config will be removed.
+                {% else %}
+                    Saving this menu will create the base slot structure for every selected week, day, meal period, and concept.
+                {% endif %}
             </p>
-            <button type="submit">Create Menu</button>
+            <button type="submit">{{ "Update Config" if page_mode == "edit" else "Create Menu" }}</button>
         </section>
     </form>
+{% endblock %}
+
+{% block scripts %}
+    <script src="{{ url_for('static', filename='menu_config.js') }}"></script>
 {% endblock %}

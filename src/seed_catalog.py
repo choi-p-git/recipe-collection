@@ -32,7 +32,7 @@ VOLUME_UNIT_TO_ML = {
     "qt": 946.353,
     "gal": 3785.41,
     "ml": 1.0,
-    "l": 1000.0,
+    "L": 1000.0,
 }
 MASS_UNIT_TO_G = {
     "g": 1.0,
@@ -1081,7 +1081,7 @@ def _build_base_food_component_quantity(base_food: dict, sequence: int) -> tuple
         "qt": [0.25, 0.5, 1.0],
         "gal": [0.125, 0.25, 0.5],
         "ml": [30.0, 60.0, 120.0, 180.0],
-        "l": [0.25, 0.5, 1.0],
+        "L": [0.25, 0.5, 1.0],
     }
     options = quantity_map.get(unit, [1.0])
     return float(options[sequence % len(options)]), unit
@@ -1099,7 +1099,7 @@ def _select_best_volume_display(total_volume_ml: float) -> tuple[float, str]:
             return round(converted, 2), unit
 
     if total_volume_ml >= 1000:
-        return round(total_volume_ml / 1000.0, 2), "l"
+        return round(total_volume_ml / 1000.0, 2), "L"
     return round(total_volume_ml, 2), "ml"
 
 
@@ -1128,7 +1128,7 @@ def _parse_volume_portion(text: str) -> tuple[float, str] | None:
         ("cup", r"(?<!\w)(\d+(?:\.\d+)?)?\s*cups?\b"),
         ("tbs", r"(?<!\w)(\d+(?:\.\d+)?)?\s*(?:tablespoons?|tbsp)\b"),
         ("tsp", r"(?<!\w)(\d+(?:\.\d+)?)?\s*(?:teaspoons?|tsp)\b"),
-        ("l", r"(?<!\w)(\d+(?:\.\d+)?)?\s*liters?\b"),
+        ("L", r"(?<!\w)(\d+(?:\.\d+)?)?\s*liters?\b"),
         ("ml", r"(?<!\w)(\d+(?:\.\d+)?)?\s*(?:ml|milliliters?)\b"),
     ]
     for unit, pattern in patterns:
@@ -1139,7 +1139,7 @@ def _parse_volume_portion(text: str) -> tuple[float, str] | None:
 
 
 def _volume_unit_priority(unit: str) -> int:
-    preference = {"cup": 0, "tbs": 1, "tsp": 2, "pt": 3, "qt": 4, "gal": 5, "ml": 6, "l": 7}
+    preference = {"cup": 0, "tbs": 1, "tsp": 2, "pt": 3, "qt": 4, "gal": 5, "ml": 6, "L": 7}
     return preference.get(unit, 99)
 
 

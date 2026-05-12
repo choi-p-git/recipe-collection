@@ -1,8 +1,15 @@
 from config.unit_measurements import MEASUREMENT_TYPE_LABELS, UNIT_MEASUREMENT_DEFINITIONS
 
 
-def get_unit_measurement_profile(unit: str | None) -> dict | None:
+def normalize_unit_symbol(unit: str | None) -> str:
     normalized_unit = str(unit or "").strip()
+    if normalized_unit == "l":
+        return "L"
+    return normalized_unit
+
+
+def get_unit_measurement_profile(unit: str | None) -> dict | None:
+    normalized_unit = normalize_unit_symbol(unit)
     if not normalized_unit:
         return None
 
@@ -80,6 +87,7 @@ def describe_unit_conversion(source_unit: str | None, target_unit: str | None) -
 
 
 def convert_unit_value(quantity: float, from_unit: str, to_unit: str) -> dict:
+    normalized_to_unit = normalize_unit_symbol(to_unit)
     relationship = describe_unit_conversion(from_unit, to_unit)
 
     if relationship["status"] not in {"direct_ratio", "same_family_conversion"}:
@@ -88,7 +96,7 @@ def convert_unit_value(quantity: float, from_unit: str, to_unit: str) -> dict:
             "status": relationship["status"],
             "label": relationship["label"],
             "quantity": None,
-            "unit": to_unit,
+            "unit": normalized_to_unit,
             "source_profile": relationship["source_profile"],
             "target_profile": relationship["target_profile"],
         }
@@ -105,7 +113,7 @@ def convert_unit_value(quantity: float, from_unit: str, to_unit: str) -> dict:
         "status": relationship["status"],
         "label": relationship["label"],
         "quantity": converted_quantity,
-        "unit": to_unit,
+        "unit": normalized_to_unit,
         "source_profile": relationship["source_profile"],
         "target_profile": relationship["target_profile"],
     }
@@ -122,6 +130,7 @@ def convert_with_item_mass_volume_bridge(
     volume_quantity: float | None,
     volume_unit: str | None,
 ) -> dict:
+    normalized_to_unit = normalize_unit_symbol(to_unit)
     direct_result = convert_unit_value(quantity, from_unit, to_unit)
     if direct_result["ok"]:
         return direct_result
@@ -137,7 +146,7 @@ def convert_with_item_mass_volume_bridge(
             "status": "missing",
             "label": "Missing unit metadata",
             "quantity": None,
-            "unit": to_unit,
+            "unit": normalized_to_unit,
             "source_profile": source_profile,
             "target_profile": target_profile,
         }
@@ -148,7 +157,7 @@ def convert_with_item_mass_volume_bridge(
             "status": "incompatible",
             "label": "Bridge conversion requires mass or volume units",
             "quantity": None,
-            "unit": to_unit,
+            "unit": normalized_to_unit,
             "source_profile": source_profile,
             "target_profile": target_profile,
         }
@@ -159,7 +168,7 @@ def convert_with_item_mass_volume_bridge(
             "status": "incompatible",
             "label": "Bridge conversion requires mass or volume units",
             "quantity": None,
-            "unit": to_unit,
+            "unit": normalized_to_unit,
             "source_profile": source_profile,
             "target_profile": target_profile,
         }
@@ -170,7 +179,7 @@ def convert_with_item_mass_volume_bridge(
             "status": "missing_bridge_metadata",
             "label": "Mass bridge metadata is missing",
             "quantity": None,
-            "unit": to_unit,
+            "unit": normalized_to_unit,
             "source_profile": source_profile,
             "target_profile": target_profile,
         }
@@ -181,7 +190,7 @@ def convert_with_item_mass_volume_bridge(
             "status": "missing_bridge_metadata",
             "label": "Volume bridge metadata is missing",
             "quantity": None,
-            "unit": to_unit,
+            "unit": normalized_to_unit,
             "source_profile": source_profile,
             "target_profile": target_profile,
         }
@@ -196,7 +205,7 @@ def convert_with_item_mass_volume_bridge(
             "status": "missing_bridge_metadata",
             "label": "Bridge metadata must be greater than 0",
             "quantity": None,
-            "unit": to_unit,
+            "unit": normalized_to_unit,
             "source_profile": source_profile,
             "target_profile": target_profile,
         }
@@ -211,7 +220,7 @@ def convert_with_item_mass_volume_bridge(
             "status": direct_result["status"],
             "label": direct_result["label"],
             "quantity": None,
-            "unit": to_unit,
+            "unit": normalized_to_unit,
             "source_profile": source_profile,
             "target_profile": target_profile,
         }
@@ -228,7 +237,7 @@ def convert_with_item_mass_volume_bridge(
         "status": status_code,
         "label": f"{item_type_label} mass-volume bridge conversion ready",
         "quantity": converted_quantity,
-        "unit": to_unit,
+        "unit": normalized_to_unit,
         "source_profile": source_profile,
         "target_profile": target_profile,
     }

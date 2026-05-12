@@ -40,7 +40,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const finishCheckMethods = document.getElementById("finish-check-methods");
     const finishCheckClassification = document.getElementById("finish-check-classification");
     const MASS_UNITS = new Set(["g", "kg", "oz", "lb"]);
-    const VOLUME_UNITS = new Set(["ml", "l", "tsp", "tbs", "cup", "pt", "qt", "gal"]);
+    const VOLUME_UNITS = new Set(["ml", "L", "tsp", "tbs", "cup", "pt", "qt", "gal"]);
 
     function normalizeName(value) {
         return value.trim().replace(/\s+/g, " ");
@@ -123,6 +123,7 @@ document.addEventListener("DOMContentLoaded", () => {
         `;
 
         ingredientList.appendChild(row);
+        window.enhanceAdvancedUnitSelects?.(row);
         wireRowButtons(row, ingredientList);
         wireValidationInputs(row);
         wireIngredientSearchRow(row);
@@ -471,16 +472,10 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function buildUnitOptions() {
-        const unitSelect = document.getElementById("recipe_yield_unit");
-        if (!unitSelect) return "";
-
-        const options = [];
-        for (const option of unitSelect.options) {
-            if (option.value) {
-                options.push(`<option value="${option.value}">${option.value}</option>`);
-            }
-        }
-        return options.join("");
+        const unitOptions = window.recipeAuthoringUnitOptions || [];
+        return unitOptions
+            .map((option) => `<option value="${option.value}">${option.label}</option>`)
+            .join("");
     }
 
     function validateGeneral() {

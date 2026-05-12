@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+
+{% block title %}Forecasting - {{ page_data.menu.menu_name }}{% endblock %}
+{% block main_class %}container container-menu-builder container-menu-forecast{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <div>
+            <h2>{{ page_data.menu.menu_name }} Forecasting</h2>
+            <p class="page-subtitle">Production planning shell for assigned menu recipes.</p>
+        </div>
+        <a class="page-action-link secondary" href="{{ url_for('menu_detail', menu_id=page_data.menu.menu_id, week=page_data.selected_week_number) }}">Back to Menu</a>
+    </div>
+
+    <section class="item-detail-section menu-forecast-calendar-section">
+        <div class="menu-forecast-cycle-header">
+            {% if page_data.previous_cycle_week %}
+                <a
+                    class="icon-button"
+                    href="{{ url_for('menu_forecast', menu_id=page_data.menu.menu_id, week=page_data.previous_cycle_week, day=page_data.selected_day, q=page_data.search_term or None, meal_period=page_data.selected_meal_period or None, concept=page_data.selected_concept or None, sort=page_data.selected_sort, order=page_data.selected_order) }}"
+                    aria-label="Previous cycle"
+                >
+                    &lt;
+                </a>
+            {% else %}
+                <span class="icon-button is-disabled" aria-hidden="true">&lt;</span>
+            {% endif %}
+            <h3>Cycle Weeks {{ page_data.cycle_start }}-{{ page_data.cycle_weeks[-1] }}</h3>
+            {% if page_data.next_cycle_week %}
+                <a
+                    class="icon-button"
+                    href="{{ url_for('menu_forecast', menu_id=page_data.menu.menu_id, week=page_data.next_cycle_week, day=page_data.selected_day, q=page_data.search_term or None, meal_period=page_data.selected_meal_period or None, concept=page_data.selected_concept or None, sort=page_data.selected_sort, order=page_data.selected_order) }}"
+                    aria-label="Next cycle"
+                >
+                    &gt;
+                </a>
+            {% else %}
+                <span class="icon-button is-disabled" aria-hidden="true">&gt;</span>
+            {% endif %}
+        </div>
+        <div class="menu-forecast-calendar" style="--menu-day-count: {{ page_data.menu.service_days|length }};">
+            <div class="menu-forecast-calendar-corner">Week</div>
+            {% for day in day_options if day.value in page_data.menu.service_days %}
+                <div class="menu-forecast-calendar-heading">{{ day.label }}</div>
+            {% endfor %}
+            {% for week_number in page_data.cycle_weeks %}
+                <div class="menu-forecast-week-label">Week {{ week_number }}</div>
+                {% for day in day_options if day.value in page_data.menu.service_days %}
+                    <a
+                        class="menu-forecast-day-button {% if week_number == page_data.selected_week_number and day.value == page_data.selected_day %}is-selected{% endif %}"
+                        href="{{ url_for('menu_forecast', menu_id=page_data.menu.menu_id, week=week_number, day=day.value, q=page_data.search_term or None, meal_period=page_data.selected_meal_period or None, concept=page_data.selected_concept or None, sort=page_data.selected_sort, order=page_data.selected_order) }}"
+                    >
+                        {{ day.label[:3] }}
+                    </a>
+                {% endfor %}
+            {% endfor %}
+        </div>
+    </section>
+
+    <section class="item-detail-section">
+        <form method="get" class="filter-form menu-forecast-control-form">
+            <input type="hidden" name="week" value="{{ page_data.selected_week_number }}">
+            <input type="hidden" name="day" value="{{ page_data.selected_day }}">
+            <div class="menu-forecast-title-row">
+                <h3>Recipes For {{ page_data.selected_day_label }}, Week {{ page_data.selected_week_number }}</h3>
+                <div class="filter-row">
+                    <label for="q">Search</label>
+                    <input id="q" type="search" name="q" value="{{ page_data.search_term }}" placeholder="Search recipes">
+                </div>
+                <div class="filter-row">
+                    <label for="meal_period">Meal</label>
+                    <select id="meal_period" name="meal_period">
+                        <option value="">All Meals</option>
+                        {% for meal in meal_period_options if meal.value in page_data.menu.meal_periods %}
+                            <option value="{{ meal.value }}" {% if page_data.selected_meal_period == meal.value %}selected{% endif %}>{{ meal.label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="filter-row">
+                    <label for="concept">Concept</label>
+                    <select id="concept" name="concept">
+                        <option value="">All Concepts</option>
+                        {% for concept in page_data.menu.concepts %}
+                            <option value="{{ concept }}" {% if page_data.selected_concept == concept %}selected{% endif %}>{{ concept|replace('_', ' ')|title }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="filter-row">
+                    <label for="sort">Sort</label>
+                    <select id="sort" name="sort">
+                        <option value="menu_order" {% if page_data.selected_sort == 'menu_order' %}selected{% endif %}>Menu Order</option>
+                        <option value="meal_period" {% if page_data.selected_sort == 'meal_period' %}selected{% endif %}>Meal Period</option>
+                        <option value="concept" {% if page_data.selected_sort == 'concept' %}selected{% endif %}>Concept</option>
+                    </select>
+                </div>
+                <div class="filter-row">
+                    <label for="order">Order</label>
+                    <select id="order" name="order">
+                        <option value="asc" {% if page_data.selected_order == 'asc' %}selected{% endif %}>Ascending</option>
+                        <option value="desc" {% if page_data.selected_order == 'desc' %}selected{% endif %}>Descending</option>
+                    </select>
+                </div>
+                <button type="submit" class="workflow-button workflow-button-primary">Apply</button>
+            </div>
+        </form>
+
+        <div class="menu-forecast-table-shell">
+            <table class="menu-forecast-table">
+                <thead>
+                    <tr>
+                        <th>Recipe Name</th>
+                        <th>Meal Period</th>
+                        <th>Concept</th>
+                        <th>Batches</th>
+                        <th>Scale by Yield</th>
+                        <th>Advance Edit</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for recipe in page_data.rows %}
+                        <tr>
+                            <td>{{ recipe.recipe_name }}</td>
+                            <td>{{ recipe.meal_period_label }}</td>
+                            <td>{{ recipe.concept_label }}</td>
+                            <td>
+                                <button type="button" class="icon-button" aria-label="Add batch for {{ recipe.recipe_name }}">+</button>
+                            </td>
+                            <td>
+                                <div
+                                    class="menu-forecast-scale-control"
+                                    data-forecast-control
+                                    data-save-url="{{ url_for('api_update_menu_forecast', menu_id=page_data.menu.menu_id, menu_slot_item_id=recipe.menu_slot_item_id) }}"
+                                >
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value="{{ recipe.forecast_quantity }}"
+                                        aria-label="Scale quantity for {{ recipe.recipe_name }}"
+                                        data-forecast-quantity
+                                    >
+                                    <select aria-label="Scale unit for {{ recipe.recipe_name }}" data-forecast-unit>
+                                        {% for unit in approved_units %}
+                                            <option value="{{ unit }}" {% if recipe.forecast_unit == unit %}selected{% endif %}>{{ unit|unit_label }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <span class="menu-forecast-sync-status" data-forecast-status aria-live="polite">
+                                        {% if recipe.forecast_updated_at %}✓ Saved{% endif %}
+                                    </span>
+                                </div>
+                            </td>
+                            <td>
+                                <a
+                                    class="icon-button"
+                                    href="{{ url_for('menu_forecast_recipe_advanced', menu_id=page_data.menu.menu_id, item_id=recipe.item_id, menu_slot_item_id=recipe.menu_slot_item_id, week=page_data.selected_week_number, day=page_data.selected_day) }}"
+                                    aria-label="Open advanced edit for {{ recipe.recipe_name }}"
+                                >
+                                    &gt;
+                                </a>
+                            </td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="6">No assigned recipes match this forecast view.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+{% endblock %}
+
+{% block scripts %}
+    <script src="{{ url_for('static', filename='menu_forecast.js') }}"></script>
+{% endblock %}

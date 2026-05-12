@@ -262,6 +262,34 @@ def test_create_recipe_derives_non_each_yield_quantity_from_mass_or_volume(isola
             },
             "At least one non-empty instruction step is required.",
         ),
+        (
+            {
+                "item_name": "Bad Recipe",
+                "yield_quantity": 1,
+                "yield_unit": "each",
+                "primary_cooking_method_code": "bake",
+                "instruction_steps": ["Step"],
+                "ingredients": [
+                    {
+                        "component_item_id": 1,
+                        "component_quantity": 1,
+                        "component_unit": "pan_full_4",
+                    }
+                ],
+            },
+            "Ingredient unit must use a standard recipe-authoring unit.",
+        ),
+        (
+            {
+                "item_name": "Bad Recipe",
+                "yield_quantity": 1,
+                "yield_unit": "pan_full_4",
+                "primary_cooking_method_code": "bake",
+                "instruction_steps": ["Step"],
+                "ingredients": [{"component_item_id": 1, "component_quantity": 1, "component_unit": "oz"}],
+            },
+            "Yield unit must use a standard recipe-authoring unit.",
+        ),
     ],
 )
 def test_create_recipe_validation_errors(isolated_db, payload, expected_message):

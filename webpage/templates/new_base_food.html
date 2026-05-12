@@ -33,7 +33,7 @@
             <select id="mass_unit" name="mass_unit">
                 <option value="">-- Select Unit --</option>
                 {% for unit in approved_units %}
-                    <option value="{{ unit }}" {% if form_data.mass_unit == unit %}selected{% endif %}>{{ unit }}</option>
+                    <option value="{{ unit }}" {% if form_data.mass_unit == unit %}selected{% endif %}>{{ unit|unit_label }}</option>
                 {% endfor %}
             </select>
 
@@ -50,7 +50,7 @@
             <select id="volume_unit" name="volume_unit">
                 <option value="">-- Select Unit --</option>
                 {% for unit in approved_units %}
-                    <option value="{{ unit }}" {% if form_data.volume_unit == unit %}selected{% endif %}>{{ unit }}</option>
+                    <option value="{{ unit }}" {% if form_data.volume_unit == unit %}selected{% endif %}>{{ unit|unit_label }}</option>
                 {% endfor %}
             </select>
 
@@ -84,7 +84,7 @@
             <select id="nutrition_serving_mass_unit" name="nutrition_serving_mass_unit">
                 <option value="">-- Select Unit --</option>
                 {% for unit in approved_units %}
-                    <option value="{{ unit }}" {% if form_data.nutrition_serving_mass_unit == unit %}selected{% endif %}>{{ unit }}</option>
+                    <option value="{{ unit }}" {% if form_data.nutrition_serving_mass_unit == unit %}selected{% endif %}>{{ unit|unit_label }}</option>
                 {% endfor %}
             </select>
 
@@ -101,7 +101,7 @@
             <select id="nutrition_serving_volume_unit" name="nutrition_serving_volume_unit">
                 <option value="">-- Select Unit --</option>
                 {% for unit in approved_units %}
-                    <option value="{{ unit }}" {% if form_data.nutrition_serving_volume_unit == unit %}selected{% endif %}>{{ unit }}</option>
+                    <option value="{{ unit }}" {% if form_data.nutrition_serving_volume_unit == unit %}selected{% endif %}>{{ unit|unit_label }}</option>
                 {% endfor %}
             </select>
 

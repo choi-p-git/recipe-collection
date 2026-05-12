@@ -1,3 +1,4 @@
+import json
 import sqlite3
 
 import pytest
@@ -17,8 +18,10 @@ from services.menu_service import (
     delete_menu,
     get_menu_slot_assignment_ids,
     paste_menu_slots,
+    paste_menu_weeks,
     paste_menu_slot_assignment_ids,
     replace_menu_slot_items,
+    update_menu_config,
 )
 
 
@@ -476,6 +479,103 @@ def test_copy_menu_slots_by_concept_and_paste_to_target_concept(isolated_db):
     assert tuesday_pasted == tuesday_item_id
 
 
+def test_copy_menu_slots_by_day_and_paste_to_target_day(isolated_db):
+    menu_id = create_menu(
+        menu_name="Bulk Day Menu",
+        author_user_id="dev_user_001",
+        author_display_name="Plato Choi",
+        service_days=["monday", "tuesday"],
+        meal_periods=["lunch", "dinner"],
+        concepts=["hot_line", "salad_bar"],
+        menu_length_weeks=1,
+        allowed_service_days=["monday", "tuesday"],
+        allowed_meal_periods=["lunch", "dinner"],
+        allowed_concepts=["hot_line", "salad_bar"],
+    )
+    lunch_hot_line_id = create_base_food(item_name="Day Monday Lunch Hot Line")
+    lunch_salad_bar_id = create_base_food(item_name="Day Monday Lunch Salad Bar")
+    dinner_hot_line_id = create_base_food(item_name="Day Monday Dinner Hot Line")
+    dinner_salad_bar_id = create_base_food(item_name="Day Monday Dinner Salad Bar")
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT menu_slot_id, day_of_week, meal_period, concept_name
+        FROM menu_slot
+        WHERE menu_id = ?
+        ORDER BY menu_slot_id ASC
+        """,
+        (menu_id,),
+    )
+    slot_rows = cursor.fetchall()
+    cursor.execute(
+        "UPDATE item SET status = 'live' WHERE item_id IN (?, ?, ?, ?)",
+        (lunch_hot_line_id, lunch_salad_bar_id, dinner_hot_line_id, dinner_salad_bar_id),
+    )
+    conn.commit()
+    conn.close()
+
+    slot_lookup = {
+        (day, meal_period, concept_name): menu_slot_id
+        for menu_slot_id, day, meal_period, concept_name in slot_rows
+    }
+
+    replace_menu_slot_items(
+        menu_slot_id=slot_lookup[("monday", "lunch", "hot_line")],
+        selected_item_ids=[lunch_hot_line_id],
+        actor_user_id="dev_user_001",
+    )
+    replace_menu_slot_items(
+        menu_slot_id=slot_lookup[("monday", "lunch", "salad_bar")],
+        selected_item_ids=[lunch_salad_bar_id],
+        actor_user_id="dev_user_001",
+    )
+    replace_menu_slot_items(
+        menu_slot_id=slot_lookup[("monday", "dinner", "hot_line")],
+        selected_item_ids=[dinner_hot_line_id],
+        actor_user_id="dev_user_001",
+    )
+    replace_menu_slot_items(
+        menu_slot_id=slot_lookup[("monday", "dinner", "salad_bar")],
+        selected_item_ids=[dinner_salad_bar_id],
+        actor_user_id="dev_user_001",
+    )
+
+    clipboard = copy_menu_slots(
+        menu_id=menu_id,
+        actor_user_id="dev_user_001",
+        selected_slot_ids=[slot_lookup[("monday", "lunch", "hot_line")]],
+        scope="day",
+    )
+    pasted_count = paste_menu_slots(
+        menu_id=menu_id,
+        actor_user_id="dev_user_001",
+        selected_slot_ids=[slot_lookup[("tuesday", "lunch", "hot_line")]],
+        clipboard=clipboard,
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT item_id FROM menu_slot_item WHERE menu_slot_id = ?", (slot_lookup[("tuesday", "lunch", "hot_line")],))
+    tuesday_lunch_hot_line = cursor.fetchone()[0]
+    cursor.execute("SELECT item_id FROM menu_slot_item WHERE menu_slot_id = ?", (slot_lookup[("tuesday", "lunch", "salad_bar")],))
+    tuesday_lunch_salad_bar = cursor.fetchone()[0]
+    cursor.execute("SELECT item_id FROM menu_slot_item WHERE menu_slot_id = ?", (slot_lookup[("tuesday", "dinner", "hot_line")],))
+    tuesday_dinner_hot_line = cursor.fetchone()[0]
+    cursor.execute("SELECT item_id FROM menu_slot_item WHERE menu_slot_id = ?", (slot_lookup[("tuesday", "dinner", "salad_bar")],))
+    tuesday_dinner_salad_bar = cursor.fetchone()[0]
+    conn.close()
+
+    assert clipboard["mode"] == "day"
+    assert clipboard["copied_count"] == 1
+    assert pasted_count == 4
+    assert tuesday_lunch_hot_line == lunch_hot_line_id
+    assert tuesday_lunch_salad_bar == lunch_salad_bar_id
+    assert tuesday_dinner_hot_line == dinner_hot_line_id
+    assert tuesday_dinner_salad_bar == dinner_salad_bar_id
+
+
 def test_clear_menu_slots_by_day_and_week(isolated_db):
     menu_id = create_menu(
         menu_name="Bulk Clear Menu",
@@ -564,3 +664,223 @@ def test_clear_menu_slots_by_day_and_week(isolated_db):
     assert cleared_week_count == 4
     assert remaining_day_items == 0
     assert remaining_week_items == 0
+
+
+def test_copy_menu_slots_by_week_and_paste_to_target_week(isolated_db):
+    menu_id = create_menu(
+        menu_name="Bulk Week Menu",
+        author_user_id="dev_user_001",
+        author_display_name="Plato Choi",
+        service_days=["monday", "tuesday"],
+        meal_periods=["lunch"],
+        concepts=["hot_line", "salad_bar"],
+        menu_length_weeks=2,
+        allowed_service_days=["monday", "tuesday"],
+        allowed_meal_periods=["lunch"],
+        allowed_concepts=["hot_line", "salad_bar"],
+    )
+    monday_hot_line_id = create_base_food(item_name="Week Monday Hot Line")
+    monday_salad_bar_id = create_base_food(item_name="Week Monday Salad Bar")
+    tuesday_hot_line_id = create_base_food(item_name="Week Tuesday Hot Line")
+    tuesday_salad_bar_id = create_base_food(item_name="Week Tuesday Salad Bar")
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT menu_slot_id, week_number, day_of_week, meal_period, concept_name
+        FROM menu_slot
+        WHERE menu_id = ?
+        ORDER BY menu_slot_id ASC
+        """,
+        (menu_id,),
+    )
+    slot_rows = cursor.fetchall()
+    cursor.execute(
+        "UPDATE item SET status = 'live' WHERE item_id IN (?, ?, ?, ?)",
+        (monday_hot_line_id, monday_salad_bar_id, tuesday_hot_line_id, tuesday_salad_bar_id),
+    )
+    conn.commit()
+    conn.close()
+
+    slot_lookup = {
+        (week_number, day_of_week, meal_period, concept_name): menu_slot_id
+        for menu_slot_id, week_number, day_of_week, meal_period, concept_name in slot_rows
+    }
+
+    replace_menu_slot_items(
+        menu_slot_id=slot_lookup[(1, "monday", "lunch", "hot_line")],
+        selected_item_ids=[monday_hot_line_id],
+        actor_user_id="dev_user_001",
+    )
+    replace_menu_slot_items(
+        menu_slot_id=slot_lookup[(1, "monday", "lunch", "salad_bar")],
+        selected_item_ids=[monday_salad_bar_id],
+        actor_user_id="dev_user_001",
+    )
+    replace_menu_slot_items(
+        menu_slot_id=slot_lookup[(1, "tuesday", "lunch", "hot_line")],
+        selected_item_ids=[tuesday_hot_line_id],
+        actor_user_id="dev_user_001",
+    )
+    replace_menu_slot_items(
+        menu_slot_id=slot_lookup[(1, "tuesday", "lunch", "salad_bar")],
+        selected_item_ids=[tuesday_salad_bar_id],
+        actor_user_id="dev_user_001",
+    )
+
+    clipboard = copy_menu_slots(
+        menu_id=menu_id,
+        actor_user_id="dev_user_001",
+        selected_slot_ids=[slot_lookup[(1, "monday", "lunch", "hot_line")]],
+        scope="week",
+    )
+    pasted_week_count = paste_menu_weeks(
+        menu_id=menu_id,
+        actor_user_id="dev_user_001",
+        selected_week_numbers=["2"],
+        clipboard=clipboard,
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT item_id FROM menu_slot_item WHERE menu_slot_id = ?", (slot_lookup[(2, "monday", "lunch", "hot_line")],))
+    week_two_monday_hot_line = cursor.fetchone()[0]
+    cursor.execute("SELECT item_id FROM menu_slot_item WHERE menu_slot_id = ?", (slot_lookup[(2, "monday", "lunch", "salad_bar")],))
+    week_two_monday_salad_bar = cursor.fetchone()[0]
+    cursor.execute("SELECT item_id FROM menu_slot_item WHERE menu_slot_id = ?", (slot_lookup[(2, "tuesday", "lunch", "hot_line")],))
+    week_two_tuesday_hot_line = cursor.fetchone()[0]
+    cursor.execute("SELECT item_id FROM menu_slot_item WHERE menu_slot_id = ?", (slot_lookup[(2, "tuesday", "lunch", "salad_bar")],))
+    week_two_tuesday_salad_bar = cursor.fetchone()[0]
+    conn.close()
+
+    assert clipboard["mode"] == "week"
+    assert clipboard["copied_count"] == 1
+    assert pasted_week_count == 1
+    assert week_two_monday_hot_line == monday_hot_line_id
+    assert week_two_monday_salad_bar == monday_salad_bar_id
+    assert week_two_tuesday_hot_line == tuesday_hot_line_id
+    assert week_two_tuesday_salad_bar == tuesday_salad_bar_id
+
+
+def test_update_menu_config_pops_removed_slots_and_adds_new_slots(isolated_db):
+    menu_id = create_menu(
+        menu_name="Editable Menu",
+        author_user_id="dev_user_001",
+        author_display_name="Plato Choi",
+        service_days=["monday", "tuesday"],
+        meal_periods=["lunch"],
+        concepts=["hot_line", "salad_bar"],
+        menu_length_weeks=2,
+        allowed_service_days=["monday", "tuesday", "wednesday"],
+        allowed_meal_periods=["lunch", "dinner"],
+        allowed_concepts=["hot_line", "salad_bar"],
+    )
+    kept_item_id = create_base_food(item_name="Editable Keep Item")
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id = ?", (kept_item_id,))
+    cursor.execute(
+        """
+        SELECT menu_slot_id
+        FROM menu_slot
+        WHERE menu_id = ?
+          AND week_number = 1
+          AND day_of_week = 'monday'
+          AND meal_period = 'lunch'
+          AND concept_name = 'hot_line'
+        """,
+        (menu_id,),
+    )
+    kept_slot_id = cursor.fetchone()[0]
+    conn.commit()
+    conn.close()
+
+    replace_menu_slot_items(
+        menu_slot_id=kept_slot_id,
+        selected_item_ids=[kept_item_id],
+        actor_user_id="dev_user_001",
+    )
+
+    update_menu_config(
+        menu_id=menu_id,
+        actor_user_id="dev_user_001",
+        menu_name="Edited Menu",
+        service_days=["monday", "wednesday"],
+        meal_periods=["lunch", "dinner"],
+        concepts=["hot_line"],
+        menu_length_weeks=1,
+        allowed_service_days=["monday", "tuesday", "wednesday"],
+        allowed_meal_periods=["lunch", "dinner"],
+        allowed_concepts=["hot_line", "salad_bar"],
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT menu_name, menu_length_weeks FROM menu WHERE menu_id = ?",
+        (menu_id,),
+    )
+    menu_row = cursor.fetchone()
+    cursor.execute(
+        """
+        SELECT week_number, day_of_week, meal_period, concept_name
+        FROM menu_slot
+        WHERE menu_id = ?
+        ORDER BY week_number, day_of_week, meal_period, concept_name
+        """,
+        (menu_id,),
+    )
+    slot_rows = cursor.fetchall()
+    cursor.execute(
+        "SELECT item_id FROM menu_slot_item WHERE menu_slot_id = ?",
+        (kept_slot_id,),
+    )
+    kept_slot_item = cursor.fetchone()[0]
+    conn.close()
+
+    assert menu_row == ("Edited Menu", 1)
+    assert slot_rows == [
+        (1, "monday", "dinner", "hot_line"),
+        (1, "monday", "lunch", "hot_line"),
+        (1, "wednesday", "dinner", "hot_line"),
+        (1, "wednesday", "lunch", "hot_line"),
+    ]
+    assert kept_slot_item == kept_item_id
+
+
+def test_update_menu_config_preserves_concept_order(isolated_db):
+    menu_id = create_menu(
+        menu_name="Ordered Concepts Menu",
+        author_user_id="dev_user_001",
+        author_display_name="Plato Choi",
+        service_days=["monday"],
+        meal_periods=["lunch"],
+        concepts=["hot_line", "salad_bar", "grab_go"],
+        menu_length_weeks=1,
+        allowed_service_days=["monday"],
+        allowed_meal_periods=["lunch"],
+        allowed_concepts=["hot_line", "salad_bar", "grab_go"],
+    )
+
+    update_menu_config(
+        menu_id=menu_id,
+        actor_user_id="dev_user_001",
+        menu_name="Ordered Concepts Menu",
+        service_days=["monday"],
+        meal_periods=["lunch"],
+        concepts=["grab_go", "hot_line", "salad_bar"],
+        menu_length_weeks=1,
+        allowed_service_days=["monday"],
+        allowed_meal_periods=["lunch"],
+        allowed_concepts=["hot_line", "salad_bar", "grab_go"],
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT concepts_json FROM menu WHERE menu_id = ?", (menu_id,))
+    concepts_json = cursor.fetchone()[0]
+    conn.close()
+
+    assert json.loads(concepts_json) == ["grab_go", "hot_line", "salad_bar"]
