@@ -970,6 +970,16 @@ button:disabled {
     margin: 0;
 }
 
+.menu-search-more-row {
+    display: flex;
+    justify-content: center;
+}
+
+.menu-search-more-button {
+    font: inherit;
+    cursor: pointer;
+}
+
 .menu-assignment-hidden-inputs {
     display: none;
 }
@@ -1090,8 +1100,32 @@ button:disabled {
     align-items: center;
 }
 
+.menu-forecast-serving-control {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+}
+
 .menu-forecast-scale-control input {
     width: 7rem;
+}
+
+.menu-forecast-serving-control input {
+    width: 6rem;
+}
+
+.menu-forecast-serving-control select {
+    max-width: 9rem;
+}
+
+.menu-forecast-portions-made {
+    white-space: nowrap;
+}
+
+.menu-forecast-portions-button {
+    font: inherit;
+    cursor: pointer;
 }
 
 .menu-forecast-sync-status {

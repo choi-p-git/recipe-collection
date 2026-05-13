@@ -52,6 +52,7 @@ from services.menu_service import (
     update_menu_config,
 )
 from services.menu_forecast_service import (
+    get_menu_forecast_by_slot_item,
     InvalidMenuForecastError,
     save_menu_forecast_yield,
 )
@@ -90,6 +91,7 @@ from services.unit_display_service import (
 )
 from services.unit_conversion_service import get_unit_measurement_profile
 from services.unit_label_service import format_unit_label
+from services.user_serving_service import build_desired_portions_yield_target, build_user_serving_preview
 from services.workflow_service import (
     WorkflowPermissionError,
     ensure_portal_access,
@@ -112,6 +114,18 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 WEBPAGE_DIR = PROJECT_ROOT / "webpage"
 TEMPLATE_DIR = WEBPAGE_DIR / "templates"
 STATIC_DIR = WEBPAGE_DIR / "static"
+
+UNIT_MEASUREMENT_OPTIONS = [
+    {
+        "unit": unit,
+        "label": format_unit_label(unit),
+        "measurement_type": get_unit_measurement_profile(unit)["measurement_type"],
+        "canonical_unit": get_unit_measurement_profile(unit)["canonical_unit"],
+        "canonical_factor": get_unit_measurement_profile(unit)["canonical_factor"],
+    }
+    for unit in APPROVED_UNITS
+    if get_unit_measurement_profile(unit) and get_unit_measurement_profile(unit)["conversion_ready"]
+]
 
 
 app = Flask(
@@ -283,6 +297,7 @@ def inject_mock_auth_context():
             {"value": unit, "label": format_unit_label(unit)}
             for unit in STANDARD_UNITS
         ],
+        "unit_measurement_options": UNIT_MEASUREMENT_OPTIONS,
     }
 
 
@@ -539,19 +554,29 @@ def menu_forecast(menu_id: int):
         day_options=DAY_OF_WEEK_OPTIONS,
         meal_period_options=MEAL_PERIOD_OPTIONS,
         approved_units=APPROVED_UNITS,
+        serving_size_units=STANDARD_UNITS,
     )
 
 
 @app.route("/menus/<int:menu_id>/forecast/recipes/<int:item_id>/advanced")
 def menu_forecast_recipe_advanced(menu_id: int, item_id: int):
+    menu_slot_item_id = request.args.get("menu_slot_item_id", None)
+    forecast = (
+        get_menu_forecast_by_slot_item(int(menu_slot_item_id), menu_id=menu_id)
+        if str(menu_slot_item_id or "").isdigit()
+        else None
+    )
     return redirect(
         url_for(
             "item_detail",
             item_id=item_id,
             forecast_menu_id=menu_id,
-            forecast_menu_slot_item_id=request.args.get("menu_slot_item_id", None),
+            forecast_menu_slot_item_id=menu_slot_item_id,
             forecast_week=request.args.get("week", None),
             forecast_day=request.args.get("day", None),
+            user_serving_size_quantity=f"{forecast['user_serving_size_quantity']:g}" if forecast and forecast["user_serving_size_quantity"] is not None else None,
+            user_serving_size_unit=forecast["user_serving_size_unit"] if forecast else None,
+            desired_portions=f"{forecast['desired_portions']:g}" if forecast and forecast["desired_portions"] is not None else None,
             ingredient_view=request.args.get("ingredient_view", "hierarchical"),
             scale_mode="ingredient",
         )
@@ -572,6 +597,9 @@ def api_update_menu_forecast(menu_id: int, menu_slot_item_id: int):
             actor_user_id=current_user["user_id"],
             forecast_yield_quantity=payload.get("forecast_yield_quantity"),
             forecast_yield_unit=payload.get("forecast_yield_unit"),
+            user_serving_size_quantity=payload.get("user_serving_size_quantity"),
+            user_serving_size_unit=payload.get("user_serving_size_unit"),
+            desired_portions=payload.get("desired_portions"),
         )
         return jsonify({"ok": True, "forecast": forecast})
     except InvalidMenuForecastError as exc:
@@ -592,6 +620,9 @@ def confirm_menu_forecast_scaling(menu_id: int, menu_slot_item_id: int):
             actor_user_id=current_user["user_id"],
             forecast_yield_quantity=request.form.get("forecast_yield_quantity"),
             forecast_yield_unit=request.form.get("forecast_yield_unit"),
+            user_serving_size_quantity=request.form.get("user_serving_size_quantity"),
+            user_serving_size_unit=request.form.get("user_serving_size_unit"),
+            desired_portions=request.form.get("desired_portions"),
         )
         flash("Forecast scaling confirmed.", "success")
         return redirect(url_for("menu_forecast", menu_id=menu_id, week=forecast_week, day=forecast_day))
@@ -1309,6 +1340,9 @@ def item_detail(item_id: int):
     )
     scale_quantity = request.args.get("scale_quantity", "").strip()
     scale_unit = request.args.get("scale_unit", "").strip()
+    user_serving_size_quantity = request.args.get("user_serving_size_quantity", "").strip()
+    user_serving_size_unit = request.args.get("user_serving_size_unit", "").strip()
+    desired_portions = request.args.get("desired_portions", "").strip()
     scale_mode = request.args.get("scale_mode", "yield").strip()
     advanced_scale_row_key = request.args.get("advanced_scale_row_key", "").strip()
     advanced_scale_quantity = request.args.get("advanced_scale_quantity", "").strip()
@@ -1331,6 +1365,19 @@ def item_detail(item_id: int):
         "day": request.args.get("forecast_day", "").strip(),
     }
     has_forecast_context = bool(forecast_context["menu_id"] and forecast_context["menu_slot_item_id"])
+    desired_portions_target = None
+    if item["item_type"] == "recipe" and item["status"] == "live" and desired_portions:
+        desired_portions_target = build_desired_portions_yield_target(
+            recipe_measurements=item,
+            desired_portions=desired_portions,
+            serving_quantity=user_serving_size_quantity or item.get("serving_size_quantity"),
+            serving_unit=user_serving_size_unit or item.get("serving_size_unit"),
+            target_unit=scale_unit or item.get("yield_unit"),
+        )
+        if desired_portions_target and desired_portions_target.get("available"):
+            scale_quantity = f"{desired_portions_target['target_quantity']:g}"
+            scale_unit = desired_portions_target["target_unit"]
+            scale_mode = "yield"
     base_food_convert_quantity = request.args.get("convert_quantity", "").strip()
     base_food_convert_unit = request.args.get("convert_unit", "").strip()
     bottom_up_scaled_recipe_view = (
@@ -1420,6 +1467,19 @@ def item_detail(item_id: int):
             item["ingredients"] = processed_hierarchical["rows"]
             ingredient_display_warnings = [*item_snapshot_display_warnings, *processed_hierarchical["warnings"]]
 
+    user_serving_preview = None
+    if item["item_type"] == "recipe" and item["status"] == "live":
+        recipe_measurements = (
+            scaled_recipe_view.get("scaled_snapshot")
+            if scaled_recipe_view is not None and scaled_recipe_view.get("is_scaled")
+            else item
+        )
+        user_serving_preview = build_user_serving_preview(
+            recipe_measurements=recipe_measurements,
+            serving_quantity=user_serving_size_quantity,
+            serving_unit=user_serving_size_unit,
+        )
+
     return render_template(
         "item_detail.html",
         item=item,
@@ -1436,6 +1496,11 @@ def item_detail(item_id: int):
         unit_system=unit_system,
         scale_quantity=scale_quantity,
         scale_unit=scale_unit,
+        user_serving_size_quantity=user_serving_size_quantity,
+        user_serving_size_unit=user_serving_size_unit,
+        desired_portions=desired_portions,
+        desired_portions_target=desired_portions_target,
+        user_serving_preview=user_serving_preview,
         scale_mode=scale_mode,
         advanced_scale_row_key=advanced_scale_row_key,
         advanced_scale_quantity=advanced_scale_quantity,
@@ -1450,6 +1515,7 @@ def item_detail(item_id: int):
         scaling_foundation=scaling_foundation,
         ingredient_display_warnings=ingredient_display_warnings,
         approved_units=APPROVED_UNITS,
+        serving_size_units=STANDARD_UNITS,
         default_display_mode=DISPLAY_MODE_DEFAULT,
         default_unit_system=UNIT_SYSTEM_IMPERIAL,
     )

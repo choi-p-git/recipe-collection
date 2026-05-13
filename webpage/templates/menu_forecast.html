@@ -113,6 +113,9 @@
                         <th>Concept</th>
                         <th>Batches</th>
                         <th>Scale by Yield</th>
+                        <th>User Serving Size</th>
+                        <th>Desired Portions</th>
+                        <th>Portions Made</th>
                         <th>Advance Edit</th>
                     </tr>
                 </thead>
@@ -130,6 +133,14 @@
                                     class="menu-forecast-scale-control"
                                     data-forecast-control
                                     data-save-url="{{ url_for('api_update_menu_forecast', menu_id=page_data.menu.menu_id, menu_slot_item_id=recipe.menu_slot_item_id) }}"
+                                    data-recipe-yield-quantity="{{ recipe.yield_quantity or '' }}"
+                                    data-recipe-yield-unit="{{ recipe.yield_unit }}"
+                                    data-recipe-mass-quantity="{{ recipe.mass_quantity or '' }}"
+                                    data-recipe-mass-unit="{{ recipe.mass_unit }}"
+                                    data-recipe-volume-quantity="{{ recipe.volume_quantity or '' }}"
+                                    data-recipe-volume-unit="{{ recipe.volume_unit }}"
+                                    data-recipe-serving-size-quantity="{{ recipe.serving_size_quantity }}"
+                                    data-recipe-serving-size-unit="{{ recipe.serving_size_unit }}"
                                 >
                                     <input
                                         type="number"
@@ -150,6 +161,48 @@
                                 </div>
                             </td>
                             <td>
+                                <div class="menu-forecast-serving-control" data-user-serving-control>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        placeholder="Qty"
+                                        value="{{ recipe.user_serving_size_quantity }}"
+                                        aria-label="User serving quantity for {{ recipe.recipe_name }}"
+                                        data-user-serving-quantity
+                                    >
+                                    <select aria-label="User serving unit for {{ recipe.recipe_name }}" data-user-serving-unit>
+                                        <option value="">-- Unit --</option>
+                                        {% for unit in serving_size_units %}
+                                            <option value="{{ unit }}" {% if recipe.user_serving_size_unit == unit %}selected{% endif %}>{{ unit|unit_label }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="menu-forecast-serving-control" data-desired-portions-control>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        placeholder="Portions"
+                                        value="{{ recipe.desired_portions }}"
+                                        aria-label="Desired portions for {{ recipe.recipe_name }}"
+                                        data-desired-portions
+                                    >
+                                    <button
+                                        type="button"
+                                        class="page-action-link secondary menu-forecast-portions-button"
+                                        data-scale-to-portions
+                                    >
+                                        Scale
+                                    </button>
+                                </div>
+                            </td>
+                            <td>
+                                <span class="menu-forecast-portions-made" data-user-serving-result>--</span>
+                            </td>
+                            <td>
                                 <a
                                     class="icon-button"
                                     href="{{ url_for('menu_forecast_recipe_advanced', menu_id=page_data.menu.menu_id, item_id=recipe.item_id, menu_slot_item_id=recipe.menu_slot_item_id, week=page_data.selected_week_number, day=page_data.selected_day) }}"
@@ -161,7 +214,7 @@
                         </tr>
                     {% else %}
                         <tr>
-                            <td colspan="6">No assigned recipes match this forecast view.</td>
+                            <td colspan="9">No assigned recipes match this forecast view.</td>
                         </tr>
                     {% endfor %}
                 </tbody>

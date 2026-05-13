@@ -330,8 +330,14 @@ def test_menu_forecast_route_renders_day_recipes_in_menu_order(app_client, isola
     assert page.index("Forecast Route Bowl") < page.index("Forecast Route Supper")
     assert "<th>Batches</th>" in page
     assert "<th>Scale by Yield</th>" in page
+    assert "<th>User Serving Size</th>" in page
+    assert "<th>Desired Portions</th>" in page
+    assert "<th>Portions Made</th>" in page
     assert "menu_forecast.js" in page
     assert "data-forecast-control" in page
+    assert "data-user-serving-control" in page
+    assert "data-desired-portions" in page
+    assert "data-user-serving-result" in page
     assert '<option value="each" selected>each</option>' in page
     assert '<option value="gal" selected>gal</option>' in page
 
@@ -392,6 +398,9 @@ def test_api_update_menu_forecast_persists_scale_by_yield(app_client, isolated_d
         json={
             "forecast_yield_quantity": "24",
             "forecast_yield_unit": "each",
+            "user_serving_size_quantity": "6",
+            "user_serving_size_unit": "oz",
+            "desired_portions": "80",
         },
     )
     payload = response.get_json()
@@ -400,13 +409,34 @@ def test_api_update_menu_forecast_persists_scale_by_yield(app_client, isolated_d
     assert payload["ok"] is True
     assert payload["forecast"]["forecast_yield_quantity"] == 24
     assert payload["forecast"]["forecast_yield_unit"] == "each"
+    assert payload["forecast"]["user_serving_size_quantity"] == 6
+    assert payload["forecast"]["user_serving_size_unit"] == "oz"
+    assert payload["forecast"]["desired_portions"] == 80
 
     page_response = app_client.get(f"/menus/{menu_id}/forecast?week=1&day=monday")
     page = page_response.get_data(as_text=True)
 
     assert page_response.status_code == 200
     assert 'value="24"' in page
+    assert 'value="6"' in page
+    assert 'value="80"' in page
+    assert '<option value="oz" selected>oz</option>' in page
     assert "✓ Saved" in page
+
+
+    advanced_response = app_client.get(
+        f"/menus/{menu_id}/forecast/recipes/{recipe_id}/advanced"
+        f"?menu_slot_item_id={menu_slot_item_id}&week=1&day=monday",
+        follow_redirects=True,
+    )
+    advanced_page = advanced_response.get_data(as_text=True)
+
+    assert advanced_response.status_code == 200
+    assert 'name="user_serving_size_quantity"' in advanced_page
+    assert 'value="6"' in advanced_page
+    assert 'name="desired_portions"' in advanced_page
+    assert 'value="80"' in advanced_page
+    assert '<option value="oz" selected>oz</option>' in advanced_page
 
 
 def test_api_update_menu_forecast_rejects_invalid_quantity(app_client, isolated_db):
@@ -558,6 +588,9 @@ def test_forecast_advanced_scaling_confirms_bottom_up_yield(app_client, isolated
         data={
             "forecast_yield_quantity": "4",
             "forecast_yield_unit": "qt",
+            "user_serving_size_quantity": "8",
+            "user_serving_size_unit": "oz",
+            "desired_portions": "64",
             "forecast_week": "1",
             "forecast_day": "monday",
         },
@@ -569,6 +602,9 @@ def test_forecast_advanced_scaling_confirms_bottom_up_yield(app_client, isolated
     assert "Forecast scaling confirmed." in forecast_page
     assert 'value="4"' in forecast_page
     assert '<option value="qt" selected>qt</option>' in forecast_page
+    assert 'value="8"' in forecast_page
+    assert 'value="64"' in forecast_page
+    assert '<option value="oz" selected>oz</option>' in forecast_page
 
 
 def test_forecast_yield_scaling_can_confirm_back_to_forecast(app_client, isolated_db):
@@ -652,6 +688,47 @@ def test_forecast_yield_scaling_can_confirm_back_to_forecast(app_client, isolate
     assert confirm_response.status_code == 200
     assert 'value="3"' in forecast_page
     assert '<option value="qt" selected>qt</option>' in forecast_page
+
+
+def test_advanced_edit_can_scale_yield_from_desired_portions(app_client, isolated_db):
+    base_food_id = create_base_food(item_name="Desired Portions Base")
+    recipe_id = create_recipe(
+        {
+            "item_name": "Desired Portions Recipe",
+            "yield_quantity": 2,
+            "yield_unit": "qt",
+            "serving_size_quantity": 1,
+            "serving_size_unit": "cup",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Portion"],
+            "ingredients": [
+                {
+                    "component_item_id": base_food_id,
+                    "component_quantity": 1,
+                    "component_unit": "lb",
+                }
+            ],
+        }
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id IN (?, ?)", (base_food_id, recipe_id))
+    conn.commit()
+    conn.close()
+
+    response = app_client.get(
+        f"/items/{recipe_id}"
+        f"?desired_portions=16"
+        f"&user_serving_size_quantity=1"
+        f"&user_serving_size_unit=cup"
+    )
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Desired portions 16" in page
+    assert "scales to 4" in page
+    assert "Scaling to 4.0 qt" in page
 
 
 def test_advanced_scaling_state_survives_display_and_unit_toggles(app_client, isolated_db):
@@ -1214,6 +1291,45 @@ def test_menu_slot_assign_route_renders_search_results(app_client, isolated_db):
     assert response.status_code == 200
     assert "Assign Search Lettuce" in page
     assert "Base Food | ID" in page
+
+
+def test_menu_slot_assign_route_exposes_search_pagination_metadata(app_client, isolated_db):
+    create_response = app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "Assign Search Paging Menu",
+            "service_days": ["monday"],
+            "meal_periods": ["lunch"],
+            "concepts": ["hot_line"],
+            "menu_length_weeks": "1",
+        },
+        follow_redirects=False,
+    )
+    menu_id = int(create_response.headers["Location"].rstrip("/").split("/")[-1])
+    created_ids = [
+        create_base_food(item_name=f"Assign Paging Item {index:02d}")
+        for index in range(18)
+    ]
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE item SET status = 'live' WHERE item_id IN ({})".format(
+            ", ".join("?" for _ in created_ids)
+        ),
+        created_ids,
+    )
+    cursor.execute("SELECT menu_slot_id FROM menu_slot WHERE menu_id = ?", (menu_id,))
+    menu_slot_id = cursor.fetchone()[0]
+    conn.commit()
+    conn.close()
+
+    response = app_client.get(f"/menus/{menu_id}/slots/{menu_slot_id}/assign?q=Assign+Paging")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert '"has_more": true' in page
+    assert '"next_offset": 15' in page
 
 
 def test_menu_slot_assign_post_updates_slot_and_renders_in_menu_overview(app_client, isolated_db):
@@ -3465,7 +3581,10 @@ def test_live_recipe_detail_supports_scaled_hierarchical_view(app_client, isolat
     conn.commit()
     conn.close()
 
-    response = app_client.get(f"/items/{recipe_id}?scale_quantity=1&scale_unit=qt")
+    response = app_client.get(
+        f"/items/{recipe_id}?scale_quantity=1&scale_unit=qt"
+        f"&user_serving_size_quantity=1&user_serving_size_unit=cup"
+    )
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200
@@ -3511,7 +3630,10 @@ def test_live_recipe_detail_snapshot_reflects_scaled_recipe_values(app_client, i
     conn.commit()
     conn.close()
 
-    response = app_client.get(f"/items/{recipe_id}?scale_quantity=1&scale_unit=qt")
+    response = app_client.get(
+        f"/items/{recipe_id}?scale_quantity=1&scale_unit=qt"
+        f"&user_serving_size_quantity=1&user_serving_size_unit=cup"
+    )
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200
@@ -3522,6 +3644,8 @@ def test_live_recipe_detail_snapshot_reflects_scaled_recipe_values(app_client, i
     assert "500.0 g" not in page
     assert "Serving Count:</strong> 4.0" in page
     assert "Serving Size:</strong> 4.0 oz" in page
+    assert "User Serving Size" in page
+    assert "makes 4 portions" in page
 
 
 def test_live_recipe_detail_snapshot_uses_unit_system_without_scaling(app_client, isolated_db):

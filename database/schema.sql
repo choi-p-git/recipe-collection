@@ -252,6 +252,9 @@ CREATE TABLE IF NOT EXISTS menu_forecast (
     menu_slot_item_id INTEGER NOT NULL UNIQUE,
     forecast_yield_quantity REAL NOT NULL DEFAULT 0,
     forecast_yield_unit TEXT NOT NULL,
+    user_serving_size_quantity REAL,
+    user_serving_size_unit TEXT,
+    desired_portions REAL,
 
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -259,7 +262,19 @@ CREATE TABLE IF NOT EXISTS menu_forecast (
     FOREIGN KEY (menu_slot_item_id) REFERENCES menu_slot_item(menu_slot_item_id) ON DELETE CASCADE,
 
     CHECK (forecast_yield_quantity >= 0),
-    CHECK (trim(forecast_yield_unit) != '')
+    CHECK (trim(forecast_yield_unit) != ''),
+    CHECK (
+        user_serving_size_quantity IS NULL
+        OR user_serving_size_quantity > 0
+    ),
+    CHECK (
+        (user_serving_size_quantity IS NULL AND user_serving_size_unit IS NULL)
+        OR (user_serving_size_quantity IS NOT NULL AND trim(user_serving_size_unit) != '')
+    ),
+    CHECK (
+        desired_portions IS NULL
+        OR desired_portions > 0
+    )
 );
 
 CREATE INDEX IF NOT EXISTS idx_item_type

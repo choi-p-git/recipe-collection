@@ -28,10 +28,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const selectedItems = new Map();
     const initialSelectedItems = JSON.parse(initialSelectedNode.textContent || "[]");
-    const initialSearchResults = JSON.parse(initialSearchResultsNode.textContent || "[]");
+    const initialSearchPage = JSON.parse(
+        initialSearchResultsNode.textContent || '{"items":[],"has_more":false,"next_offset":0,"limit":15}',
+    );
     const initialSearchTerm = searchInput.value.trim();
     let debounceTimer = null;
     let requestToken = 0;
+    let searchState = {
+        query: initialSearchTerm,
+        hasMore: Boolean(initialSearchPage.has_more),
+        nextOffset: initialSearchPage.next_offset || 0,
+        isLoadingMore: false,
+    };
 
     initialSelectedItems.forEach((item) => {
         selectedItems.set(String(item.item_id), item);
@@ -136,8 +144,42 @@ document.addEventListener("DOMContentLoaded", () => {
         return label;
     }
 
-    function renderResults(results, query) {
-        clearResults();
+    function renderSearchMoreControl() {
+        removeSearchMoreControl();
+
+        if (!searchState.hasMore) {
+            return;
+        }
+
+        const moreRow = document.createElement("div");
+        moreRow.className = "menu-search-more-row";
+
+        const moreButton = document.createElement("button");
+        moreButton.type = "button";
+        moreButton.className = "page-action-link secondary menu-search-more-button";
+        moreButton.textContent = searchState.isLoadingMore ? "Loading more results..." : "Next Results";
+        moreButton.disabled = searchState.isLoadingMore;
+        moreButton.addEventListener("click", () => {
+            loadMoreResults();
+        });
+
+        moreRow.appendChild(moreButton);
+        resultsBox.appendChild(moreRow);
+    }
+
+    function removeSearchMoreControl() {
+        const existingMoreRow = resultsBox.querySelector(".menu-search-more-row");
+        if (existingMoreRow) {
+            existingMoreRow.remove();
+        }
+    }
+
+    function renderResults(results, query, appendResults = false) {
+        if (!appendResults) {
+            clearResults();
+        } else {
+            removeSearchMoreControl();
+        }
 
         if (!query) {
             renderResultsMessage("Enter a search term to find live recipes and base foods for this slot.");
@@ -157,45 +199,86 @@ document.addEventListener("DOMContentLoaded", () => {
         results.forEach((result) => {
             resultsBox.appendChild(buildCardForResult(result));
         });
+
+        renderSearchMoreControl();
     }
 
-    async function runSearch(query) {
+    function applySearchPage(payload, query, appendResults = false) {
+        searchState = {
+            query,
+            hasMore: Boolean(payload.has_more),
+            nextOffset: payload.next_offset || 0,
+            isLoadingMore: false,
+        };
+        renderResults(payload.items || [], query, appendResults);
+    }
+
+    async function runSearch(query, offset = 0, appendResults = false) {
         const trimmedQuery = query.trim();
 
         if (!trimmedQuery) {
+            searchState = { query: "", hasMore: false, nextOffset: 0, isLoadingMore: false };
             renderResults([], "");
             return;
         }
 
         if (trimmedQuery.length < SEARCH_MIN_LENGTH) {
+            searchState = { query: trimmedQuery, hasMore: false, nextOffset: 0, isLoadingMore: false };
             renderResults([], trimmedQuery);
             return;
         }
 
         const currentToken = requestToken + 1;
         requestToken = currentToken;
-        renderResultsMessage("Searching live items...");
+        const requestedItemType = itemTypeSelect.value;
+        if (appendResults) {
+            searchState.isLoadingMore = true;
+            renderSearchMoreControl();
+        } else {
+            renderResultsMessage("Searching live items...");
+        }
 
         try {
             const params = new URLSearchParams({
                 q: trimmedQuery,
-                item_type: itemTypeSelect.value,
+                item_type: requestedItemType,
+                offset: String(offset),
             });
             const response = await fetch(`/api/items/search?${params.toString()}`);
             const payload = await response.json();
 
-            if (currentToken !== requestToken || trimmedQuery !== searchInput.value.trim()) {
+            if (
+                currentToken !== requestToken ||
+                trimmedQuery !== searchInput.value.trim() ||
+                requestedItemType !== itemTypeSelect.value
+            ) {
                 return;
             }
 
-            renderResults(payload.items || [], trimmedQuery);
+            applySearchPage(payload, trimmedQuery, appendResults);
         } catch (error) {
             console.error("Menu slot search failed:", error);
-            renderResultsMessage("Search failed. Try again.");
+            searchState.isLoadingMore = false;
+            if (appendResults) {
+                removeSearchMoreControl();
+                renderSearchMoreControl();
+            } else {
+                renderResultsMessage("Search failed. Try again.");
+            }
         }
     }
 
+    function loadMoreResults() {
+        if (!searchState.hasMore || searchState.isLoadingMore) {
+            return;
+        }
+
+        runSearch(searchState.query, searchState.nextOffset, true);
+    }
+
     function queueSearch() {
+        searchState.hasMore = false;
+        removeSearchMoreControl();
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
             runSearch(searchInput.value);
@@ -218,5 +301,5 @@ document.addEventListener("DOMContentLoaded", () => {
 
     syncSelectedInputs();
     renderSelectedSummary();
-    renderResults(initialSearchResults, initialSearchTerm);
+    renderResults(initialSearchPage.items || [], initialSearchTerm);
 });

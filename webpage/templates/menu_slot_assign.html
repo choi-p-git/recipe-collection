@@ -91,7 +91,7 @@
     </div>
 
     <script id="menu-slot-initial-selected" type="application/json">{{ slot_detail.assigned_items|tojson }}</script>
-    <script id="menu-slot-initial-search-results" type="application/json">{{ slot_detail.search_results["items"]|tojson }}</script>
+    <script id="menu-slot-initial-search-results" type="application/json">{{ slot_detail.search_results|tojson }}</script>
 {% endblock %}
 
 {% block scripts %}

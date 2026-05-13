@@ -50,6 +50,8 @@ def test_initialize_database_records_applied_migration_versions(isolated_db):
         "0006_add_menu_builder_tables.sql",
         "0007_add_menu_forecast.sql",
         "0008_normalize_liter_unit_symbol.sql",
+        "0009_add_menu_forecast_user_serving_size.sql",
+        "0010_add_menu_forecast_desired_portions.sql",
     ]
 
 

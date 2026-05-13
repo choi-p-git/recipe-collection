@@ -231,6 +231,9 @@
                         <input type="hidden" name="technical_view" value="{{ 'advanced' if technical_details_enabled else 'default' }}">
                         <input type="hidden" name="display_mode" value="{{ display_mode }}">
                         <input type="hidden" name="unit_system" value="{{ unit_system }}">
+                        <input type="hidden" name="user_serving_size_quantity" value="{{ user_serving_size_quantity }}">
+                        <input type="hidden" name="user_serving_size_unit" value="{{ user_serving_size_unit }}">
+                        <input type="hidden" name="desired_portions" value="{{ desired_portions }}">
                         {% if has_forecast_context %}
                             <input type="hidden" name="forecast_menu_id" value="{{ forecast_context.menu_id }}">
                             <input type="hidden" name="forecast_menu_slot_item_id" value="{{ forecast_context.menu_slot_item_id }}">
@@ -266,6 +269,96 @@
                         </div>
                     </form>
                     {% endif %}
+                    <form method="get" class="scale-form user-serving-form">
+                        <input type="hidden" name="ingredient_view" value="{{ ingredient_view_mode }}">
+                        <input type="hidden" name="workflow_view" value="{{ 'advanced' if advanced_workflow_enabled else 'default' }}">
+                        <input type="hidden" name="technical_view" value="{{ 'advanced' if technical_details_enabled else 'default' }}">
+                        <input type="hidden" name="display_mode" value="{{ display_mode }}">
+                        <input type="hidden" name="unit_system" value="{{ unit_system }}">
+                        <input type="hidden" name="scale_quantity" value="{{ scale_quantity }}">
+                        <input type="hidden" name="scale_unit" value="{{ scale_unit }}">
+                        <input type="hidden" name="desired_portions" value="{{ desired_portions }}">
+                        {% if scale_mode == "ingredient" %}
+                            <input type="hidden" name="scale_mode" value="ingredient">
+                            <input type="hidden" name="advanced_scale_submit" value="1">
+                            <input type="hidden" name="advanced_scale_row_key" value="{{ advanced_scale_row_key }}">
+                            <input type="hidden" name="advanced_scale_quantity" value="{{ advanced_scale_quantity }}">
+                            <input type="hidden" name="advanced_scale_unit" value="{{ advanced_scale_unit }}">
+                        {% endif %}
+                        {% if has_forecast_context %}
+                            <input type="hidden" name="forecast_menu_id" value="{{ forecast_context.menu_id }}">
+                            <input type="hidden" name="forecast_menu_slot_item_id" value="{{ forecast_context.menu_slot_item_id }}">
+                            <input type="hidden" name="forecast_week" value="{{ forecast_context.week }}">
+                            <input type="hidden" name="forecast_day" value="{{ forecast_context.day }}">
+                        {% endif %}
+                        <div class="detail-toggle-row scale-form-row">
+                            <span class="detail-stat-label">User Serving Size</span>
+                            <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                name="user_serving_size_quantity"
+                                placeholder="Portion qty"
+                                value="{{ user_serving_size_quantity }}"
+                            >
+                            <select name="user_serving_size_unit">
+                                <option value="">-- Select Unit --</option>
+                                {% for unit in serving_size_units %}
+                                    <option value="{{ unit }}" {% if user_serving_size_unit == unit %}selected{% endif %}>{{ unit|unit_label }}</option>
+                                {% endfor %}
+                            </select>
+                            <button type="submit">Calculate Portions</button>
+                        </div>
+                    </form>
+                    {% if user_serving_preview %}
+                        {% if user_serving_preview.available %}
+                            <p class="muted">
+                                User serving size
+                                {{ user_serving_preview.serving_quantity_display }} {{ user_serving_preview.serving_unit|unit_label }}
+                                makes {{ user_serving_preview.portion_count_display }} portions.
+                            </p>
+                        {% else %}
+                            <p class="muted">{{ user_serving_preview.warning }}</p>
+                        {% endif %}
+                    {% endif %}
+                    <form method="get" class="scale-form user-serving-form">
+                        <input type="hidden" name="ingredient_view" value="{{ ingredient_view_mode }}">
+                        <input type="hidden" name="workflow_view" value="{{ 'advanced' if advanced_workflow_enabled else 'default' }}">
+                        <input type="hidden" name="technical_view" value="{{ 'advanced' if technical_details_enabled else 'default' }}">
+                        <input type="hidden" name="display_mode" value="{{ display_mode }}">
+                        <input type="hidden" name="unit_system" value="{{ unit_system }}">
+                        <input type="hidden" name="user_serving_size_quantity" value="{{ user_serving_size_quantity }}">
+                        <input type="hidden" name="user_serving_size_unit" value="{{ user_serving_size_unit }}">
+                        {% if has_forecast_context %}
+                            <input type="hidden" name="forecast_menu_id" value="{{ forecast_context.menu_id }}">
+                            <input type="hidden" name="forecast_menu_slot_item_id" value="{{ forecast_context.menu_slot_item_id }}">
+                            <input type="hidden" name="forecast_week" value="{{ forecast_context.week }}">
+                            <input type="hidden" name="forecast_day" value="{{ forecast_context.day }}">
+                        {% endif %}
+                        <div class="detail-toggle-row scale-form-row">
+                            <span class="detail-stat-label">Desired Portions</span>
+                            <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                name="desired_portions"
+                                placeholder="Portions"
+                                value="{{ desired_portions }}"
+                            >
+                            <button type="submit">Scale To Portions</button>
+                        </div>
+                    </form>
+                    {% if desired_portions_target %}
+                        {% if desired_portions_target.available %}
+                            <p class="muted">
+                                Desired portions {{ desired_portions_target.desired_portions_display }}
+                                scales to {{ desired_portions_target.target_quantity_display }}
+                                {{ desired_portions_target.target_unit|unit_label }}.
+                            </p>
+                        {% else %}
+                            <p class="muted">{{ desired_portions_target.warning }}</p>
+                        {% endif %}
+                    {% endif %}
                     {% if scaled_recipe_view and scaled_recipe_view.is_scaled %}
                         <p class="muted">
                             {% if scaled_recipe_view.scale_mode == "ingredient" %}
@@ -296,6 +389,9 @@
                                     <input type="hidden" name="forecast_yield_quantity" value="{{ scaled_recipe_view.target_quantity }}">
                                     <input type="hidden" name="forecast_yield_unit" value="{{ scaled_recipe_view.target_unit }}">
                                 {% endif %}
+                                <input type="hidden" name="user_serving_size_quantity" value="{{ user_serving_size_quantity }}">
+                                <input type="hidden" name="user_serving_size_unit" value="{{ user_serving_size_unit }}">
+                                <input type="hidden" name="desired_portions" value="{{ desired_portions }}">
                                 <input type="hidden" name="forecast_week" value="{{ forecast_context.week }}">
                                 <input type="hidden" name="forecast_day" value="{{ forecast_context.day }}">
                                 <button type="submit" class="workflow-button workflow-button-primary">Confirm Scaling</button>
@@ -525,6 +621,8 @@
                                             <input type="hidden" name="technical_view" value="{{ 'advanced' if technical_details_enabled else 'default' }}">
                                             <input type="hidden" name="display_mode" value="{{ display_mode }}">
                                             <input type="hidden" name="unit_system" value="{{ unit_system }}">
+                                            <input type="hidden" name="user_serving_size_quantity" value="{{ user_serving_size_quantity }}">
+                                            <input type="hidden" name="user_serving_size_unit" value="{{ user_serving_size_unit }}">
                                             <input type="hidden" name="scale_mode" value="ingredient">
                                             <input type="hidden" name="advanced_scale_submit" value="1">
                                             <input type="hidden" name="advanced_scale_row_key" value="{{ flattened_scale_row_key }}">
@@ -603,6 +701,8 @@
                                             <input type="hidden" name="technical_view" value="{{ 'advanced' if technical_details_enabled else 'default' }}">
                                             <input type="hidden" name="display_mode" value="{{ display_mode }}">
                                             <input type="hidden" name="unit_system" value="{{ unit_system }}">
+                                            <input type="hidden" name="user_serving_size_quantity" value="{{ user_serving_size_quantity }}">
+                                            <input type="hidden" name="user_serving_size_unit" value="{{ user_serving_size_unit }}">
                                             <input type="hidden" name="scale_mode" value="ingredient">
                                             <input type="hidden" name="advanced_scale_submit" value="1">
                                             <input type="hidden" name="advanced_scale_row_key" value="{{ hierarchical_scale_row_key }}">

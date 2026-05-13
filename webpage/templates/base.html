@@ -49,6 +49,7 @@
         window.recipeAdvancedUnitOptions = {{ advanced_unit_options|tojson }};
         window.recipeApprovedUnitOptions = {{ approved_unit_options|tojson }};
         window.recipeAuthoringUnitOptions = {{ recipe_authoring_unit_options|tojson }};
+        window.recipeUnitMeasurementOptions = {{ unit_measurement_options|tojson }};
     </script>
     <script src="{{ url_for('static', filename='advanced_units.js') }}"></script>
     {% block scripts %}{% endblock %}
