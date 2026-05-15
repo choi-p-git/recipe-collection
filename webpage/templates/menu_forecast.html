@@ -62,10 +62,10 @@
             <input type="hidden" name="week" value="{{ page_data.selected_week_number }}">
             <input type="hidden" name="day" value="{{ page_data.selected_day }}">
             <div class="menu-forecast-title-row">
-                <h3>Recipes For {{ page_data.selected_day_label }}, Week {{ page_data.selected_week_number }}</h3>
+                <h3>Items For {{ page_data.selected_day_label }}, Week {{ page_data.selected_week_number }}</h3>
                 <div class="filter-row">
                     <label for="q">Search</label>
-                    <input id="q" type="search" name="q" value="{{ page_data.search_term }}" placeholder="Search recipes">
+                    <input id="q" type="search" name="q" value="{{ page_data.search_term }}" placeholder="Search items">
                 </div>
                 <div class="filter-row">
                     <label for="meal_period">Meal</label>
@@ -108,7 +108,7 @@
             <table class="menu-forecast-table">
                 <thead>
                     <tr>
-                        <th>Recipe Name</th>
+                        <th>Item Name</th>
                         <th>Meal Period</th>
                         <th>Concept</th>
                         <th>Batches</th>
@@ -122,13 +122,57 @@
                 <tbody>
                     {% for recipe in page_data.rows %}
                         <tr>
-                            <td>{{ recipe.recipe_name }}</td>
-                            <td>{{ recipe.meal_period_label }}</td>
-                            <td>{{ recipe.concept_label }}</td>
-                            <td>
-                                <button type="button" class="icon-button" aria-label="Add batch for {{ recipe.recipe_name }}">+</button>
+                            <td class="menu-forecast-cell-middle">
+                                {% if recipe.item_type == 'recipe' and recipe.forecast_updated_at %}
+                                    <a
+                                        class="text-link"
+                                        href="{{ url_for('item_detail', item_id=recipe.item_id, scale_quantity=recipe.effective_forecast_quantity_display or recipe.forecast_quantity, scale_unit=recipe.effective_forecast_unit or recipe.forecast_unit, user_serving_size_quantity=recipe.user_serving_size_quantity or None, user_serving_size_unit=recipe.user_serving_size_unit or None, desired_portions=recipe.desired_portions or None, forecast_menu_id=page_data.menu.menu_id, forecast_menu_slot_item_id=recipe.menu_slot_item_id, forecast_week=page_data.selected_week_number, forecast_day=page_data.selected_day) }}"
+                                    >
+                                        {{ recipe.recipe_name }}
+                                    </a>
+                                {% else %}
+                                    <a class="text-link" href="{{ url_for('item_detail', item_id=recipe.item_id) }}">{{ recipe.recipe_name }}</a>
+                                {% endif %}
                             </td>
-                            <td>
+                            <td class="menu-forecast-cell-middle">{{ recipe.meal_period_label }}</td>
+                            <td class="menu-forecast-cell-middle">{{ recipe.concept_label }}</td>
+                            <td class="menu-forecast-cell-top">
+                                <div
+                                    class="menu-forecast-batch-control"
+                                    data-batch-control
+                                    data-batch-save-url="{{ url_for('api_update_menu_forecast_batches', menu_id=page_data.menu.menu_id, menu_slot_item_id=recipe.menu_slot_item_id) }}"
+                                >
+                                    <div class="menu-forecast-batch-rows" data-batch-rows>
+                                        {% if recipe.batch_splits %}
+                                            {% for batch in recipe.batch_splits %}
+                                                <div class="menu-forecast-batch-row" data-batch-row>
+                                                    <span class="muted">#{{ batch.batch_sequence }}</span>
+                                                    <input type="number" min="0.01" max="100" step="0.01" value="{{ batch.batch_percent_display }}" aria-label="Batch {{ batch.batch_sequence }} percent for {{ recipe.recipe_name }}" data-batch-percent>
+                                                    <span class="muted">%</span>
+                                                    <input type="number" min="0.01" step="0.01" value="{{ batch.batch_quantity_display }}" aria-label="Batch {{ batch.batch_sequence }} quantity for {{ recipe.recipe_name }}" data-batch-quantity>
+                                                    <span class="muted" data-batch-unit>{{ batch.batch_unit|unit_label }}</span>
+                                                    <input type="time" value="{{ batch.planned_time }}" aria-label="Batch {{ batch.batch_sequence }} planned time for {{ recipe.recipe_name }}" data-batch-time>
+                                                </div>
+                                            {% endfor %}
+                                        {% else %}
+                                            <div class="menu-forecast-batch-row" data-batch-row>
+                                                <span class="muted">#1</span>
+                                                <input type="number" min="0.01" max="100" step="0.01" value="100" aria-label="Batch 1 percent for {{ recipe.recipe_name }}" data-batch-percent>
+                                                <span class="muted">%</span>
+                                                <input type="number" min="0.01" step="0.01" value="{{ recipe.forecast_quantity }}" aria-label="Batch 1 quantity for {{ recipe.recipe_name }}" data-batch-quantity>
+                                                <span class="muted" data-batch-unit>{{ recipe.effective_forecast_unit|unit_label }}</span>
+                                                <input type="time" aria-label="Batch 1 planned time for {{ recipe.recipe_name }}" data-batch-time>
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                    <div class="menu-forecast-batch-actions">
+                                        <button type="button" class="icon-button" aria-label="Add batch for {{ recipe.recipe_name }}" data-add-batch>+</button>
+                                        <button type="button" class="icon-button" aria-label="Remove last batch for {{ recipe.recipe_name }}" data-remove-batch>-</button>
+                                        <span class="menu-forecast-sync-status" data-batch-status aria-live="polite"></span>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="menu-forecast-cell-top">
                                 <div
                                     class="menu-forecast-scale-control"
                                     data-forecast-control
@@ -141,6 +185,8 @@
                                     data-recipe-volume-unit="{{ recipe.volume_unit }}"
                                     data-recipe-serving-size-quantity="{{ recipe.serving_size_quantity }}"
                                     data-recipe-serving-size-unit="{{ recipe.serving_size_unit }}"
+                                    data-effective-forecast-quantity="{{ recipe.effective_forecast_quantity_display }}"
+                                    data-effective-forecast-unit="{{ recipe.effective_forecast_unit }}"
                                 >
                                     <input
                                         type="number"
@@ -151,16 +197,120 @@
                                         data-forecast-quantity
                                     >
                                     <select aria-label="Scale unit for {{ recipe.recipe_name }}" data-forecast-unit>
+                                        <option value="case" {% if recipe.forecast_unit == 'case' %}selected{% endif %}>case</option>
                                         {% for unit in approved_units %}
                                             <option value="{{ unit }}" {% if recipe.forecast_unit == unit %}selected{% endif %}>{{ unit|unit_label }}</option>
                                         {% endfor %}
                                     </select>
+                                    <div class="menu-forecast-case-control {% if not recipe.is_case_forecast %}hidden{% endif %}" data-case-control>
+                                        <span class="muted">=</span>
+                                        <input
+                                            type="number"
+                                            min="0.01"
+                                            step="0.01"
+                                            placeholder="Pack"
+                                            value="{{ recipe.case_pack_quantity }}"
+                                            aria-label="Case pack quantity for {{ recipe.recipe_name }}"
+                                            data-case-pack-quantity
+                                        >
+                                        <span class="muted">x</span>
+                                        <input
+                                            type="number"
+                                            min="0.01"
+                                            step="0.01"
+                                            placeholder="Size"
+                                            value="{{ recipe.case_subunit_quantity }}"
+                                            aria-label="Case subunit size for {{ recipe.recipe_name }}"
+                                            data-case-subunit-quantity
+                                        >
+                                        <select aria-label="Case subunit unit for {{ recipe.recipe_name }}" data-case-subunit-unit>
+                                            <option value="">Unit</option>
+                                            {% for unit in serving_size_units %}
+                                                <option value="{{ unit }}" {% if recipe.case_subunit_unit == unit %}selected{% endif %}>{{ unit|unit_label }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        <input type="hidden" value="{{ recipe.case_basis_component_item_id or '' }}" data-case-basis-id>
+                                        <input type="hidden" value="{{ recipe.case_basis_component_name }}" data-case-basis-name>
+                                        <input type="hidden" value="{{ recipe.case_basis_view_mode }}" data-case-basis-view>
+                                        <input type="hidden" value="{{ recipe.case_basis_row_key }}" data-case-basis-row-key>
+                                        <button type="button" class="icon-button" title="Advanced case configuration" aria-label="Advanced case configuration for {{ recipe.recipe_name }}" data-case-config>...</button>
+                                    </div>
+                                    <div class="menu-forecast-case-ingredient {% if not recipe.case_basis_component_name %}hidden{% endif %}" data-case-ingredient-title>
+                                        {% if recipe.case_basis_component_name %}Linked to {{ recipe.case_basis_component_name }}{% endif %}
+                                    </div>
+                                    <div class="menu-forecast-case-overlay hidden" data-case-overlay>
+                                        <div class="menu-forecast-case-overlay-header">
+                                            <strong>Advance Case</strong>
+                                            <button type="button" class="icon-button" aria-label="Close advanced case for {{ recipe.recipe_name }}" data-case-cancel>x</button>
+                                        </div>
+                                        <div class="menu-forecast-case-mode" role="group" aria-label="Case ingredient view for {{ recipe.recipe_name }}">
+                                            <button type="button" class="button-compact" data-case-view-button="hierarchical">Direct</button>
+                                            <button type="button" class="button-secondary button-compact" data-case-view-button="flattened">Flat</button>
+                                        </div>
+                                        <div class="menu-forecast-case-candidates" data-case-candidates="hierarchical">
+                                            {% for candidate in recipe.case_basis_candidates.hierarchical %}
+                                                <label class="menu-forecast-case-candidate">
+                                                    <input
+                                                        type="radio"
+                                                        name="case_basis_{{ recipe.menu_slot_item_id }}"
+                                                        value="{{ candidate.component_item_id }}"
+                                                        data-case-candidate
+                                                        data-case-candidate-name="{{ candidate.component_item_name }}"
+                                                        data-case-candidate-view="hierarchical"
+                                                        data-case-candidate-row-key="{{ candidate.row_key }}"
+                                                        {% if recipe.case_basis_component_item_id == candidate.component_item_id and recipe.case_basis_view_mode != 'flattened' %}checked{% endif %}
+                                                    >
+                                                    <span class="menu-forecast-case-candidate-name">{{ candidate.component_item_name }}</span>
+                                                    <small>{{ candidate.quantity_display }} {{ candidate.unit|unit_label }} {{ candidate.source }}</small>
+                                                </label>
+                                            {% endfor %}
+                                            {% if not recipe.case_basis_candidates.hierarchical %}
+                                                <span class="muted">No direct ingredients available.</span>
+                                            {% endif %}
+                                        </div>
+                                        <div class="menu-forecast-case-candidates hidden" data-case-candidates="flattened">
+                                            {% for candidate in recipe.case_basis_candidates.flattened %}
+                                                <label class="menu-forecast-case-candidate menu-forecast-case-candidate-flat depth-{{ [candidate.depth, 3]|min }}">
+                                                    <input
+                                                        type="radio"
+                                                        name="case_basis_{{ recipe.menu_slot_item_id }}"
+                                                        value="{{ candidate.component_item_id }}"
+                                                        data-case-candidate
+                                                        data-case-candidate-name="{{ candidate.component_item_name }}"
+                                                        data-case-candidate-view="flattened"
+                                                        data-case-candidate-row-key="{{ candidate.row_key }}"
+                                                        {% if recipe.case_basis_component_item_id == candidate.component_item_id and recipe.case_basis_view_mode == 'flattened' %}checked{% endif %}
+                                                    >
+                                                    <span class="menu-forecast-case-candidate-name">{{ candidate.component_item_name }}</span>
+                                                    <small>{{ candidate.quantity_display }} {{ candidate.unit|unit_label }} {{ candidate.source }}</small>
+                                                </label>
+                                            {% endfor %}
+                                            {% if not recipe.case_basis_candidates.flattened %}
+                                                <span class="muted">No flattened ingredients available.</span>
+                                            {% endif %}
+                                        </div>
+                                        <div class="menu-forecast-case-pack">
+                                            <input type="number" min="0.01" step="0.01" placeholder="Pack" value="{{ recipe.case_pack_quantity }}" aria-label="Advanced case pack quantity for {{ recipe.recipe_name }}" data-case-overlay-pack>
+                                            <span class="muted">x</span>
+                                            <input type="number" min="0.01" step="0.01" placeholder="Size" value="{{ recipe.case_subunit_quantity }}" aria-label="Advanced case size for {{ recipe.recipe_name }}" data-case-overlay-size>
+                                            <select aria-label="Advanced case unit for {{ recipe.recipe_name }}" data-case-overlay-unit>
+                                                <option value="">Unit</option>
+                                                {% for unit in serving_size_units %}
+                                                    <option value="{{ unit }}" {% if recipe.case_subunit_unit == unit %}selected{% endif %}>{{ unit|unit_label }}</option>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
+                                        <div class="menu-forecast-case-overlay-actions">
+                                            <button type="button" class="button-compact" data-case-confirm>Apply</button>
+                                            <button type="button" class="button-secondary button-compact" data-case-cancel>Cancel</button>
+                                        </div>
+                                    </div>
                                     <span class="menu-forecast-sync-status" data-forecast-status aria-live="polite">
                                         {% if recipe.forecast_updated_at %}✓ Saved{% endif %}
                                     </span>
                                 </div>
                             </td>
-                            <td>
+                            <td class="menu-forecast-cell-top">
                                 <div class="menu-forecast-serving-control" data-user-serving-control>
                                     <input
                                         type="number"
@@ -179,7 +329,7 @@
                                     </select>
                                 </div>
                             </td>
-                            <td>
+                            <td class="menu-forecast-cell-top">
                                 <div class="menu-forecast-serving-control" data-desired-portions-control>
                                     <input
                                         type="number"
@@ -199,22 +349,99 @@
                                     </button>
                                 </div>
                             </td>
-                            <td>
+                            <td class="menu-forecast-cell-middle">
                                 <span class="menu-forecast-portions-made" data-user-serving-result>--</span>
                             </td>
-                            <td>
-                                <a
-                                    class="icon-button"
-                                    href="{{ url_for('menu_forecast_recipe_advanced', menu_id=page_data.menu.menu_id, item_id=recipe.item_id, menu_slot_item_id=recipe.menu_slot_item_id, week=page_data.selected_week_number, day=page_data.selected_day) }}"
-                                    aria-label="Open advanced edit for {{ recipe.recipe_name }}"
-                                >
-                                    &gt;
-                                </a>
+                            <td class="menu-forecast-cell-middle">
+                                {% if recipe.item_type == 'recipe' %}
+                                    <a
+                                        class="icon-button"
+                                        href="{{ url_for('menu_forecast_recipe_advanced', menu_id=page_data.menu.menu_id, item_id=recipe.item_id, menu_slot_item_id=recipe.menu_slot_item_id, week=page_data.selected_week_number, day=page_data.selected_day) }}"
+                                        aria-label="Open advanced edit for {{ recipe.recipe_name }}"
+                                    >
+                                        &gt;
+                                    </a>
+                                {% else %}
+                                    <span class="muted">--</span>
+                                {% endif %}
                             </td>
                         </tr>
                     {% else %}
                         <tr>
-                            <td colspan="9">No assigned recipes match this forecast view.</td>
+                            <td colspan="9">No assigned items match this forecast view.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="item-detail-section" data-production-summary-section>
+        <div class="menu-forecast-title-row">
+            <h3>Production Summary</h3>
+        </div>
+        <div class="menu-forecast-table-shell">
+            <table class="menu-forecast-table">
+                <thead>
+                    <tr>
+                        <th>Item Name</th>
+                        <th>Assignments</th>
+                        <th>Total Forecast</th>
+                        <th>Batch Plan</th>
+                        <th>Desired Portions</th>
+                        <th>Notes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for rollup in page_data.production_summary.rows %}
+                        <tr>
+                            <td>
+                                {% if rollup.item_type == 'recipe' and rollup.total_forecast_quantity > 0 %}
+                                    <a
+                                        class="text-link"
+                                        href="{{ url_for('item_detail', item_id=rollup.item_id, scale_quantity=rollup.total_forecast_quantity_display, scale_unit=rollup.total_forecast_unit) }}"
+                                    >
+                                        {{ rollup.recipe_name }}
+                                    </a>
+                                {% else %}
+                                    <a class="text-link" href="{{ url_for('item_detail', item_id=rollup.item_id) }}">{{ rollup.recipe_name }}</a>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {{ rollup.assignment_count }}
+                                {% if rollup.slot_labels %}
+                                    <span class="muted">({{ rollup.slot_labels|join(', ') }})</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ rollup.total_forecast_quantity_display }} {{ rollup.total_forecast_unit|unit_label }}</td>
+                            <td>
+                                {% if rollup.batch_summary %}
+                                    {% for batch in rollup.batch_summary %}
+                                        <div>
+                                            Batch {{ batch.batch_sequence }}:
+                                            {{ batch.total_quantity_display }} {{ batch.unit|unit_label }}
+                                            ({{ batch.combined_percent_display }}%)
+                                            {% if batch.planned_times %}
+                                                <span class="muted">@ {{ batch.planned_times|join(', ') }}</span>
+                                            {% endif %}
+                                        </div>
+                                    {% endfor %}
+                                {% else %}
+                                    --
+                                {% endif %}
+                            </td>
+                            <td>{{ rollup.desired_portions_display or '--' }}</td>
+                            <td>
+                                {% if rollup.warnings %}
+                                    {{ rollup.warnings|join(' ') }}
+                                {% else %}
+                                    Ready
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="6">No production summary is available for this forecast view.</td>
                         </tr>
                     {% endfor %}
                 </tbody>

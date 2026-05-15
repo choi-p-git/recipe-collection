@@ -1,4 +1,8 @@
+import os
 import sqlite3
+import time
+
+from db import garbage_collect_test_tmp
 
 
 def test_initialize_database_creates_expected_tables(isolated_db):
@@ -16,6 +20,8 @@ def test_initialize_database_creates_expected_tables(isolated_db):
     assert "item_event" in tables
     assert "item_notification" in tables
     assert "menu_forecast" in tables
+    assert "menu_forecast_batch_split" in tables
+    assert "item_case_pack" in tables
 
 
 def test_initialize_database_creates_expected_indexes(isolated_db):
@@ -32,6 +38,8 @@ def test_initialize_database_creates_expected_indexes(isolated_db):
     assert "idx_item_event_item" in indexes
     assert "idx_item_notification_item" in indexes
     assert "idx_menu_forecast_slot_item_id" in indexes
+    assert "idx_menu_forecast_batch_split_slot_item_id" in indexes
+    assert "idx_item_case_pack_item_id" in indexes
 
 
 def test_initialize_database_records_applied_migration_versions(isolated_db):
@@ -52,6 +60,10 @@ def test_initialize_database_records_applied_migration_versions(isolated_db):
         "0008_normalize_liter_unit_symbol.sql",
         "0009_add_menu_forecast_user_serving_size.sql",
         "0010_add_menu_forecast_desired_portions.sql",
+        "0011_add_menu_forecast_batch_split.sql",
+        "0012_add_forecast_case_pack.sql",
+        "0013_add_forecast_case_basis.sql",
+        "0014_add_forecast_case_basis_row_key.sql",
     ]
 
 
@@ -152,3 +164,42 @@ def test_schema_allows_base_food_without_yield_but_requires_recipe_yield(isolate
         pass
     finally:
         conn.close()
+
+
+def test_garbage_collect_test_tmp_only_targets_stale_test_directories(tmp_path):
+    stale_run = tmp_path / "run-old"
+    stale_debug = tmp_path / "debug-old"
+    new_run = tmp_path / "run-new"
+    unrelated = tmp_path / "keep-me"
+    for path in (stale_run, stale_debug, new_run, unrelated):
+        path.mkdir()
+        (path / "database").mkdir()
+
+    old_timestamp = time.time() - (48 * 60 * 60)
+    for path in (stale_run, stale_debug):
+        os.utime(path, (old_timestamp, old_timestamp))
+
+    dry_run = garbage_collect_test_tmp(
+        test_tmp_dir=tmp_path,
+        min_age_hours=24,
+        dry_run=True,
+    )
+
+    assert dry_run["scanned"] == 4
+    assert dry_run["eligible"] == 2
+    assert dry_run["deleted"] == 0
+    assert stale_run.exists()
+    assert stale_debug.exists()
+
+    applied = garbage_collect_test_tmp(
+        test_tmp_dir=tmp_path,
+        min_age_hours=24,
+        dry_run=False,
+    )
+
+    assert applied["eligible"] == 2
+    assert applied["deleted"] == 2
+    assert not stale_run.exists()
+    assert not stale_debug.exists()
+    assert new_run.exists()
+    assert unrelated.exists()

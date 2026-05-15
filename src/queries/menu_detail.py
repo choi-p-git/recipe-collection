@@ -54,12 +54,22 @@ def get_menu_detail(menu_id: int) -> dict | None:
                 msi.item_sequence,
                 i.item_id,
                 i.item_name,
-                i.item_type
+                i.item_type,
+                mf.forecast_yield_quantity,
+                mf.forecast_yield_unit,
+                mf.user_serving_size_quantity,
+                mf.user_serving_size_unit,
+                mf.desired_portions,
+                COALESCE(mf.calculated_forecast_quantity, mf.forecast_yield_quantity),
+                COALESCE(mf.calculated_forecast_unit, mf.forecast_yield_unit),
+                mf.updated_at
             FROM menu_slot_item msi
             JOIN item i
               ON i.item_id = msi.item_id
             JOIN menu_slot ms
               ON ms.menu_slot_id = msi.menu_slot_id
+            LEFT JOIN menu_forecast mf
+              ON mf.menu_slot_item_id = msi.menu_slot_item_id
             WHERE ms.menu_id = ?
             ORDER BY msi.menu_slot_id ASC, msi.item_sequence ASC, msi.menu_slot_item_id ASC
             """,
@@ -76,6 +86,14 @@ def get_menu_detail(menu_id: int) -> dict | None:
                 "item_id": row[3],
                 "item_name": row[4],
                 "item_type": row[5],
+                "forecast_quantity": f"{row[6]:g}" if row[6] is not None else "",
+                "forecast_unit": row[7] or "",
+                "user_serving_size_quantity": f"{row[8]:g}" if row[8] is not None else "",
+                "user_serving_size_unit": row[9] or "",
+                "desired_portions": f"{row[10]:g}" if row[10] is not None else "",
+                "effective_forecast_quantity": f"{row[11]:g}" if row[11] is not None else "",
+                "effective_forecast_unit": row[12] or "",
+                "forecast_updated_at": row[13],
             }
         )
 

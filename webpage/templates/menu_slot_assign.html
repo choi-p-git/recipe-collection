@@ -51,7 +51,9 @@
                                         {% if result.item_id in slot_detail.assigned_items|map(attribute='item_id')|list %}checked{% endif %}
                                     >
                                     <span>
-                                        <strong>{{ result.item_name }}</strong><br>
+                                        <strong>
+                                            <a class="text-link" href="{{ url_for('item_detail', item_id=result.item_id) }}">{{ result.item_name }}</a>
+                                        </strong><br>
                                         <span class="muted">{{ result.item_type|replace('_', ' ')|title }} | ID {{ result.item_id }}</span>
                                     </span>
                                 </label>
@@ -78,7 +80,18 @@
                     <ol class="item-detail-list">
                     {% for item in slot_detail.assigned_items %}
                         <li>
-                            <strong>{{ item.item_name }}</strong>
+                            {% if item.item_type == 'recipe' and item.forecast_updated_at %}
+                                <strong>
+                                    <a
+                                        class="text-link"
+                                        href="{{ url_for('item_detail', item_id=item.item_id, scale_quantity=item.effective_forecast_quantity or item.forecast_quantity, scale_unit=item.effective_forecast_unit or item.forecast_unit, user_serving_size_quantity=item.user_serving_size_quantity or None, user_serving_size_unit=item.user_serving_size_unit or None, desired_portions=item.desired_portions or None, forecast_menu_id=slot_detail.menu_id, forecast_menu_slot_item_id=item.menu_slot_item_id, forecast_week=slot_detail.week_number, forecast_day=slot_detail.day_of_week) }}"
+                                    >
+                                        {{ item.item_name }}
+                                    </a>
+                                </strong>
+                            {% else %}
+                                <strong><a class="text-link" href="{{ url_for('item_detail', item_id=item.item_id) }}">{{ item.item_name }}</a></strong>
+                            {% endif %}
                             <span class="muted">({{ item.item_type|replace('_', ' ')|title }})</span>
                         </li>
                     {% endfor %}

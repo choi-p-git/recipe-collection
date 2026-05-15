@@ -122,8 +122,15 @@ Menu Builder foundation note
 - Menu overview action selection can open Forecasting directly in a new browser tab
 - Forecasting renders a 4-week cycle selector, search/filter/sort controls, and default recipe ordering by the menu configuration contract
 - Forecasting scale-by-yield fields autosave with a 500ms debounce, saved-state feedback, and an unload warning when sync is pending or failed
+- Forecasting now supports persisted per-assignment production batch splits. Users can enter a batch split as either a percent of the assignment forecast or as a target quantity, and the other value is calculated from the assignment forecast yield.
+- Forecast production summary rollups combine same-recipe assignments and aggregate matching batch sequence totals across concepts so production can see the combined amount to prepare for each batch.
+- Forecast production summary refreshes automatically after forecast or batch autosaves without reloading the editable forecast grid.
+- Batch split rows include an optional planned time field as a foundation for later production timing and rush/shift scheduling.
+- Forecasting now supports a first-pass `case` mode for recipes and base foods. Users enter case quantity, pack quantity, subunit size, and subunit unit; the visible forecast remains `case` while the calculated production yield is stored separately for batch and rollup math.
+- Advanced case mode can link the case pack to one recipe ingredient, allowing recipe-yield and user-serving calculations to stay available when the ingredient basis can be converted back to recipe yield.
+- Forecast, menu overview, and slot assignment item names link to item detail pages. Forecasted recipes open with the saved scale and user-serving values applied so the recipe view matches the production target.
 - First release planning is aimed at menu creation, week/day/meal/concept overview rendering, slot assignment, and assignment-only copy/paste actions
-- Print, drag-and-drop, rules checks, batch-count logic, and inventory-facing rollups remain deferred until the base Menu Builder/Forecasting behavior is stable
+- Print, drag-and-drop, rules checks, richer batch timing workflows, and inventory-facing rollups remain deferred until the base Menu Builder/Forecasting behavior is stable
 
 Scaling foundation note
 
@@ -161,6 +168,14 @@ MVP validation checklist
 5. Verify notes, automatic workflow notifications, and notification clearing on item view
 6. Verify live item default view hides workflow notes/history, with advanced toggle for privileged roles
 7. Verify Forecasting autosave, advanced scaling confirm-back, and hotel-pan unit availability only on live scaling/forecast controls
+
+Test temp housekeeping
+
+- Isolated tests create temporary SQLite databases under `.test_tmp/run-*` and remove them after normal completion.
+- If test runs are interrupted or Windows file locks prevent cleanup, stale run directories can accumulate.
+- Preview cleanup with `.\.venv\Scripts\python.exe .\src\db.py --gc-test-tmp`
+- Apply cleanup with `.\.venv\Scripts\python.exe .\src\db.py --gc-test-tmp --gc-apply`
+- The collector only targets direct `.test_tmp/run-*` and `.test_tmp/debug-*` directories older than 24 hours by default. Use `--gc-min-age-hours 1` when you intentionally want a more aggressive cleanup window.
 
 Schema Change Checklist
 

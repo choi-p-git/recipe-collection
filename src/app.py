@@ -53,7 +53,9 @@ from services.menu_service import (
 )
 from services.menu_forecast_service import (
     get_menu_forecast_by_slot_item,
+    InvalidMenuForecastBatchError,
     InvalidMenuForecastError,
+    save_menu_forecast_batch_splits,
     save_menu_forecast_yield,
 )
 from services.item_note_service import (
@@ -71,7 +73,6 @@ from services.notification_service import (
 )
 from services.policy_service import (
     can_edit_item,
-    can_edit_items,
     can_manage_official_measurements,
     can_view_advanced_workflow,
 )
@@ -566,6 +567,15 @@ def menu_forecast_recipe_advanced(menu_id: int, item_id: int):
         if str(menu_slot_item_id or "").isdigit()
         else None
     )
+    scale_quantity = None
+    scale_unit = None
+    if forecast:
+        scale_quantity = (
+            forecast["calculated_forecast_quantity"]
+            if forecast["calculated_forecast_quantity"] is not None
+            else forecast["forecast_yield_quantity"]
+        )
+        scale_unit = forecast["calculated_forecast_unit"] or forecast["forecast_yield_unit"]
     return redirect(
         url_for(
             "item_detail",
@@ -574,11 +584,12 @@ def menu_forecast_recipe_advanced(menu_id: int, item_id: int):
             forecast_menu_slot_item_id=menu_slot_item_id,
             forecast_week=request.args.get("week", None),
             forecast_day=request.args.get("day", None),
+            scale_quantity=f"{scale_quantity:g}" if scale_quantity is not None else None,
+            scale_unit=scale_unit,
             user_serving_size_quantity=f"{forecast['user_serving_size_quantity']:g}" if forecast and forecast["user_serving_size_quantity"] is not None else None,
             user_serving_size_unit=forecast["user_serving_size_unit"] if forecast else None,
             desired_portions=f"{forecast['desired_portions']:g}" if forecast and forecast["desired_portions"] is not None else None,
             ingredient_view=request.args.get("ingredient_view", "hierarchical"),
-            scale_mode="ingredient",
         )
     )
 
@@ -600,9 +611,37 @@ def api_update_menu_forecast(menu_id: int, menu_slot_item_id: int):
             user_serving_size_quantity=payload.get("user_serving_size_quantity"),
             user_serving_size_unit=payload.get("user_serving_size_unit"),
             desired_portions=payload.get("desired_portions"),
+            case_pack_quantity=payload.get("case_pack_quantity"),
+            case_subunit_quantity=payload.get("case_subunit_quantity"),
+            case_subunit_unit=payload.get("case_subunit_unit"),
+            case_basis_component_item_id=payload.get("case_basis_component_item_id"),
+            case_basis_component_name=payload.get("case_basis_component_name"),
+            case_basis_view_mode=payload.get("case_basis_view_mode"),
+            case_basis_row_key=payload.get("case_basis_row_key"),
         )
         return jsonify({"ok": True, "forecast": forecast})
     except InvalidMenuForecastError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"ok": False, "error": f"Unexpected error: {exc}"}), 500
+
+
+@app.route("/api/menus/<int:menu_id>/forecast/<int:menu_slot_item_id>/batches", methods=["PUT"])
+def api_update_menu_forecast_batches(menu_id: int, menu_slot_item_id: int):
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"ok": False, "error": "Missing JSON payload."}), 400
+
+    current_user = get_current_mock_user(session)
+    try:
+        batch_plan = save_menu_forecast_batch_splits(
+            menu_id=menu_id,
+            menu_slot_item_id=menu_slot_item_id,
+            actor_user_id=current_user["user_id"],
+            batch_splits=payload.get("batch_splits", []),
+        )
+        return jsonify({"ok": True, "batch_plan": batch_plan})
+    except InvalidMenuForecastBatchError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     except Exception as exc:
         return jsonify({"ok": False, "error": f"Unexpected error: {exc}"}), 500

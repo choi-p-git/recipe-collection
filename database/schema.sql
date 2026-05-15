@@ -255,11 +255,25 @@ CREATE TABLE IF NOT EXISTS menu_forecast (
     user_serving_size_quantity REAL,
     user_serving_size_unit TEXT,
     desired_portions REAL,
+    forecast_display_unit TEXT,
+    case_quantity REAL,
+    case_pack_quantity REAL,
+    case_subunit_quantity REAL,
+    case_subunit_unit TEXT,
+    calculated_forecast_quantity REAL,
+    calculated_forecast_unit TEXT,
+    item_case_pack_id INTEGER,
+    case_basis_component_item_id INTEGER,
+    case_basis_component_name TEXT,
+    case_basis_view_mode TEXT,
+    case_basis_row_key TEXT,
 
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
 
     FOREIGN KEY (menu_slot_item_id) REFERENCES menu_slot_item(menu_slot_item_id) ON DELETE CASCADE,
+    FOREIGN KEY (item_case_pack_id) REFERENCES item_case_pack(item_case_pack_id),
+    FOREIGN KEY (case_basis_component_item_id) REFERENCES item(item_id),
 
     CHECK (forecast_yield_quantity >= 0),
     CHECK (trim(forecast_yield_unit) != ''),
@@ -274,7 +288,61 @@ CREATE TABLE IF NOT EXISTS menu_forecast (
     CHECK (
         desired_portions IS NULL
         OR desired_portions > 0
+    ),
+    CHECK (
+        case_quantity IS NULL
+        OR case_quantity >= 0
+    ),
+    CHECK (
+        case_pack_quantity IS NULL
+        OR case_pack_quantity > 0
+    ),
+    CHECK (
+        case_subunit_quantity IS NULL
+        OR case_subunit_quantity > 0
     )
+);
+
+CREATE TABLE IF NOT EXISTS item_case_pack (
+    item_case_pack_id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    item_id INTEGER NOT NULL,
+    pack_quantity REAL NOT NULL,
+    subunit_quantity REAL NOT NULL,
+    subunit_unit TEXT NOT NULL,
+
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+
+    FOREIGN KEY (item_id) REFERENCES item(item_id) ON DELETE CASCADE,
+
+    CHECK (pack_quantity > 0),
+    CHECK (subunit_quantity > 0),
+    CHECK (trim(subunit_unit) != '')
+);
+
+CREATE TABLE IF NOT EXISTS menu_forecast_batch_split (
+    menu_forecast_batch_split_id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    menu_slot_item_id INTEGER NOT NULL,
+    batch_sequence INTEGER NOT NULL,
+    batch_percent REAL NOT NULL,
+    planned_time TEXT,
+
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+
+    FOREIGN KEY (menu_slot_item_id) REFERENCES menu_slot_item(menu_slot_item_id) ON DELETE CASCADE,
+
+    CHECK (batch_sequence >= 1),
+    CHECK (batch_percent > 0),
+    CHECK (batch_percent <= 100),
+    CHECK (
+        planned_time IS NULL
+        OR trim(planned_time) != ''
+    ),
+
+    UNIQUE (menu_slot_item_id, batch_sequence)
 );
 
 CREATE INDEX IF NOT EXISTS idx_item_type
@@ -339,3 +407,9 @@ ON menu_slot_item(item_id);
 
 CREATE INDEX IF NOT EXISTS idx_menu_forecast_slot_item_id
 ON menu_forecast(menu_slot_item_id);
+
+CREATE INDEX IF NOT EXISTS idx_menu_forecast_batch_split_slot_item_id
+ON menu_forecast_batch_split(menu_slot_item_id);
+
+CREATE INDEX IF NOT EXISTS idx_item_case_pack_item_id
+ON item_case_pack(item_id);

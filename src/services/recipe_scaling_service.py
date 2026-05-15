@@ -366,6 +366,39 @@ def _convert_ingredient_target_to_base_quantity(
     if result["ok"]:
         return result
 
+    source_profile = get_unit_measurement_profile(target_unit)
+    target_profile = get_unit_measurement_profile(base_unit)
+    if source_profile and target_profile and target_profile["measurement_type"] == "count":
+        if source_profile["measurement_type"] == "mass" and mass_quantity and mass_unit:
+            mass_result = convert_unit_value(
+                quantity=target_quantity,
+                from_unit=target_unit,
+                to_unit=mass_unit,
+            )
+            if mass_result["ok"] and float(mass_quantity) > 0:
+                return {
+                    **mass_result,
+                    "quantity": float(mass_result["quantity"]) / float(mass_quantity),
+                    "unit": base_unit,
+                    "status": "base_food_mass_count_bridge",
+                    "label": "Base food mass-count bridge conversion ready",
+                }
+
+        if source_profile["measurement_type"] == "volume" and volume_quantity and volume_unit:
+            volume_result = convert_unit_value(
+                quantity=target_quantity,
+                from_unit=target_unit,
+                to_unit=volume_unit,
+            )
+            if volume_result["ok"] and float(volume_quantity) > 0:
+                return {
+                    **volume_result,
+                    "quantity": float(volume_result["quantity"]) / float(volume_quantity),
+                    "unit": base_unit,
+                    "status": "base_food_volume_count_bridge",
+                    "label": "Base food volume-count bridge conversion ready",
+                }
+
     return convert_with_item_mass_volume_bridge(
         quantity=target_quantity,
         from_unit=target_unit,

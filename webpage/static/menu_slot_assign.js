@@ -51,6 +51,26 @@ document.addEventListener("DOMContentLoaded", () => {
             .replace(/\b\w/g, (character) => character.toUpperCase());
     }
 
+    function buildItemDetailUrl(item) {
+        const url = new URL(`/items/${item.item_id}`, window.location.origin);
+        if (item.item_type === "recipe" && item.forecast_updated_at) {
+            const scaleQuantity = item.effective_forecast_quantity || item.forecast_quantity || "";
+            const scaleUnit = item.effective_forecast_unit || item.forecast_unit || "";
+            if (scaleQuantity) url.searchParams.set("scale_quantity", scaleQuantity);
+            if (scaleUnit) url.searchParams.set("scale_unit", scaleUnit);
+            if (item.user_serving_size_quantity) {
+                url.searchParams.set("user_serving_size_quantity", item.user_serving_size_quantity);
+            }
+            if (item.user_serving_size_unit) {
+                url.searchParams.set("user_serving_size_unit", item.user_serving_size_unit);
+            }
+            if (item.desired_portions) {
+                url.searchParams.set("desired_portions", item.desired_portions);
+            }
+        }
+        return `${url.pathname}${url.search}`;
+    }
+
     function syncSelectedInputs() {
         selectedInputs.innerHTML = "";
 
@@ -80,12 +100,16 @@ document.addEventListener("DOMContentLoaded", () => {
         orderedItems.forEach((item) => {
             const listItem = document.createElement("li");
             const strong = document.createElement("strong");
-            strong.textContent = item.item_name;
+            const link = document.createElement("a");
+            link.className = "text-link";
+            link.href = buildItemDetailUrl(item);
+            link.textContent = item.item_name;
 
             const meta = document.createElement("span");
             meta.className = "muted";
             meta.textContent = ` (${formatItemType(item.item_type)})`;
 
+            strong.appendChild(link);
             listItem.appendChild(strong);
             listItem.appendChild(meta);
             list.appendChild(listItem);
@@ -129,12 +153,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const content = document.createElement("span");
         const title = document.createElement("strong");
-        title.textContent = result.item_name;
+        const link = document.createElement("a");
+        link.className = "text-link";
+        link.href = buildItemDetailUrl(result);
+        link.textContent = result.item_name;
+        link.addEventListener("click", (event) => {
+            event.stopPropagation();
+        });
 
         const meta = document.createElement("span");
         meta.className = "muted";
         meta.textContent = `${formatItemType(result.item_type)} | ID ${result.item_id}`;
 
+        title.appendChild(link);
         content.appendChild(title);
         content.appendChild(document.createElement("br"));
         content.appendChild(meta);

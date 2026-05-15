@@ -322,11 +322,11 @@ def test_menu_forecast_route_renders_day_recipes_in_menu_order(app_client, isola
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert "Recipes For Wednesday, Week 3" in page
+    assert "Items For Wednesday, Week 3" in page
     assert "Cycle Weeks 1-4" in page
     assert "Forecast Route Bowl" in page
     assert "Forecast Route Supper" in page
-    assert "Forecast Route Apple" not in page
+    assert "Forecast Route Apple" in page
     assert page.index("Forecast Route Bowl") < page.index("Forecast Route Supper")
     assert "<th>Batches</th>" in page
     assert "<th>Scale by Yield</th>" in page
@@ -413,6 +413,22 @@ def test_api_update_menu_forecast_persists_scale_by_yield(app_client, isolated_d
     assert payload["forecast"]["user_serving_size_unit"] == "oz"
     assert payload["forecast"]["desired_portions"] == 80
 
+    batch_response = app_client.put(
+        f"/api/menus/{menu_id}/forecast/{menu_slot_item_id}/batches",
+        json={
+            "batch_splits": [
+                {"batch_percent": "50", "planned_time": "11:00"},
+                {"batch_quantity": "6", "planned_time": "11:30"},
+                {"batch_quantity": "6", "planned_time": "12:00"},
+            ],
+        },
+    )
+    batch_payload = batch_response.get_json()
+
+    assert batch_response.status_code == 200
+    assert batch_payload["ok"] is True
+    assert [split["batch_percent_display"] for split in batch_payload["batch_plan"]["batch_splits"]] == ["50", "25", "25"]
+
     page_response = app_client.get(f"/menus/{menu_id}/forecast?week=1&day=monday")
     page = page_response.get_data(as_text=True)
 
@@ -422,6 +438,16 @@ def test_api_update_menu_forecast_persists_scale_by_yield(app_client, isolated_d
     assert 'value="80"' in page
     assert '<option value="oz" selected>oz</option>' in page
     assert "✓ Saved" in page
+    assert "Production Summary" in page
+    assert "Forecast Save Recipe" in page
+    assert "<th>Recipe Yield</th>" not in page
+    assert f"/items/{recipe_id}?scale_quantity=24" in page
+    assert f"forecast_menu_slot_item_id={menu_slot_item_id}" in page
+    assert "24 each" in page
+    assert "Batch 1:" in page
+    assert "12 each" in page
+    assert "(50%)" in page
+    assert "@ 11:00" in page
 
 
     advanced_response = app_client.get(
@@ -502,6 +528,361 @@ def test_api_update_menu_forecast_rejects_invalid_quantity(app_client, isolated_
     assert response.status_code == 400
     assert payload["ok"] is False
     assert "cannot be negative" in payload["error"]
+
+
+def test_menu_forecast_case_mode_persists_calculated_yield(app_client, isolated_db):
+    base_food_id = create_base_food(item_name="Forecast Case Fries")
+    create_response = app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "Forecast Case Menu",
+            "service_days": ["monday"],
+            "meal_periods": ["lunch"],
+            "concepts": ["hot_line"],
+            "menu_length_weeks": "1",
+        },
+        follow_redirects=False,
+    )
+    menu_id = int(create_response.headers["Location"].rstrip("/").split("/")[-1])
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id = ?", (base_food_id,))
+    cursor.execute("SELECT menu_slot_id FROM menu_slot WHERE menu_id = ?", (menu_id,))
+    menu_slot_id = cursor.fetchone()[0]
+    conn.commit()
+    conn.close()
+
+    app_client.post(
+        f"/menus/{menu_id}/slots/{menu_slot_id}/assign",
+        data={"week": "1", "selected_item_ids": [str(base_food_id)]},
+        follow_redirects=False,
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT menu_slot_item_id FROM menu_slot_item WHERE menu_slot_id = ?", (menu_slot_id,))
+    menu_slot_item_id = cursor.fetchone()[0]
+    conn.close()
+
+    response = app_client.put(
+        f"/api/menus/{menu_id}/forecast/{menu_slot_item_id}",
+        json={
+            "forecast_yield_quantity": "3",
+            "forecast_yield_unit": "case",
+            "case_pack_quantity": "5",
+            "case_subunit_quantity": "10",
+            "case_subunit_unit": "lb",
+            "case_basis_component_item_id": str(base_food_id),
+            "case_basis_component_name": "Forecast Case Fries",
+            "case_basis_view_mode": "base",
+            "case_basis_row_key": str(base_food_id),
+            "user_serving_size_quantity": "4",
+            "user_serving_size_unit": "oz",
+            "desired_portions": "80",
+        },
+    )
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert payload["forecast"]["forecast_yield_unit"] == "case"
+    assert payload["forecast"]["calculated_forecast_quantity"] == 150
+    assert payload["forecast"]["calculated_forecast_unit"] == "lb"
+    assert payload["forecast"]["case_basis_component_item_id"] == base_food_id
+    assert payload["forecast"]["case_basis_component_name"] == "Forecast Case Fries"
+    assert payload["forecast"]["case_basis_row_key"] == str(base_food_id)
+    assert payload["forecast"]["user_serving_size_quantity"] is None
+    assert payload["forecast"]["desired_portions"] is None
+
+    page_response = app_client.get(f"/menus/{menu_id}/forecast?week=1&day=monday")
+    page = page_response.get_data(as_text=True)
+
+    assert page_response.status_code == 200
+    assert '<option value="case" selected>case</option>' in page
+    assert 'value="5"' in page
+    assert 'value="10"' in page
+    assert '<option value="lb" selected>lb</option>' in page
+    assert "Linked to Forecast Case Fries" in page
+    assert "data-case-config" in page
+    assert "150 lb" in page
+
+    zero_response = app_client.put(
+        f"/api/menus/{menu_id}/forecast/{menu_slot_item_id}",
+        json={
+            "forecast_yield_quantity": "0",
+            "forecast_yield_unit": "case",
+            "case_pack_quantity": "5",
+            "case_subunit_quantity": "10",
+            "case_subunit_unit": "lb",
+        },
+    )
+    zero_payload = zero_response.get_json()
+
+    assert zero_response.status_code == 200
+    assert zero_payload["forecast"]["case_quantity"] == 0
+    assert zero_payload["forecast"]["calculated_forecast_quantity"] == 0
+
+
+def test_menu_forecast_case_overlay_renders_flattened_candidates(app_client, isolated_db):
+    chile_id = create_base_food(item_name="Forecast Flat Chile")
+    salt_id = create_base_food(item_name="Forecast Flat Salt")
+    sauce_id = create_recipe(
+        {
+            "item_name": "Forecast Flat Sauce",
+            "yield_quantity": 1,
+            "yield_unit": "qt",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Mix"],
+            "ingredients": [
+                {
+                    "component_item_id": chile_id,
+                    "component_quantity": 8,
+                    "component_unit": "oz",
+                }
+            ],
+        }
+    )
+    bowl_id = create_recipe(
+        {
+            "item_name": "Forecast Flat Bowl",
+            "yield_quantity": 4,
+            "yield_unit": "each",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Assemble"],
+            "ingredients": [
+                {
+                    "component_item_id": sauce_id,
+                    "component_quantity": 1,
+                    "component_unit": "qt",
+                },
+                {
+                    "component_item_id": salt_id,
+                    "component_quantity": 1,
+                    "component_unit": "oz",
+                },
+            ],
+        }
+    )
+    create_response = app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "Forecast Flat Menu",
+            "service_days": ["monday"],
+            "meal_periods": ["lunch"],
+            "concepts": ["hot_line"],
+            "menu_length_weeks": "1",
+        },
+        follow_redirects=False,
+    )
+    menu_id = int(create_response.headers["Location"].rstrip("/").split("/")[-1])
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id IN (?, ?, ?, ?)", (chile_id, salt_id, sauce_id, bowl_id))
+    cursor.execute("SELECT menu_slot_id FROM menu_slot WHERE menu_id = ?", (menu_id,))
+    menu_slot_id = cursor.fetchone()[0]
+    conn.commit()
+    conn.close()
+
+    app_client.post(
+        f"/menus/{menu_id}/slots/{menu_slot_id}/assign",
+        data={"week": "1", "selected_item_ids": [str(bowl_id)]},
+        follow_redirects=False,
+    )
+
+    response = app_client.get(f"/menus/{menu_id}/forecast?week=1&day=monday")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert 'data-case-candidates="flattened"' in page
+    assert "Forecast Flat Chile" in page
+    assert "Forecast Flat Sauce" in page
+    assert "menu-forecast-case-candidate-flat depth-1" in page
+
+
+def test_advanced_case_forecast_calculates_recipe_yield_and_allows_serving_size(app_client, isolated_db):
+    sauce_id = create_base_food(item_name="Forecast Case Sauce")
+    recipe_id = create_recipe(
+        {
+            "item_name": "Forecast Case Bowl",
+            "yield_quantity": 4,
+            "yield_unit": "each",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Assemble"],
+            "ingredients": [
+                {
+                    "component_item_id": sauce_id,
+                    "component_quantity": 1,
+                    "component_unit": "qt",
+                }
+            ],
+        }
+    )
+    create_response = app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "Forecast Case Recipe Menu",
+            "service_days": ["monday"],
+            "meal_periods": ["lunch"],
+            "concepts": ["hot_line"],
+            "menu_length_weeks": "1",
+        },
+        follow_redirects=False,
+    )
+    menu_id = int(create_response.headers["Location"].rstrip("/").split("/")[-1])
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id IN (?, ?)", (sauce_id, recipe_id))
+    cursor.execute("SELECT menu_slot_id FROM menu_slot WHERE menu_id = ?", (menu_id,))
+    menu_slot_id = cursor.fetchone()[0]
+    cursor.execute(
+        """
+        SELECT recipe_component_id
+        FROM recipe_component
+        WHERE parent_recipe_item_id = ?
+          AND component_item_id = ?
+        """,
+        (recipe_id, sauce_id),
+    )
+    recipe_component_id = cursor.fetchone()[0]
+    conn.commit()
+    conn.close()
+
+    app_client.post(
+        f"/menus/{menu_id}/slots/{menu_slot_id}/assign",
+        data={"week": "1", "selected_item_ids": [str(recipe_id)]},
+        follow_redirects=False,
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT menu_slot_item_id FROM menu_slot_item WHERE menu_slot_id = ?", (menu_slot_id,))
+    menu_slot_item_id = cursor.fetchone()[0]
+    conn.close()
+
+    response = app_client.put(
+        f"/api/menus/{menu_id}/forecast/{menu_slot_item_id}",
+        json={
+            "forecast_yield_quantity": "2",
+            "forecast_yield_unit": "case",
+            "case_pack_quantity": "1",
+            "case_subunit_quantity": "2",
+            "case_subunit_unit": "qt",
+            "case_basis_component_item_id": str(sauce_id),
+            "case_basis_component_name": "Forecast Case Sauce",
+            "case_basis_view_mode": "hierarchical",
+            "case_basis_row_key": str(recipe_component_id),
+            "user_serving_size_quantity": "1",
+            "user_serving_size_unit": "each",
+            "desired_portions": "16",
+        },
+    )
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert payload["forecast"]["forecast_yield_unit"] == "case"
+    assert payload["forecast"]["calculated_forecast_quantity"] == 16
+    assert payload["forecast"]["calculated_forecast_unit"] == "each"
+    assert payload["forecast"]["user_serving_size_quantity"] == 1
+    assert payload["forecast"]["desired_portions"] == 16
+
+
+def test_advanced_case_forecast_bridges_ingredient_mass_to_recipe_each(app_client, isolated_db):
+    chicken_id = create_base_food(
+        item_name="Forecast Case Chicken Breast",
+        mass_quantity=10,
+        mass_unit="lb",
+    )
+    recipe_id = create_recipe(
+        {
+            "item_name": "Forecast Case Chicken Salad Plate",
+            "yield_quantity": 8,
+            "yield_unit": "each",
+            "mass_quantity": 2800,
+            "mass_unit": "g",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Plate"],
+            "ingredients": [
+                {
+                    "component_item_id": chicken_id,
+                    "component_quantity": 1,
+                    "component_unit": "each",
+                }
+            ],
+        }
+    )
+    create_response = app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "Forecast Case Chicken Menu",
+            "service_days": ["monday"],
+            "meal_periods": ["lunch"],
+            "concepts": ["hot_line"],
+            "menu_length_weeks": "1",
+        },
+        follow_redirects=False,
+    )
+    menu_id = int(create_response.headers["Location"].rstrip("/").split("/")[-1])
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id IN (?, ?)", (chicken_id, recipe_id))
+    cursor.execute("SELECT menu_slot_id FROM menu_slot WHERE menu_id = ?", (menu_id,))
+    menu_slot_id = cursor.fetchone()[0]
+    cursor.execute(
+        """
+        SELECT recipe_component_id
+        FROM recipe_component
+        WHERE parent_recipe_item_id = ?
+          AND component_item_id = ?
+        """,
+        (recipe_id, chicken_id),
+    )
+    recipe_component_id = cursor.fetchone()[0]
+    conn.commit()
+    conn.close()
+
+    app_client.post(
+        f"/menus/{menu_id}/slots/{menu_slot_id}/assign",
+        data={"week": "1", "selected_item_ids": [str(recipe_id)]},
+        follow_redirects=False,
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT menu_slot_item_id FROM menu_slot_item WHERE menu_slot_id = ?", (menu_slot_id,))
+    menu_slot_item_id = cursor.fetchone()[0]
+    conn.close()
+
+    response = app_client.put(
+        f"/api/menus/{menu_id}/forecast/{menu_slot_item_id}",
+        json={
+            "forecast_yield_quantity": "1.25",
+            "forecast_yield_unit": "case",
+            "case_pack_quantity": "4",
+            "case_subunit_quantity": "10",
+            "case_subunit_unit": "lb",
+            "case_basis_component_item_id": str(chicken_id),
+            "case_basis_component_name": "Forecast Case Chicken Breast",
+            "case_basis_view_mode": "hierarchical",
+            "case_basis_row_key": str(recipe_component_id),
+            "user_serving_size_quantity": "1",
+            "user_serving_size_unit": "each",
+        },
+    )
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert payload["forecast"]["calculated_forecast_quantity"] == 40
+    assert payload["forecast"]["calculated_forecast_unit"] == "each"
+
+    page_response = app_client.get(f"/menus/{menu_id}/forecast?week=1&day=monday")
+    page = page_response.get_data(as_text=True)
+
+    assert page_response.status_code == 200
+    assert "forecast unit 'lb' cannot roll up" not in page
+    assert "40 each" in page
 
 
 def test_forecast_advanced_scaling_confirms_bottom_up_yield(app_client, isolated_db):
@@ -1290,6 +1671,7 @@ def test_menu_slot_assign_route_renders_search_results(app_client, isolated_db):
 
     assert response.status_code == 200
     assert "Assign Search Lettuce" in page
+    assert f'href="/items/{base_food_id}"' in page
     assert "Base Food | ID" in page
 
 

@@ -384,30 +384,7 @@ def replace_menu_slot_items(
                 if row[2] != "live":
                     raise InvalidMenuSlotAssignmentError("Only live items can be assigned to a menu slot.")
 
-        cursor.execute(
-            "DELETE FROM menu_slot_item WHERE menu_slot_id = ?",
-            (menu_slot_id,),
-        )
-
-        for index, item_id in enumerate(normalized_item_ids, start=1):
-            cursor.execute(
-                """
-                INSERT INTO menu_slot_item (
-                    menu_slot_id,
-                    item_id,
-                    item_sequence,
-                    created_at,
-                    updated_at
-                )
-                VALUES (?, ?, ?, datetime('now'), datetime('now'))
-                """,
-                (menu_slot_id, item_id, index),
-            )
-
-        cursor.execute(
-            "UPDATE menu_slot SET updated_at = datetime('now') WHERE menu_slot_id = ?",
-            (menu_slot_id,),
-        )
+        _sync_slot_items(cursor, menu_slot_id, normalized_item_ids)
         conn.commit()
 
 
@@ -645,29 +622,90 @@ def _validate_live_menu_items(cursor, item_ids: list[int]) -> None:
             raise InvalidMenuSlotActionError("Only live items can be pasted into a menu slot.")
 
 
-def _replace_slot_items(cursor, menu_slot_id: int, item_ids: list[int]) -> None:
+def _sync_slot_items(cursor, menu_slot_id: int, item_ids: list[int]) -> None:
     cursor.execute(
-        "DELETE FROM menu_slot_item WHERE menu_slot_id = ?",
+        """
+        SELECT menu_slot_item_id, item_id
+        FROM menu_slot_item
+        WHERE menu_slot_id = ?
+        ORDER BY item_sequence ASC, menu_slot_item_id ASC
+        """,
         (menu_slot_id,),
     )
-    for index, item_id in enumerate(item_ids, start=1):
+    existing_rows = [(int(row[0]), int(row[1])) for row in cursor.fetchall()]
+    existing_by_item_id: dict[int, int] = {}
+    duplicate_slot_item_ids: set[int] = set()
+    for slot_item_id, item_id in existing_rows:
+        if item_id in existing_by_item_id:
+            duplicate_slot_item_ids.add(slot_item_id)
+        else:
+            existing_by_item_id[item_id] = slot_item_id
+
+    desired_item_ids = set(item_ids)
+    slot_item_ids_to_delete = [
+        slot_item_id
+        for slot_item_id, item_id in existing_rows
+        if item_id not in desired_item_ids or slot_item_id in duplicate_slot_item_ids
+    ]
+    if slot_item_ids_to_delete:
+        cursor.execute(
+            "DELETE FROM menu_slot_item WHERE menu_slot_item_id IN ({})".format(
+                ", ".join("?" for _ in slot_item_ids_to_delete)
+            ),
+            slot_item_ids_to_delete,
+        )
+
+    preserved_slot_item_ids = [
+        existing_by_item_id[item_id]
+        for item_id in item_ids
+        if item_id in existing_by_item_id
+    ]
+    for slot_item_id in preserved_slot_item_ids:
         cursor.execute(
             """
-            INSERT INTO menu_slot_item (
-                menu_slot_id,
-                item_id,
-                item_sequence,
-                created_at,
-                updated_at
-            )
-            VALUES (?, ?, ?, datetime('now'), datetime('now'))
+            UPDATE menu_slot_item
+            SET item_sequence = ?,
+                updated_at = datetime('now')
+            WHERE menu_slot_item_id = ?
             """,
-            (menu_slot_id, item_id, index),
+            (1_000_000 + slot_item_id, slot_item_id),
         )
+
+    for index, item_id in enumerate(item_ids, start=1):
+        existing_slot_item_id = existing_by_item_id.get(item_id)
+        if existing_slot_item_id is not None:
+            cursor.execute(
+                """
+                UPDATE menu_slot_item
+                SET item_sequence = ?,
+                    updated_at = datetime('now')
+                WHERE menu_slot_item_id = ?
+                """,
+                (index, existing_slot_item_id),
+            )
+        else:
+            cursor.execute(
+                """
+                INSERT INTO menu_slot_item (
+                    menu_slot_id,
+                    item_id,
+                    item_sequence,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?, ?, ?, datetime('now'), datetime('now'))
+                """,
+                (menu_slot_id, item_id, index),
+            )
+
     cursor.execute(
         "UPDATE menu_slot SET updated_at = datetime('now') WHERE menu_slot_id = ?",
         (menu_slot_id,),
     )
+
+
+def _replace_slot_items(cursor, menu_slot_id: int, item_ids: list[int]) -> None:
+    _sync_slot_items(cursor, menu_slot_id, item_ids)
 
 
 def delete_menu(*, menu_id: int, actor_user_id: str) -> None:

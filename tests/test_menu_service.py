@@ -129,6 +129,101 @@ def test_replace_menu_slot_items_replaces_assignments_with_live_items(isolated_d
     assert rows == [(recipe_id, 1), (base_food_id, 2)]
 
 
+def test_replace_menu_slot_items_preserves_existing_forecast_rows(isolated_db):
+    menu_id = create_menu(
+        menu_name="Forecast Preserve Menu",
+        author_user_id="dev_user_001",
+        author_display_name="Plato Choi",
+        service_days=["monday"],
+        meal_periods=["lunch"],
+        concepts=["hot_line"],
+        menu_length_weeks=1,
+        allowed_service_days=["monday"],
+        allowed_meal_periods=["lunch"],
+        allowed_concepts=["hot_line"],
+    )
+    base_food_id = create_base_food(item_name="Forecast Preserve Base")
+    recipe_id = create_recipe(
+        {
+            "item_name": "Forecast Preserve Recipe",
+            "yield_quantity": 1,
+            "yield_unit": "each",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Mix"],
+            "ingredients": [
+                {
+                    "component_item_id": base_food_id,
+                    "component_quantity": 1,
+                    "component_unit": "cup",
+                }
+            ],
+        }
+    )
+    added_food_id = create_base_food(item_name="Forecast Preserve Apple")
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT menu_slot_id FROM menu_slot WHERE menu_id = ?", (menu_id,))
+    menu_slot_id = cursor.fetchone()[0]
+    cursor.execute(
+        "UPDATE item SET status = 'live' WHERE item_id IN (?, ?, ?)",
+        (base_food_id, recipe_id, added_food_id),
+    )
+    conn.commit()
+    conn.close()
+
+    replace_menu_slot_items(
+        menu_slot_id=menu_slot_id,
+        selected_item_ids=[recipe_id],
+        actor_user_id="dev_user_001",
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT menu_slot_item_id FROM menu_slot_item WHERE menu_slot_id = ?", (menu_slot_id,))
+    original_slot_item_id = cursor.fetchone()[0]
+    cursor.execute(
+        """
+        INSERT INTO menu_forecast (
+            menu_slot_item_id,
+            forecast_yield_quantity,
+            forecast_yield_unit,
+            created_at,
+            updated_at
+        )
+        VALUES (?, 24, 'each', datetime('now'), datetime('now'))
+        """,
+        (original_slot_item_id,),
+    )
+    conn.commit()
+    conn.close()
+
+    replace_menu_slot_items(
+        menu_slot_id=menu_slot_id,
+        selected_item_ids=[recipe_id, added_food_id],
+        actor_user_id="dev_user_001",
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT msi.menu_slot_item_id, msi.item_id, msi.item_sequence, mf.forecast_yield_quantity
+        FROM menu_slot_item msi
+        LEFT JOIN menu_forecast mf
+          ON mf.menu_slot_item_id = msi.menu_slot_item_id
+        WHERE msi.menu_slot_id = ?
+        ORDER BY msi.item_sequence ASC
+        """,
+        (menu_slot_id,),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+
+    assert rows[0] == (original_slot_item_id, recipe_id, 1, 24)
+    assert rows[1][1:] == (added_food_id, 2, None)
+
+
 def test_replace_menu_slot_items_rejects_non_live_items(isolated_db):
     menu_id = create_menu(
         menu_name="Assign Error Menu",
