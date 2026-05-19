@@ -245,19 +245,92 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const readForecastControlForRow = (row) => row?.querySelector("[data-forecast-control]");
 
+    const readProductionDisplayData = (control) => ({
+        massQuantity: Number(control.dataset.productionMassQuantity || 0),
+        massUnit: control.dataset.productionMassUnit || "",
+        volumeQuantity: Number(control.dataset.productionVolumeQuantity || 0),
+        volumeUnit: control.dataset.productionVolumeUnit || "",
+    });
+
+    const convertProductionQuantity = (control, quantity, fromUnit, toUnit) => {
+        if (!toUnit || fromUnit === toUnit) {
+            return Number(quantity);
+        }
+        const directQuantity = convertUnit(quantity, fromUnit, toUnit);
+        if (directQuantity !== null) {
+            return directQuantity;
+        }
+        return bridgeMassVolume(quantity, fromUnit, toUnit, readProductionDisplayData(control));
+    };
+
+    const syncProductionDisplayControl = (control) => {
+        const unitSelect = control.querySelector("[data-production-display-unit]");
+        const totalNode = control.querySelector("[data-production-total]");
+        const statusNode = control.querySelector("[data-production-display-status]");
+        if (!unitSelect || !totalNode) {
+            return;
+        }
+        const targetUnit = unitSelect.value;
+        const targetLabel = selectedOptionLabel(unitSelect) || targetUnit;
+        const baseQuantity = Number(control.dataset.productionBaseQuantity || 0);
+        const baseUnit = control.dataset.productionBaseUnit || "";
+        const convertedTotal = convertProductionQuantity(control, baseQuantity, baseUnit, targetUnit);
+        if (convertedTotal === null) {
+            if (statusNode) statusNode.textContent = "Cannot convert";
+            return;
+        }
+
+        totalNode.textContent = `${formatNumber(convertedTotal)} ${targetLabel}`;
+        control.querySelectorAll("[data-production-batch-quantity]").forEach((batchNode) => {
+            const batchQuantity = Number(batchNode.dataset.productionBaseQuantity || 0);
+            const batchUnit = batchNode.dataset.productionBaseUnit || baseUnit;
+            const convertedBatch = convertProductionQuantity(control, batchQuantity, batchUnit, targetUnit);
+            if (convertedBatch !== null) {
+                batchNode.textContent = `${formatNumber(convertedBatch)} ${targetLabel}`;
+            }
+        });
+        if (statusNode) statusNode.textContent = "";
+    };
+
+    const wireProductionSummaryControls = (scope = document) => {
+        scope.querySelectorAll("[data-production-display-control]").forEach((control) => {
+            const unitSelect = control.querySelector("[data-production-display-unit]");
+            if (!unitSelect || unitSelect.dataset.productionDisplayWired === "1") {
+                return;
+            }
+            unitSelect.dataset.productionDisplayWired = "1";
+            unitSelect.addEventListener("change", () => {
+                syncProductionDisplayControl(control);
+            });
+            syncProductionDisplayControl(control);
+        });
+    };
+
     const readForecastQuantityForBatch = (batchControl) => {
         const row = batchControl.closest("tr");
         const forecastControl = readForecastControlForRow(row);
         if (!forecastControl) {
             return { quantity: 0, unit: "", unitLabel: "", isCase: false };
         }
-        const quantityInput = forecastControl.querySelector("[data-forecast-quantity]");
-        const unitSelect = forecastControl.querySelector("[data-forecast-unit]");
+        const effectiveForecast = calculateEffectiveForecast(forecastControl);
+        const displayUnitSelect = batchControl.querySelector("[data-batch-display-unit]");
+        const displayUnit = displayUnitSelect?.value || effectiveForecast.unit;
+        const recipeData = readRecipeData(forecastControl);
+        let displayQuantity = effectiveForecast.quantity;
+        if (displayUnit && displayUnit !== effectiveForecast.unit) {
+            displayQuantity = convertUnit(effectiveForecast.quantity, effectiveForecast.unit, displayUnit);
+            if (displayQuantity === null) {
+                displayQuantity = bridgeMassVolume(effectiveForecast.quantity, effectiveForecast.unit, displayUnit, recipeData);
+            }
+        }
+        if (displayQuantity === null) {
+            displayQuantity = effectiveForecast.quantity;
+        }
         return {
-            quantity: Number(quantityInput?.value || 0),
-            unit: unitSelect?.value || "",
-            unitLabel: selectedOptionLabel(unitSelect) || unitSelect?.value || "",
-            isCase: unitSelect?.value === "case",
+            quantity: Number(displayQuantity || 0),
+            unit: displayUnit || effectiveForecast.unit,
+            unitLabel: selectedOptionLabel(displayUnitSelect) || effectiveForecast.unitLabel || displayUnit || "",
+            isCase: effectiveForecast.isCase,
         };
     };
 
@@ -462,6 +535,8 @@ document.addEventListener("DOMContentLoaded", () => {
             const nextSection = doc.querySelector("[data-production-summary-section]");
             if (nextSection) {
                 section.replaceWith(nextSection);
+                window.enhanceAdvancedUnitSelects?.(nextSection);
+                wireProductionSummaryControls(nextSection);
             }
         } catch (error) {
             // The next successful save will try again.
@@ -579,6 +654,91 @@ document.addEventListener("DOMContentLoaded", () => {
         const caseControl = control.querySelector("[data-case-control]");
         const caseOverlay = control.querySelector("[data-case-overlay]");
         const caseIngredientTitle = control.querySelector("[data-case-ingredient-title]");
+        const casePackOptionsNode = control.querySelector("[data-case-pack-options]");
+        const savedCasePacksByItemId = JSON.parse(casePackOptionsNode?.textContent || "{}");
+        const normalizePackValue = (value) => {
+            const numberValue = Number(value || 0);
+            return Number.isFinite(numberValue) ? numberValue : 0;
+        };
+        const normalizePackUnit = (value) => String(value || "").trim().toLowerCase();
+        const readOverlayCasePack = () => ({
+            packQuantity: normalizePackValue(caseOverlay?.querySelector("[data-case-overlay-pack]")?.value),
+            subunitQuantity: normalizePackValue(caseOverlay?.querySelector("[data-case-overlay-size]")?.value),
+            subunitUnit: normalizePackUnit(caseOverlay?.querySelector("[data-case-overlay-unit]")?.value),
+        });
+        const readSelectedCaseBasisId = () => {
+            const selectedCandidate = caseOverlay?.querySelector("[data-case-candidate]:checked");
+            return selectedCandidate?.value || control.querySelector("[data-case-basis-id]")?.value || "";
+        };
+        const getSavedCasePacksForSelectedBasis = () => {
+            const basisId = readSelectedCaseBasisId();
+            return basisId ? savedCasePacksByItemId[String(basisId)] || [] : [];
+        };
+        const casePacksMatch = (casePack, manualPack) => (
+            Math.abs(Number(casePack.pack_quantity) - manualPack.packQuantity) < 0.000001 &&
+            Math.abs(Number(casePack.subunit_quantity) - manualPack.subunitQuantity) < 0.000001 &&
+            normalizePackUnit(casePack.subunit_unit) === manualPack.subunitUnit
+        );
+        const renderSavedCasePackOptions = () => {
+            const select = caseOverlay?.querySelector("[data-case-pack-select]");
+            if (!select) {
+                return;
+            }
+            select.innerHTML = "";
+            const manualOption = document.createElement("option");
+            manualOption.value = "";
+            manualOption.textContent = "Manual case size";
+            select.appendChild(manualOption);
+            getSavedCasePacksForSelectedBasis().forEach((casePack) => {
+                const option = document.createElement("option");
+                option.value = String(casePack.item_case_pack_id);
+                option.textContent = `${casePack.pack_quantity_display} x ${casePack.subunit_quantity_display} ${casePack.subunit_unit}`;
+                option.dataset.packQuantity = String(casePack.pack_quantity);
+                option.dataset.subunitQuantity = String(casePack.subunit_quantity);
+                option.dataset.subunitUnit = casePack.subunit_unit;
+                select.appendChild(option);
+            });
+        };
+        const setCasePackStatus = (message) => {
+            const status = caseOverlay?.querySelector("[data-case-pack-status]");
+            if (status) {
+                status.textContent = message;
+            }
+        };
+        const syncCasePackSaveState = () => {
+            const saveButton = caseOverlay?.querySelector("[data-save-case-pack]");
+            if (!saveButton) {
+                return;
+            }
+            const selectedBasisId = readSelectedCaseBasisId();
+            const manualPack = readOverlayCasePack();
+            const hasValidPack = Boolean(
+                selectedBasisId &&
+                manualPack.packQuantity > 0 &&
+                manualPack.subunitQuantity > 0 &&
+                manualPack.subunitUnit
+            );
+            const isDuplicate = hasValidPack && getSavedCasePacksForSelectedBasis().some((casePack) =>
+                casePacksMatch(casePack, manualPack)
+            );
+            saveButton.disabled = !hasValidPack || isDuplicate;
+            if (!hasValidPack) {
+                setCasePackStatus("");
+            } else if (isDuplicate) {
+                setCasePackStatus("Already saved");
+            } else {
+                setCasePackStatus("");
+            }
+        };
+        const addSavedCasePackOption = (casePack) => {
+            const itemId = String(casePack.item_id);
+            if (!savedCasePacksByItemId[itemId]) {
+                savedCasePacksByItemId[itemId] = [];
+            }
+            savedCasePacksByItemId[itemId].unshift(casePack);
+            renderSavedCasePackOptions();
+            syncCasePackSaveState();
+        };
         const setCaseView = (viewMode) => {
             const mode = viewMode || "hierarchical";
             control.querySelectorAll("[data-case-candidates]").forEach((candidateList) => {
@@ -608,6 +768,8 @@ document.addEventListener("DOMContentLoaded", () => {
             if (overlaySize) overlaySize.value = sizeInput?.value || "";
             if (overlayUnit) overlayUnit.value = unitSelect?.value || "";
             setCaseView(viewInput?.value || "hierarchical");
+            renderSavedCasePackOptions();
+            syncCasePackSaveState();
             caseOverlay?.classList.remove("hidden");
             document.body.classList.add("has-menu-forecast-case-overlay");
         };
@@ -630,11 +792,13 @@ document.addEventListener("DOMContentLoaded", () => {
             const basisNameInput = control.querySelector("[data-case-basis-name]");
             const basisViewInput = control.querySelector("[data-case-basis-view]");
             const basisRowKeyInput = control.querySelector("[data-case-basis-row-key]");
+            const casePackIdInput = control.querySelector("[data-case-pack-id]");
             const candidateName = selectedCandidate.dataset.caseCandidateName || "";
             if (basisIdInput) basisIdInput.value = selectedCandidate.value;
             if (basisNameInput) basisNameInput.value = candidateName;
             if (basisViewInput) basisViewInput.value = selectedCandidate.dataset.caseCandidateView || "hierarchical";
             if (basisRowKeyInput) basisRowKeyInput.value = selectedCandidate.dataset.caseCandidateRowKey || "";
+            if (casePackIdInput) casePackIdInput.value = caseOverlay.querySelector("[data-case-pack-select]")?.value || "";
             if (caseIngredientTitle) {
                 caseIngredientTitle.textContent = candidateName ? `Linked to ${candidateName}` : "";
                 caseIngredientTitle.classList.toggle("hidden", !candidateName);
@@ -645,6 +809,40 @@ document.addEventListener("DOMContentLoaded", () => {
             updateUnitMode();
             saveForecastNow(control);
             syncBatchQuantitiesFromPercents(control.closest("tr")?.querySelector("[data-batch-control]"));
+        };
+        const saveReusableCasePack = async () => {
+            const saveButton = caseOverlay?.querySelector("[data-save-case-pack]");
+            const saveUrl = control.dataset.casePackSaveUrl;
+            const selectedBasisId = readSelectedCaseBasisId();
+            const manualPack = readOverlayCasePack();
+            if (!saveUrl || !selectedBasisId || saveButton?.disabled) {
+                return;
+            }
+            saveButton.disabled = true;
+            setCasePackStatus("Saving...");
+            try {
+                const response = await fetch(saveUrl, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        item_id: selectedBasisId,
+                        pack_quantity: manualPack.packQuantity,
+                        subunit_quantity: manualPack.subunitQuantity,
+                        subunit_unit: manualPack.subunitUnit,
+                    }),
+                });
+                const payload = await response.json();
+                if (!response.ok || !payload.ok) {
+                    throw new Error(payload.error || "Unable to save case size.");
+                }
+                addSavedCasePackOption(payload.case_pack);
+                setCasePackStatus("Saved");
+            } catch (error) {
+                setCasePackStatus(error.message || "Save failed");
+                syncCasePackSaveState();
+            }
         };
         const updateUnitMode = () => {
             const isCaseMode = unitSelect.value === "case";
@@ -690,8 +888,41 @@ document.addEventListener("DOMContentLoaded", () => {
         caseOverlay?.querySelectorAll("[data-case-view-button]").forEach((button) => {
             button.addEventListener("click", () => {
                 setCaseView(button.dataset.caseViewButton);
+                renderSavedCasePackOptions();
+                syncCasePackSaveState();
             });
         });
+        caseOverlay?.querySelectorAll("[data-case-candidate]").forEach((candidate) => {
+            candidate.addEventListener("change", () => {
+                renderSavedCasePackOptions();
+                syncCasePackSaveState();
+            });
+        });
+        caseOverlay?.querySelector("[data-case-pack-select]")?.addEventListener("change", (event) => {
+            const option = event.target.selectedOptions[0];
+            if (!option || !option.value) {
+                syncCasePackSaveState();
+                return;
+            }
+            const overlayPack = caseOverlay.querySelector("[data-case-overlay-pack]");
+            const overlaySize = caseOverlay.querySelector("[data-case-overlay-size]");
+            const overlayUnit = caseOverlay.querySelector("[data-case-overlay-unit]");
+            if (overlayPack) overlayPack.value = option.dataset.packQuantity || "";
+            if (overlaySize) overlaySize.value = option.dataset.subunitQuantity || "";
+            if (overlayUnit) overlayUnit.value = option.dataset.subunitUnit || "";
+            syncCasePackSaveState();
+        });
+        const markManualCasePack = () => {
+            const select = caseOverlay?.querySelector("[data-case-pack-select]");
+            if (select) {
+                select.value = "";
+            }
+            syncCasePackSaveState();
+        };
+        caseOverlay?.querySelector("[data-case-overlay-pack]")?.addEventListener("input", markManualCasePack);
+        caseOverlay?.querySelector("[data-case-overlay-size]")?.addEventListener("input", markManualCasePack);
+        caseOverlay?.querySelector("[data-case-overlay-unit]")?.addEventListener("change", markManualCasePack);
+        caseOverlay?.querySelector("[data-save-case-pack]")?.addEventListener("click", saveReusableCasePack);
         caseOverlay?.querySelectorAll("[data-case-cancel]").forEach((button) => {
             button.addEventListener("click", closeCaseOverlay);
         });
@@ -732,8 +963,14 @@ document.addEventListener("DOMContentLoaded", () => {
             syncBatchQuantitiesFromPercents(batchControl);
             scheduleBatchSave(batchControl);
         });
+        batchControl.querySelector("[data-batch-display-unit]")?.addEventListener("change", () => {
+            syncBatchQuantitiesFromPercents(batchControl);
+        });
         syncBatchQuantitiesFromPercents(batchControl);
     });
+
+    window.enhanceAdvancedUnitSelects?.(document.querySelector("[data-production-summary-section]") || document);
+    wireProductionSummaryControls();
 
     window.addEventListener("beforeunload", (event) => {
         if (!hasUnsyncedChanges()) {

@@ -1,7 +1,11 @@
 from config.units import APPROVED_UNITS, STANDARD_UNITS
 from db import get_connection
 from services.recipe_scaling_service import build_bottom_up_scaled_recipe_view
-from services.unit_conversion_service import convert_with_item_mass_volume_bridge, normalize_unit_symbol
+from services.unit_conversion_service import (
+    convert_with_item_mass_volume_bridge,
+    get_unit_measurement_profile,
+    normalize_unit_symbol,
+)
 from services.unit_display_service import format_display_quantity
 
 
@@ -16,6 +20,7 @@ class InvalidMenuForecastBatchError(ValueError):
 MAX_BATCH_SPLITS = 12
 BATCH_PERCENT_TOLERANCE = 0.05
 CASE_FORECAST_UNIT = "case"
+CASE_PACK_MATCH_TOLERANCE = 0.000001
 
 
 def _normalize_forecast_quantity(value) -> float:
@@ -90,11 +95,35 @@ def _get_forecast_assignment_context(cursor, *, menu_id: int, menu_slot_item_id:
     }
 
 
+def _get_item_context(cursor, item_id: int) -> dict:
+    cursor.execute(
+        """
+        SELECT item_id, item_type, status
+        FROM item
+        WHERE item_id = ?
+        """,
+        (item_id,),
+    )
+    row = cursor.fetchone()
+    if row is None:
+        raise InvalidMenuForecastError("Case ingredient was not found.")
+    return {
+        "item_id": int(row[0]),
+        "item_type": row[1],
+        "status": row[2],
+    }
+
+
 def _ensure_forecast_assignment_can_update(context: dict, actor_user_id: str) -> None:
     if context["author_user_id"] != actor_user_id:
         raise InvalidMenuForecastError("You can only update forecasts for menus you created.")
     if context["item_type"] not in {"recipe", "base_food"} or context["status"] != "live":
         raise InvalidMenuForecastError("Only live menu item assignments can be forecasted.")
+
+
+def _ensure_live_case_pack_item(context: dict) -> None:
+    if context["item_type"] not in {"recipe", "base_food"} or context["status"] != "live":
+        raise InvalidMenuForecastError("Case sizes can only be saved for live recipe or base food items.")
 
 
 def _normalize_forecast_unit(value) -> str:
@@ -116,6 +145,40 @@ def _normalize_positive_case_value(value, label: str) -> float:
         raise InvalidMenuForecastError(f"{label} must be greater than zero.")
 
     return normalized
+
+
+def _format_case_pack_quantity(quantity: float) -> str:
+    return format_display_quantity(float(quantity))
+
+
+def _build_case_pack_payload(row) -> dict:
+    return {
+        "item_case_pack_id": int(row[0]),
+        "item_id": int(row[1]),
+        "pack_quantity": float(row[2]),
+        "pack_quantity_display": _format_case_pack_quantity(row[2]),
+        "subunit_quantity": float(row[3]),
+        "subunit_quantity_display": _format_case_pack_quantity(row[3]),
+        "subunit_unit": normalize_unit_symbol(row[4]),
+    }
+
+
+def _dedupe_case_pack_payloads(rows) -> list[dict]:
+    case_packs: list[dict] = []
+    seen: set[tuple[int, float, float, str]] = set()
+    for row in rows:
+        payload = _build_case_pack_payload(row)
+        key = (
+            payload["item_id"],
+            round(payload["pack_quantity"], 6),
+            round(payload["subunit_quantity"], 6),
+            payload["subunit_unit"],
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        case_packs.append(payload)
+    return case_packs
 
 
 def _normalize_case_quantity(value) -> float:
@@ -384,6 +447,153 @@ def _apply_advanced_case_basis(
     }
 
 
+def list_item_case_packs(item_id: int) -> list[dict]:
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT
+                item_case_pack_id,
+                item_id,
+                pack_quantity,
+                subunit_quantity,
+                subunit_unit
+            FROM item_case_pack
+            WHERE item_id = ?
+            ORDER BY updated_at DESC, item_case_pack_id DESC
+            """,
+            (item_id,),
+        )
+        return _dedupe_case_pack_payloads(cursor.fetchall())
+
+
+def list_item_case_packs_for_items(item_ids: list[int]) -> dict[int, list[dict]]:
+    normalized_item_ids = sorted({int(item_id) for item_id in item_ids if item_id})
+    if not normalized_item_ids:
+        return {}
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT
+                item_case_pack_id,
+                item_id,
+                pack_quantity,
+                subunit_quantity,
+                subunit_unit
+            FROM item_case_pack
+            WHERE item_id IN ({})
+            ORDER BY item_id ASC, updated_at DESC, item_case_pack_id DESC
+            """.format(", ".join("?" for _ in normalized_item_ids)),
+            normalized_item_ids,
+        )
+        case_packs_by_item_id: dict[int, list[dict]] = {}
+        for case_pack in _dedupe_case_pack_payloads(cursor.fetchall()):
+            case_packs_by_item_id.setdefault(case_pack["item_id"], []).append(case_pack)
+        return case_packs_by_item_id
+
+
+def save_item_case_pack(
+    *,
+    menu_id: int,
+    menu_slot_item_id: int,
+    actor_user_id: str,
+    item_id,
+    pack_quantity,
+    subunit_quantity,
+    subunit_unit,
+) -> dict:
+    try:
+        normalized_item_id = int(item_id)
+    except (TypeError, ValueError):
+        raise InvalidMenuForecastError("Select a valid case ingredient.")
+    case_fields = _normalize_case_fields(
+        forecast_unit=CASE_FORECAST_UNIT,
+        forecast_yield_quantity=1,
+        case_pack_quantity=pack_quantity,
+        case_subunit_quantity=subunit_quantity,
+        case_subunit_unit=subunit_unit,
+    )
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        assignment_context = _get_forecast_assignment_context(
+            cursor,
+            menu_id=menu_id,
+            menu_slot_item_id=menu_slot_item_id,
+        )
+        _ensure_forecast_assignment_can_update(assignment_context, actor_user_id)
+        item_context = _get_item_context(cursor, normalized_item_id)
+        _ensure_live_case_pack_item(item_context)
+
+        cursor.execute(
+            """
+            SELECT
+                item_case_pack_id,
+                item_id,
+                pack_quantity,
+                subunit_quantity,
+                subunit_unit
+            FROM item_case_pack
+            WHERE item_id = ?
+              AND ABS(pack_quantity - ?) <= ?
+              AND ABS(subunit_quantity - ?) <= ?
+              AND subunit_unit = ?
+            ORDER BY item_case_pack_id ASC
+            LIMIT 1
+            """,
+            (
+                normalized_item_id,
+                case_fields["case_pack_quantity"],
+                CASE_PACK_MATCH_TOLERANCE,
+                case_fields["case_subunit_quantity"],
+                CASE_PACK_MATCH_TOLERANCE,
+                case_fields["case_subunit_unit"],
+            ),
+        )
+        if cursor.fetchone() is not None:
+            raise InvalidMenuForecastError("This case size is already saved for that item.")
+
+        cursor.execute(
+            """
+            INSERT INTO item_case_pack (
+                item_id,
+                pack_quantity,
+                subunit_quantity,
+                subunit_unit,
+                created_at,
+                updated_at
+            )
+            VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
+            """,
+            (
+                normalized_item_id,
+                case_fields["case_pack_quantity"],
+                case_fields["case_subunit_quantity"],
+                case_fields["case_subunit_unit"],
+            ),
+        )
+        item_case_pack_id = int(cursor.lastrowid)
+        cursor.execute(
+            """
+            SELECT
+                item_case_pack_id,
+                item_id,
+                pack_quantity,
+                subunit_quantity,
+                subunit_unit
+            FROM item_case_pack
+            WHERE item_case_pack_id = ?
+            """,
+            (item_case_pack_id,),
+        )
+        row = cursor.fetchone()
+        conn.commit()
+
+    return _build_case_pack_payload(row)
+
+
 def save_menu_forecast_yield(
     *,
     menu_id: int,
@@ -462,27 +672,6 @@ def save_menu_forecast_yield(
             )
             normalized_desired_portions = _normalize_optional_desired_portions(desired_portions)
         item_case_pack_id = None
-        if normalized_unit == CASE_FORECAST_UNIT:
-            cursor.execute(
-                """
-                INSERT INTO item_case_pack (
-                    item_id,
-                    pack_quantity,
-                    subunit_quantity,
-                    subunit_unit,
-                    created_at,
-                    updated_at
-                )
-                VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
-                """,
-                (
-                    context["item_id"],
-                    case_fields["case_pack_quantity"],
-                    case_fields["case_subunit_quantity"],
-                    case_fields["case_subunit_unit"],
-                ),
-            )
-            item_case_pack_id = cursor.lastrowid
 
         cursor.execute(
             """
@@ -863,6 +1052,40 @@ def _build_slot_label(row: dict) -> str:
     )
 
 
+def _has_mass_volume_bridge(row: dict) -> bool:
+    mass_profile = get_unit_measurement_profile(row.get("mass_unit"))
+    volume_profile = get_unit_measurement_profile(row.get("volume_unit"))
+    return bool(
+        _coerce_optional_float(row.get("mass_quantity"))
+        and _coerce_optional_float(row.get("volume_quantity"))
+        and mass_profile
+        and volume_profile
+        and mass_profile["measurement_type"] == "mass"
+        and volume_profile["measurement_type"] == "volume"
+    )
+
+
+def build_forecast_display_unit_options(*, base_unit: str, row: dict) -> list[str]:
+    base_profile = get_unit_measurement_profile(base_unit)
+    if not base_profile:
+        return [base_unit] if base_unit else []
+
+    allowed_measurement_types = {base_profile["measurement_type"]}
+    if base_profile["measurement_type"] in {"mass", "volume"} and _has_mass_volume_bridge(row):
+        allowed_measurement_types.update({"mass", "volume"})
+
+    options = [
+        unit
+        for unit in APPROVED_UNITS
+        if (profile := get_unit_measurement_profile(unit))
+        and profile["conversion_ready"]
+        and profile["measurement_type"] in allowed_measurement_types
+    ]
+    if base_unit and base_unit not in options:
+        options.insert(0, base_unit)
+    return options
+
+
 def build_menu_forecast_production_summary(rows: list[dict]) -> dict:
     """
     Roll forecast rows up by recipe for production planning.
@@ -898,6 +1121,10 @@ def build_menu_forecast_production_summary(rows: list[dict]) -> dict:
                     else ""
                 ),
                 "yield_unit": recipe_yield_unit,
+                "mass_quantity": _coerce_optional_float(row.get("mass_quantity")),
+                "mass_unit": row.get("mass_unit") or "",
+                "volume_quantity": _coerce_optional_float(row.get("volume_quantity")),
+                "volume_unit": row.get("volume_unit") or "",
                 "total_forecast_quantity": 0.0,
                 "total_forecast_quantity_display": "0",
                 "total_forecast_unit": recipe_yield_unit,
@@ -908,6 +1135,7 @@ def build_menu_forecast_production_summary(rows: list[dict]) -> dict:
                 "batch_totals": {},
                 "batch_summary": [],
                 "warnings": [],
+                "display_unit_options": [],
             },
         )
         rollup["assignment_count"] += 1
@@ -940,6 +1168,11 @@ def build_menu_forecast_production_summary(rows: list[dict]) -> dict:
             rollup["warnings"].append(warning)
             warnings.append(warning)
             continue
+
+        rollup["display_unit_options"] = build_forecast_display_unit_options(
+            base_unit=recipe_yield_unit,
+            row=rollup,
+        )
 
         conversion = convert_with_item_mass_volume_bridge(
             quantity=forecast_quantity,

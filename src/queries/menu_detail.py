@@ -2,6 +2,7 @@ import json
 
 from config.menu_builder import MENU_STATUS_LABELS
 from db import get_connection
+from services.menu_calendar_service import build_week_day_dates
 
 
 def get_menu_detail(menu_id: int) -> dict | None:
@@ -18,6 +19,8 @@ def get_menu_detail(menu_id: int) -> dict | None:
                 meal_periods_json,
                 concepts_json,
                 menu_length_weeks,
+                menu_start_date,
+                menu_end_date,
                 status,
                 created_at,
                 updated_at
@@ -97,19 +100,35 @@ def get_menu_detail(menu_id: int) -> dict | None:
             }
         )
 
+    service_days = json.loads(menu_row[4])
+    meal_periods = json.loads(menu_row[5])
+    concepts = json.loads(menu_row[6])
+    menu_length_weeks = int(menu_row[7])
+    menu_start_date = menu_row[8] or ""
+    menu_end_date = menu_row[9] or ""
+    week_day_dates = build_week_day_dates(
+        menu_start_date=menu_start_date,
+        menu_end_date=menu_end_date,
+        week_numbers=list(range(1, menu_length_weeks + 1)),
+        service_days=service_days,
+    )
+
     return {
         "menu_id": menu_row[0],
         "menu_name": menu_row[1],
         "author_user_id": menu_row[2],
         "author_display_name": menu_row[3],
-        "service_days": json.loads(menu_row[4]),
-        "meal_periods": json.loads(menu_row[5]),
-        "concepts": json.loads(menu_row[6]),
-        "menu_length_weeks": menu_row[7],
-        "status": menu_row[8],
-        "status_label": MENU_STATUS_LABELS.get(menu_row[8], menu_row[8]),
-        "created_at": menu_row[9],
-        "updated_at": menu_row[10],
+        "service_days": service_days,
+        "meal_periods": meal_periods,
+        "concepts": concepts,
+        "menu_length_weeks": menu_length_weeks,
+        "menu_start_date": menu_start_date,
+        "menu_end_date": menu_end_date,
+        "week_day_dates": week_day_dates,
+        "status": menu_row[10],
+        "status_label": MENU_STATUS_LABELS.get(menu_row[10], menu_row[10]),
+        "created_at": menu_row[11],
+        "updated_at": menu_row[12],
         "slots": [
             {
                 "menu_slot_id": row[0],

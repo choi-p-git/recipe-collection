@@ -6,7 +6,6 @@ import pytest
 from services.item_service import create_base_food
 from services.recipe_service import create_recipe
 from services.menu_service import (
-    DAY_OF_WEEK_ORDER,
     InvalidMenuDeleteError,
     InvalidMenuPayloadError,
     InvalidMenuSlotActionError,

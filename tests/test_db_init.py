@@ -22,6 +22,8 @@ def test_initialize_database_creates_expected_tables(isolated_db):
     assert "menu_forecast" in tables
     assert "menu_forecast_batch_split" in tables
     assert "item_case_pack" in tables
+    assert "production_record" in tables
+    assert "production_record_line" in tables
 
 
 def test_initialize_database_creates_expected_indexes(isolated_db):
@@ -40,6 +42,8 @@ def test_initialize_database_creates_expected_indexes(isolated_db):
     assert "idx_menu_forecast_slot_item_id" in indexes
     assert "idx_menu_forecast_batch_split_slot_item_id" in indexes
     assert "idx_item_case_pack_item_id" in indexes
+    assert "idx_production_record_menu_day" in indexes
+    assert "idx_production_record_line_record_id" in indexes
 
 
 def test_initialize_database_records_applied_migration_versions(isolated_db):
@@ -64,6 +68,10 @@ def test_initialize_database_records_applied_migration_versions(isolated_db):
         "0012_add_forecast_case_pack.sql",
         "0013_add_forecast_case_basis.sql",
         "0014_add_forecast_case_basis_row_key.sql",
+        "0015_add_production_record.sql",
+        "0016_refine_production_record_variance.sql",
+        "0017_add_menu_date_range.sql",
+        "0018_add_production_record_quantity_formulas.sql",
     ]
 
 

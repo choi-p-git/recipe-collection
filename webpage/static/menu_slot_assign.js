@@ -71,18 +71,82 @@ document.addEventListener("DOMContentLoaded", () => {
         return `${url.pathname}${url.search}`;
     }
 
+    function getSelectedItemIds() {
+        return Array.from(selectedItems.keys());
+    }
+
+    function syncSearchResultCheckbox(itemId) {
+        const checkbox = resultsBox.querySelector(`input[type="checkbox"][value="${CSS.escape(String(itemId))}"]`);
+        if (checkbox) {
+            checkbox.checked = selectedItems.has(String(itemId));
+        }
+    }
+
     function syncSelectedInputs() {
         selectedInputs.innerHTML = "";
 
-        Array.from(selectedItems.keys())
-            .sort((leftId, rightId) => Number(leftId) - Number(rightId))
-            .forEach((itemId) => {
-                const hiddenInput = document.createElement("input");
-                hiddenInput.type = "hidden";
-                hiddenInput.name = "selected_item_ids";
-                hiddenInput.value = itemId;
-                selectedInputs.appendChild(hiddenInput);
-            });
+        getSelectedItemIds().forEach((itemId) => {
+            const hiddenInput = document.createElement("input");
+            hiddenInput.type = "hidden";
+            hiddenInput.name = "selected_item_ids";
+            hiddenInput.value = itemId;
+            selectedInputs.appendChild(hiddenInput);
+        });
+    }
+
+    function replaceSelectedOrder(orderedItemIds) {
+        const reorderedItems = new Map();
+        orderedItemIds.forEach((itemId) => {
+            const item = selectedItems.get(String(itemId));
+            if (item) {
+                reorderedItems.set(String(itemId), item);
+            }
+        });
+        selectedItems.clear();
+        reorderedItems.forEach((item, itemId) => {
+            selectedItems.set(itemId, item);
+        });
+    }
+
+    function moveSelectedItem(itemId, direction) {
+        const orderedItemIds = getSelectedItemIds();
+        const currentIndex = orderedItemIds.indexOf(String(itemId));
+        const targetIndex = currentIndex + direction;
+        if (currentIndex === -1 || targetIndex < 0 || targetIndex >= orderedItemIds.length) {
+            return;
+        }
+
+        const [movedItemId] = orderedItemIds.splice(currentIndex, 1);
+        orderedItemIds.splice(targetIndex, 0, movedItemId);
+        replaceSelectedOrder(orderedItemIds);
+        syncSelectedInputs();
+        renderSelectedSummary();
+    }
+
+    function removeSelectedItem(itemId) {
+        selectedItems.delete(String(itemId));
+        syncSearchResultCheckbox(itemId);
+        syncSelectedInputs();
+        renderSelectedSummary();
+    }
+
+    function moveDraggedItemBefore(draggedItemId, targetItemId) {
+        if (!selectedItems.has(String(draggedItemId)) || !selectedItems.has(String(targetItemId))) {
+            return;
+        }
+        if (String(draggedItemId) === String(targetItemId)) {
+            return;
+        }
+
+        const orderedItemIds = getSelectedItemIds().filter((itemId) => itemId !== String(draggedItemId));
+        const targetIndex = orderedItemIds.indexOf(String(targetItemId));
+        if (targetIndex === -1) {
+            return;
+        }
+        orderedItemIds.splice(targetIndex, 0, String(draggedItemId));
+        replaceSelectedOrder(orderedItemIds);
+        syncSelectedInputs();
+        renderSelectedSummary();
     }
 
     function renderSelectedSummary() {
@@ -91,14 +155,36 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
-        const orderedItems = Array.from(selectedItems.values()).sort((leftItem, rightItem) =>
-            leftItem.item_name.localeCompare(rightItem.item_name),
-        );
         const list = document.createElement("ol");
-        list.className = "item-detail-list";
+        list.className = "item-detail-list menu-assignment-selected-list";
+        list.dataset.reorderableList = "menu-slot-items";
 
-        orderedItems.forEach((item) => {
+        getSelectedItemIds().forEach((itemId, index) => {
+            const item = selectedItems.get(itemId);
             const listItem = document.createElement("li");
+            listItem.className = "menu-assignment-selected-item";
+            listItem.draggable = true;
+            listItem.dataset.selectedItemId = String(item.item_id);
+
+            listItem.addEventListener("dragstart", (event) => {
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData("text/plain", String(item.item_id));
+                listItem.classList.add("is-dragging");
+            });
+            listItem.addEventListener("dragend", () => {
+                listItem.classList.remove("is-dragging");
+            });
+            listItem.addEventListener("dragover", (event) => {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+            });
+            listItem.addEventListener("drop", (event) => {
+                event.preventDefault();
+                moveDraggedItemBefore(event.dataTransfer.getData("text/plain"), item.item_id);
+            });
+
+            const content = document.createElement("span");
+            content.className = "menu-assignment-selected-content";
             const strong = document.createElement("strong");
             const link = document.createElement("a");
             link.className = "text-link";
@@ -110,8 +196,50 @@ document.addEventListener("DOMContentLoaded", () => {
             meta.textContent = ` (${formatItemType(item.item_type)})`;
 
             strong.appendChild(link);
-            listItem.appendChild(strong);
-            listItem.appendChild(meta);
+            content.appendChild(strong);
+            content.appendChild(meta);
+
+            const controls = document.createElement("span");
+            controls.className = "menu-assignment-selected-controls";
+
+            const moveUpButton = document.createElement("button");
+            moveUpButton.type = "button";
+            moveUpButton.className = "icon-button";
+            moveUpButton.textContent = "^";
+            moveUpButton.title = `Move ${item.item_name} up`;
+            moveUpButton.setAttribute("aria-label", `Move ${item.item_name} up`);
+            moveUpButton.disabled = index === 0;
+            moveUpButton.addEventListener("click", () => {
+                moveSelectedItem(item.item_id, -1);
+            });
+
+            const moveDownButton = document.createElement("button");
+            moveDownButton.type = "button";
+            moveDownButton.className = "icon-button";
+            moveDownButton.textContent = "v";
+            moveDownButton.title = `Move ${item.item_name} down`;
+            moveDownButton.setAttribute("aria-label", `Move ${item.item_name} down`);
+            moveDownButton.disabled = index === selectedItems.size - 1;
+            moveDownButton.addEventListener("click", () => {
+                moveSelectedItem(item.item_id, 1);
+            });
+
+            const removeButton = document.createElement("button");
+            removeButton.type = "button";
+            removeButton.className = "icon-button menu-assignment-remove-button";
+            removeButton.textContent = "x";
+            removeButton.title = `Remove ${item.item_name} from this cell`;
+            removeButton.setAttribute("aria-label", `Remove ${item.item_name} from this cell`);
+            removeButton.addEventListener("click", () => {
+                removeSelectedItem(item.item_id);
+            });
+
+            controls.appendChild(moveUpButton);
+            controls.appendChild(moveDownButton);
+            controls.appendChild(removeButton);
+
+            listItem.appendChild(content);
+            listItem.appendChild(controls);
             list.appendChild(listItem);
         });
 

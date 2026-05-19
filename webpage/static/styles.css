@@ -55,6 +55,15 @@ form {
     gap: 0.9rem;
 }
 
+.form-grid {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.two-column-form-grid {
+    grid-template-columns: repeat(2, minmax(240px, 1fr));
+}
+
 .form-row {
     display: grid;
     grid-template-columns: 220px minmax(0, 1fr);
@@ -76,6 +85,17 @@ form {
 .form-row textarea {
     resize: vertical;
     min-height: 110px;
+}
+
+.menu-date-range-summary {
+    margin: -0.2rem 0 0;
+    color: #4b5563;
+    font-size: 0.92rem;
+}
+
+.menu-date-range-summary.is-error {
+    color: #be123c;
+    font-weight: 700;
 }
 
 input,
@@ -904,6 +924,16 @@ button:disabled {
     gap: 0.5rem;
 }
 
+.menu-grid-date-label {
+    color: #4b5563;
+    font-size: 0.84rem;
+    font-weight: 600;
+}
+
+.menu-grid-date-label.is-out-of-range {
+    opacity: 0.62;
+}
+
 .menu-grid-cell {
     min-height: 110px;
     display: grid;
@@ -1027,6 +1057,12 @@ button:disabled {
     color: #6b7280;
 }
 
+.menu-week-card-date {
+    color: #4b5563;
+    font-size: 0.86rem;
+    font-weight: 600;
+}
+
 .menu-week-card.is-source-week {
     background: #eef2ff;
     border-color: #a5b4fc;
@@ -1070,6 +1106,46 @@ button:disabled {
     flex-wrap: wrap;
     gap: 0.75rem;
     margin-top: 1rem;
+}
+
+.menu-assignment-selected-list {
+    display: grid;
+    gap: 0.55rem;
+    padding-left: 1.25rem;
+}
+
+.menu-assignment-selected-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.4rem 0;
+}
+
+.menu-assignment-selected-item.is-dragging {
+    opacity: 0.55;
+}
+
+.menu-assignment-selected-content {
+    min-width: 0;
+}
+
+.menu-assignment-selected-controls {
+    display: inline-flex;
+    flex: 0 0 auto;
+    gap: 0.35rem;
+}
+
+.menu-assignment-selected-controls .icon-button:disabled {
+    border-color: #d1d5db;
+    color: #9ca3af;
+    cursor: default;
+}
+
+.menu-assignment-remove-button {
+    border-color: #fda4af;
+    color: #be123c;
+    background: #fff1f2;
 }
 
 .container-menu-forecast {
@@ -1122,16 +1198,32 @@ button:disabled {
 }
 
 .menu-forecast-day-button {
+    display: grid;
+    gap: 0.18rem;
     background: #fff;
     color: #2563eb;
     font-weight: 700;
     text-decoration: none;
 }
 
+.menu-forecast-date-label {
+    color: #4b5563;
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+
 .menu-forecast-day-button.is-selected {
     background: #2563eb;
     color: #fff;
     border-color: #2563eb;
+}
+
+.menu-forecast-day-button.is-selected .menu-forecast-date-label {
+    color: #dbeafe;
+}
+
+.menu-forecast-day-button.is-out-of-range {
+    opacity: 0.62;
 }
 
 .menu-forecast-control-form {
@@ -1346,15 +1438,45 @@ button:disabled {
     color: #6b7280;
 }
 
+.menu-forecast-case-pack {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) max-content;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    min-width: 0;
+}
+
+.menu-forecast-case-pack-select {
+    min-width: 0;
+}
+
+.menu-forecast-case-pack-fields {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.35rem;
+    min-width: 0;
+}
+
 .menu-forecast-case-pack input {
-    width: 3.4rem;
+    width: 4.25rem;
+    max-width: 4.25rem;
 }
 
 .menu-forecast-case-pack select {
-    width: 4.6rem;
+    width: 4.75rem;
+    max-width: 4.75rem;
+}
+
+.menu-forecast-case-pack select[data-case-pack-select] {
+    width: 100%;
+    min-width: 0;
+    max-width: 18rem;
 }
 
 .menu-forecast-case-overlay-actions {
+    align-items: center;
     justify-content: flex-end;
 }
 
@@ -1492,6 +1614,416 @@ button:disabled {
 
 .menu-forecast-sync-status[data-state="error"] {
     color: #be123c;
+}
+
+.menu-forecast-summary-display {
+    display: grid;
+    gap: 0.35rem;
+    min-width: 10rem;
+}
+
+.menu-forecast-summary-display select {
+    max-width: 11rem;
+}
+
+.production-record-entry {
+    display: flex;
+    gap: 0.4rem;
+    align-items: center;
+    margin-bottom: 0.35rem;
+}
+
+.production-record-entry input {
+    width: 5rem;
+}
+
+.production-record-entry select {
+    min-width: 5.5rem;
+}
+
+.production-record-reason {
+    display: grid;
+    gap: 0.3rem;
+}
+
+.production-record-reason input {
+    min-width: 12rem;
+}
+
+.production-record-table textarea {
+    min-width: 12rem;
+    min-height: 4.8rem;
+    resize: vertical;
+}
+
+.production-record-review-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    justify-content: flex-end;
+}
+
+.production-record-review-table td {
+    vertical-align: top;
+}
+
+.production-record-review-table tr[data-forecast-accuracy-level="review"] {
+    background: #fffbeb;
+}
+
+.production-record-review-table tr[data-forecast-accuracy-level="miss"] {
+    background: #fff1f2;
+}
+
+.production-record-summary {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(120px, 1fr));
+    gap: 0.65rem;
+    margin: 0.75rem 0 1rem;
+}
+
+.production-record-summary-card {
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    background: #fff;
+    padding: 0.75rem;
+    display: grid;
+    gap: 0.25rem;
+}
+
+.production-record-summary-card strong {
+    font-size: 1.35rem;
+}
+
+.production-record-summary-accurate {
+    border-color: #86efac;
+    background: #f0fdf4;
+}
+
+.production-record-summary-review {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.production-record-summary-miss {
+    border-color: #fda4af;
+    background: #fff1f2;
+}
+
+.production-record-table tr[data-forecast-accuracy-level="review"] {
+    background: #fffbeb;
+}
+
+.production-record-table tr[data-forecast-accuracy-level="miss"] {
+    background: #fff1f2;
+}
+
+.production-record-table tr[data-forecast-accuracy-level="review"] .production-record-accuracy {
+    color: #92400e;
+    font-weight: 700;
+}
+
+.production-record-table tr[data-forecast-accuracy-level="miss"] .production-record-accuracy {
+    color: #be123c;
+    font-weight: 700;
+}
+
+.menu-print-selector-row {
+    margin-top: 0.6rem;
+}
+
+.menu-print-control-date {
+    color: #666;
+    font-size: 0.85em;
+    margin-left: 0.25rem;
+}
+
+.menu-print-sheet {
+    background: #fff;
+    color: #111827;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.menu-print-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: flex-start;
+    border-bottom: 2px solid #111827;
+    padding-bottom: 0.6rem;
+    margin-bottom: 0.9rem;
+}
+
+.menu-print-header h1 {
+    margin: 0;
+    font-size: 1.6rem;
+}
+
+.menu-print-header p,
+.menu-print-meta p {
+    margin: 0.15rem 0;
+}
+
+.menu-print-meta {
+    color: #4b5563;
+    font-size: 0.9rem;
+    text-align: right;
+}
+
+.menu-print-meal-section {
+    break-inside: avoid;
+    margin-bottom: 1rem;
+}
+
+.menu-print-meal-section h2 {
+    margin: 0 0 0.35rem;
+    font-size: 1.05rem;
+}
+
+.menu-print-grid {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-size: 0.82rem;
+}
+
+.menu-print-grid th,
+.menu-print-grid td {
+    border: 1px solid #9ca3af;
+    padding: 0.35rem;
+    vertical-align: top;
+}
+
+.menu-print-grid thead th,
+.menu-print-grid tbody th {
+    background: #f3f4f6;
+}
+
+.menu-print-grid thead span {
+    display: block;
+    color: #6b7280;
+    font-size: 0.78em;
+    font-weight: 500;
+}
+
+.menu-print-item-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.3rem;
+}
+
+.menu-print-item-list li {
+    break-inside: avoid;
+}
+
+.menu-print-item-list span,
+.menu-print-item-list small {
+    display: block;
+}
+
+.menu-print-item-list small {
+    color: #6b7280;
+    font-size: 0.74rem;
+}
+
+.menu-print-write-line {
+    display: block;
+    min-height: 1.05rem;
+    border-bottom: 1px solid #111827;
+    margin-bottom: 0.35rem;
+}
+
+.menu-print-day-grid {
+    font-size: 0.92rem;
+}
+
+.menu-print-day-grid th:first-child {
+    width: 18%;
+}
+
+.menu-print-day-grid th:nth-child(3) {
+    width: 32%;
+}
+
+.recipe-print-sheet {
+    background: #fff;
+    color: #111827;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.recipe-print-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    border-bottom: 2px solid #111827;
+    padding-bottom: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+
+.recipe-print-kicker,
+.recipe-print-id {
+    color: #6b7280;
+    margin: 0;
+}
+
+.recipe-print-header h1 {
+    margin: 0.1rem 0;
+    font-size: 1.8rem;
+}
+
+.recipe-print-yield-card {
+    min-width: 12rem;
+    border: 1px solid #9ca3af;
+    padding: 0.6rem;
+    text-align: right;
+}
+
+.recipe-print-yield-card span,
+.recipe-print-yield-card strong {
+    display: block;
+}
+
+.recipe-print-yield-card strong {
+    font-size: 1.25rem;
+}
+
+.recipe-print-summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.35rem 0.8rem;
+    border-bottom: 1px solid #d1d5db;
+    padding-bottom: 0.7rem;
+    margin-bottom: 0.85rem;
+    font-size: 0.92rem;
+}
+
+.recipe-print-summary p {
+    margin: 0;
+}
+
+.recipe-print-body {
+    display: grid;
+    grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+    gap: 1rem;
+    align-items: start;
+}
+
+.recipe-print-section h2,
+.recipe-print-production-notes h2 {
+    margin: 0 0 0.35rem;
+    font-size: 1.05rem;
+}
+
+.recipe-print-ingredients {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.recipe-print-ingredients th,
+.recipe-print-ingredients td {
+    border: 1px solid #9ca3af;
+    padding: 0.35rem;
+    vertical-align: top;
+}
+
+.recipe-print-ingredients th {
+    background: #f3f4f6;
+}
+
+.recipe-print-ingredients th:first-child,
+.recipe-print-ingredients td:first-child {
+    width: 34%;
+}
+
+.recipe-print-ingredients small {
+    display: block;
+    color: #6b7280;
+    font-size: 0.76rem;
+}
+
+.recipe-print-ingredient-name {
+    border-left: 3px solid transparent;
+    padding-left: calc(0.25rem + (var(--recipe-print-depth, 0) * 0.85rem));
+}
+
+.recipe-print-ingredient-sub_recipe {
+    background: #f8fafc;
+}
+
+.recipe-print-ingredient-sub_recipe .recipe-print-ingredient-name {
+    border-left-color: #64748b;
+    font-weight: 700;
+}
+
+.recipe-print-ingredient-base_food.depth-1 .recipe-print-ingredient-name,
+.recipe-print-ingredient-base_food.depth-2 .recipe-print-ingredient-name,
+.recipe-print-ingredient-base_food.depth-3 .recipe-print-ingredient-name,
+.recipe-print-ingredient-base_food.depth-4 .recipe-print-ingredient-name {
+    border-left-color: #cbd5e1;
+}
+
+.recipe-print-subrecipe-label {
+    display: inline-block;
+    color: #475569;
+    font-size: 0.72rem;
+    font-weight: 700;
+    margin-top: 0.15rem;
+    text-transform: uppercase;
+}
+
+.recipe-print-method {
+    margin: 0 0 0.8rem;
+    padding-left: 1.35rem;
+}
+
+.recipe-print-method li {
+    margin-bottom: 0.45rem;
+}
+
+.recipe-print-warning {
+    border: 1px solid #fcd34d;
+    background: #fffbeb;
+    padding: 0.45rem;
+    margin-bottom: 0.45rem;
+    font-size: 0.86rem;
+}
+
+.recipe-print-warning p {
+    margin: 0.15rem 0;
+}
+
+.recipe-print-notes-block {
+    border: 1px solid #9ca3af;
+    min-height: 5rem;
+    padding: 0.45rem;
+}
+
+.recipe-print-notes-block p {
+    margin: 0;
+}
+
+.recipe-print-notes-block span,
+.recipe-print-production-notes div {
+    display: block;
+    min-height: 1.2rem;
+    border-bottom: 1px solid #111827;
+    margin-bottom: 0.4rem;
+}
+
+.recipe-print-production-notes {
+    margin-top: 1rem;
+    break-inside: avoid;
+}
+
+.recipe-print-production-notes p {
+    margin: 0.45rem 0 0;
 }
 
 .status-chip-row {
@@ -1733,6 +2265,323 @@ button:disabled {
     pointer-events: none;
 }
 
+@page production-record {
+    size: letter portrait;
+    margin: 0.45in;
+}
+
+@page menu-print {
+    size: letter landscape;
+    margin: 0.35in;
+}
+
+@page recipe-print {
+    size: letter portrait;
+    margin: 0.45in;
+}
+
+@media print {
+    body {
+        background: #fff;
+        color: #111;
+        font-size: 10pt;
+    }
+
+    .site-header,
+    .flash-messages,
+    .print-control-panel,
+    .recipe-print-controls,
+    .container-production-record .page-header > div:last-child,
+    .container-production-record .item-detail-section:first-of-type,
+    .production-record-summary,
+    .production-record-review-actions,
+    .menu-slot-action-link-row,
+    .button-secondary,
+    .workflow-button,
+    select,
+    button {
+        display: none !important;
+    }
+
+    .container-production-record {
+        page: production-record;
+        max-width: none;
+        margin: 0;
+        padding: 0;
+    }
+
+    .container-menu-print {
+        page: menu-print;
+        max-width: none;
+        margin: 0;
+        padding: 0;
+    }
+
+    .container-recipe-print {
+        page: recipe-print;
+        max-width: none;
+        margin: 0;
+        padding: 0;
+    }
+
+    .container-production-record .page-header,
+    .menu-print-header {
+        display: flex;
+        border-bottom: 2px solid #111;
+        margin-bottom: 0.18in;
+        padding-bottom: 0.08in;
+    }
+
+    .container-production-record .page-header h2,
+    .menu-print-header h1 {
+        font-size: 18pt;
+        margin: 0;
+    }
+
+    .page-subtitle,
+    .muted,
+    .menu-print-meta {
+        color: #444 !important;
+    }
+
+    .item-detail-section,
+    .menu-forecast-table-shell,
+    .menu-print-sheet {
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+        padding: 0;
+        margin: 0;
+        overflow: visible;
+    }
+
+    .container-production-record .menu-forecast-title-row {
+        margin-bottom: 0.08in;
+    }
+
+    .container-production-record .menu-forecast-title-row h3::after {
+        content: " - Kitchen Floor Copy";
+        font-weight: 500;
+    }
+
+    .production-record-table,
+    .production-record-review-table {
+        width: 100%;
+        table-layout: fixed;
+        border-collapse: collapse;
+        font-size: 9pt;
+    }
+
+    .production-record-table th,
+    .production-record-table td,
+    .production-record-review-table th,
+    .production-record-review-table td {
+        border: 1px solid #222;
+        padding: 0.06in;
+        vertical-align: top;
+    }
+
+    .production-record-table th,
+    .production-record-review-table th {
+        background: #f1f5f9 !important;
+        color: #111;
+    }
+
+    .production-record-table th:nth-child(2),
+    .production-record-table td:nth-child(2),
+    .production-record-table th:nth-child(6),
+    .production-record-table td:nth-child(6),
+    .production-record-table th:nth-child(7),
+    .production-record-table td:nth-child(7) {
+        display: none;
+    }
+
+    .production-record-table input,
+    .production-record-table textarea {
+        display: block;
+        width: 100%;
+        min-height: 0.28in;
+        border: 0;
+        border-bottom: 1px solid #111;
+        background: transparent;
+        padding: 0;
+        font: inherit;
+    }
+
+    .production-record-table textarea {
+        min-height: 0.46in;
+        resize: none;
+    }
+
+    .production-record-entry {
+        display: block;
+        margin: 0;
+    }
+
+    .production-record-reason {
+        display: block;
+    }
+
+    .production-record-table td:nth-child(4)::after,
+    .production-record-table td:nth-child(5)::after {
+        content: "Unit: ______";
+        display: block;
+        color: #444;
+        font-size: 8pt;
+        margin-top: 0.05in;
+    }
+
+    .production-record-table tr,
+    .production-record-review-table tr,
+    .menu-print-grid tr,
+    .menu-print-meal-section {
+        break-inside: avoid;
+    }
+
+    .menu-print-sheet {
+        color: #111;
+    }
+
+    .menu-print-header {
+        margin-bottom: 0.12in;
+    }
+
+    .menu-print-header h1 {
+        font-size: 16pt;
+    }
+
+    .menu-print-meal-section {
+        margin-bottom: 0.12in;
+    }
+
+    .menu-print-meal-section h2 {
+        font-size: 11pt;
+        margin: 0 0 0.04in;
+    }
+
+    .menu-print-grid {
+        font-size: 8.1pt;
+        page-break-inside: avoid;
+    }
+
+    .menu-print-grid th,
+    .menu-print-grid td {
+        border: 1px solid #222;
+        padding: 0.045in;
+    }
+
+    .menu-print-grid thead th,
+    .menu-print-grid tbody th {
+        background: #f1f5f9 !important;
+    }
+
+    .menu-print-item-list {
+        gap: 0.04in;
+    }
+
+    .menu-print-item-list small {
+        color: #666 !important;
+        font-size: 7pt;
+    }
+
+    .menu-print-write-line {
+        min-height: 0.16in;
+        margin-bottom: 0.04in;
+        border-bottom: 1px solid #111;
+    }
+
+    .recipe-print-sheet {
+        border: 0;
+        border-radius: 0;
+        padding: 0;
+    }
+
+    .recipe-print-header {
+        padding-bottom: 0.08in;
+        margin-bottom: 0.1in;
+    }
+
+    .recipe-print-header h1 {
+        font-size: 18pt;
+    }
+
+    .recipe-print-kicker,
+    .recipe-print-id,
+    .recipe-print-ingredients small {
+        color: #555 !important;
+    }
+
+    .recipe-print-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.03in 0.15in;
+        font-size: 8.5pt;
+        padding-bottom: 0.08in;
+        margin-bottom: 0.1in;
+    }
+
+    .recipe-print-body {
+        grid-template-columns: 0.95fr 1.05fr;
+        gap: 0.16in;
+    }
+
+    .recipe-print-section,
+    .recipe-print-production-notes,
+    .recipe-print-ingredients tr,
+    .recipe-print-method li {
+        break-inside: avoid;
+    }
+
+    .recipe-print-section h2,
+    .recipe-print-production-notes h2 {
+        font-size: 11pt;
+    }
+
+    .recipe-print-ingredients {
+        font-size: 8.5pt;
+    }
+
+    .recipe-print-ingredients th,
+    .recipe-print-ingredients td {
+        border: 1px solid #222;
+        padding: 0.045in;
+    }
+
+    .recipe-print-ingredients th {
+        background: #f1f5f9 !important;
+    }
+
+    .recipe-print-ingredient-sub_recipe {
+        background: #f8fafc !important;
+    }
+
+    .recipe-print-ingredient-name {
+        padding-left: calc(0.04in + (var(--recipe-print-depth, 0) * 0.12in));
+    }
+
+    .recipe-print-ingredient-sub_recipe .recipe-print-ingredient-name {
+        border-left-color: #444;
+    }
+
+    .recipe-print-ingredient-base_food.depth-1 .recipe-print-ingredient-name,
+    .recipe-print-ingredient-base_food.depth-2 .recipe-print-ingredient-name,
+    .recipe-print-ingredient-base_food.depth-3 .recipe-print-ingredient-name,
+    .recipe-print-ingredient-base_food.depth-4 .recipe-print-ingredient-name {
+        border-left-color: #999;
+    }
+
+    .recipe-print-method {
+        font-size: 9pt;
+    }
+
+    .recipe-print-notes-block {
+        min-height: 0.75in;
+    }
+
+    .recipe-print-production-notes {
+        margin-top: 0.12in;
+    }
+}
+
 @media (max-width: 900px) {
     .site-header,
     .page-header,
@@ -1747,6 +2596,18 @@ button:disabled {
 
     .form-row {
         grid-template-columns: 1fr;
+    }
+
+    .two-column-form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .production-record-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .production-record-review-actions {
+        justify-content: flex-start;
     }
 
     .ingredient-row {

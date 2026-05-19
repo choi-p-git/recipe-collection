@@ -116,6 +116,8 @@ def test_build_menu_forecast_production_summary_rolls_assignments_up_by_recipe()
     assert rollup["assignment_count"] == 2
     assert rollup["total_forecast_quantity_display"] == "5"
     assert rollup["total_forecast_unit"] == "gal"
+    assert "qt" in rollup["display_unit_options"]
+    assert "pan_full_4" in rollup["display_unit_options"]
     assert rollup["batch_count_display"] == "2.5"
     assert rollup["desired_portions_display"] == "80"
     assert rollup["batch_summary"][0]["total_quantity_display"] == "2"

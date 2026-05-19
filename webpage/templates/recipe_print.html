@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+
+{% block title %}Print Recipe - {{ item.item_name }}{% endblock %}
+{% block main_class %}container container-recipe-print{% endblock %}
+
+{% block content %}
+    <div class="page-header recipe-print-controls">
+        <div>
+            <h2>Print Recipe</h2>
+            <p class="page-subtitle">{{ item.item_name }} | Item ID {{ item.item_id }}</p>
+        </div>
+        <div class="production-record-review-actions">
+            <a class="page-action-link secondary" href="{{ url_for('item_detail', item_id=item.item_id) }}">Recipe Detail</a>
+            <button type="button" class="workflow-button workflow-button-secondary" onclick="window.print()">Print</button>
+        </div>
+    </div>
+
+    <article class="recipe-print-sheet">
+        <header class="recipe-print-header">
+            <div>
+                <p class="recipe-print-kicker">Kitchen Production Sheet</p>
+                <h1>{{ item.item_name }}</h1>
+                <p class="recipe-print-id">Recipe / Item ID {{ item.item_id }}</p>
+            </div>
+            <div class="recipe-print-yield-card">
+                <span>{{ "Scaled Yield" if is_scaled else "Original Yield" }}</span>
+                <strong>{{ yield_quantity|round(3) }} {{ yield_unit|unit_label }}</strong>
+            </div>
+        </header>
+
+        <section class="recipe-print-summary">
+            <p><strong>Author:</strong> {{ item.author_display_name }}</p>
+            <p><strong>Cooking Method:</strong> {{ item.primary_cooking_method_label or "-" }}</p>
+            <p><strong>Concept:</strong> {{ item.concept_classification or "-" }}</p>
+            <p><strong>Meal:</strong> {{ item.meal_classification or "-" }}</p>
+            <p><strong>HACCP Process:</strong> {{ item.haccp_process_classification or "-" }}</p>
+            <p>
+                <strong>Yield Mass:</strong>
+                {% if mass_quantity and mass_unit %}
+                    {{ mass_quantity|round(3) if mass_quantity is number else mass_quantity }} {{ mass_unit|unit_label }}
+                {% else %}
+                    -
+                {% endif %}
+            </p>
+            <p>
+                <strong>Yield Volume:</strong>
+                {% if volume_quantity and volume_unit %}
+                    {{ volume_quantity|round(3) if volume_quantity is number else volume_quantity }} {{ volume_unit|unit_label }}
+                {% else %}
+                    -
+                {% endif %}
+            </p>
+            <p><strong>Display:</strong> {{ display_mode|title }} / {{ unit_system|title }}</p>
+        </section>
+
+        <div class="recipe-print-body">
+            <section class="recipe-print-section">
+                <h2>Ingredients</h2>
+                {% if warnings %}
+                    <div class="recipe-print-warning">
+                        {% for warning in warnings %}
+                            <p>{{ warning }}</p>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+                {% if ingredient_rows %}
+                    <table class="recipe-print-ingredients">
+                        <thead>
+                            <tr>
+                                <th>Qty</th>
+                                <th>Ingredient</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for ingredient in ingredient_rows %}
+                                <tr class="recipe-print-ingredient-row recipe-print-ingredient-{{ ingredient.row_type }} depth-{{ ingredient.depth }}">
+                                    <td>
+                                        {{ ingredient.display_quantity_display or ingredient.quantity_display }}
+                                        {% if (ingredient.display_quantity_display or ingredient.quantity_display) != "according to taste" %}
+                                            {{ (ingredient.display_unit or ingredient.component_unit)|unit_label }}
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="recipe-print-ingredient-name" style="--recipe-print-depth: {{ ingredient.depth }};">
+                                            <strong>{{ ingredient.component_item_name }}</strong>
+                                            <small>
+                                                {{ ingredient.component_item_type|replace('_', ' ')|title }} #{{ ingredient.component_item_id }}
+                                                {% if ingredient.source_recipe_name %}
+                                                    | From {{ ingredient.source_recipe_name }}
+                                                {% endif %}
+                                            </small>
+                                            {% if ingredient.row_type == "sub_recipe" %}
+                                                <span class="recipe-print-subrecipe-label">Sub-recipe group</span>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% else %}
+                    <p>No flattened ingredients available.</p>
+                {% endif %}
+            </section>
+
+            <section class="recipe-print-section">
+                <h2>Method</h2>
+                {% if item.instruction_steps %}
+                    <ol class="recipe-print-method">
+                        {% for step in item.instruction_steps %}
+                            <li>{{ step }}</li>
+                        {% endfor %}
+                    </ol>
+                {% else %}
+                    <p>No method steps found.</p>
+                {% endif %}
+
+                <h2>HACCP / Process Notes</h2>
+                <div class="recipe-print-notes-block">
+                    {% if item.notes %}
+                        <p>{{ item.notes }}</p>
+                    {% else %}
+                        <span></span>
+                        <span></span>
+                    {% endif %}
+                </div>
+            </section>
+        </div>
+
+        <footer class="recipe-print-production-notes">
+            <h2>Production Notes</h2>
+            <div></div>
+            <div></div>
+            <div></div>
+            <p>Initials: ____________ Date: ____________</p>
+        </footer>
+    </article>
+{% endblock %}

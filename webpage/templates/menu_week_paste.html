@@ -45,6 +45,9 @@
                                     {% if week_number == source_week_number %}disabled{% endif %}
                                 >
                                 <span class="menu-week-card-label">Week {{ week_number }}</span>
+                                {% if week_date_ranges.get(week_number) %}
+                                    <span class="menu-week-card-date">{{ week_date_ranges.get(week_number) }}</span>
+                                {% endif %}
                                 {% if week_number == source_week_number %}
                                     <span class="menu-week-card-note">Source Week</span>
                                 {% endif %}

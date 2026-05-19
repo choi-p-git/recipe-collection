@@ -15,7 +15,7 @@
         <div>
             <h2>{{ menu.menu_name }}</h2>
             <p class="page-subtitle">
-                Menu overview shell for {{ menu.author_display_name }}. This first slice establishes the week structure and slot grid.
+                Menu overview for {{ menu.author_display_name }} with date-aware weeks, slot planning, forecasting, and production record entry points.
             </p>
         </div>
         <div>
@@ -24,8 +24,9 @@
                 <label class="sr-only" for="menu_overview_action">Menu action</label>
                 <select id="menu_overview_action" data-menu-overview-action-select>
                     <option value="">Menu Actions</option>
-                    <option value="{{ url_for('menu_forecast', menu_id=menu.menu_id, week=selected_week_number, day=menu.service_days[0] if menu.service_days else None) }}">Forecasting</option>
-                    <option value="">Print</option>
+                    <option value="{{ url_for('menu_forecast', menu_id=menu.menu_id, week=selected_week_number) }}">Forecasting</option>
+                    <option value="{{ url_for('production_record', menu_id=menu.menu_id, week=selected_week_number) }}">Production Record</option>
+                    <option value="{{ url_for('menu_print', menu_id=menu.menu_id, week=selected_week_number) }}">Print</option>
                 </select>
             </form>
             <a class="page-action-link secondary" href="{{ url_for('edit_menu', menu_id=menu.menu_id) }}">Edit Menu Config</a>
@@ -40,6 +41,9 @@
             <span class="menu-summary-toggle-title">Menu Summary</span>
             <span class="menu-summary-toggle-pills">
                 <span class="detail-pill">Weeks: {{ menu.menu_length_weeks }}</span>
+                {% if menu.menu_start_date and menu.menu_end_date %}
+                    <span class="detail-pill">{{ menu.menu_start_date }} to {{ menu.menu_end_date }}</span>
+                {% endif %}
                 <span class="detail-pill">Days: {{ menu.service_days|length }}</span>
                 <span class="detail-pill">Meals: {{ menu.meal_periods|length }}</span>
                 <span class="detail-pill">Concepts: {{ menu.concepts|length }}</span>
@@ -49,6 +53,16 @@
             <article class="detail-stat-card">
                 <p class="detail-stat-label">Weeks</p>
                 <p class="detail-stat-value">{{ menu.menu_length_weeks }}</p>
+            </article>
+            <article class="detail-stat-card">
+                <p class="detail-stat-label">Date Range</p>
+                <p class="detail-stat-value">
+                    {% if menu.menu_start_date and menu.menu_end_date %}
+                        {{ menu.menu_start_date }} to {{ menu.menu_end_date }}
+                    {% else %}
+                        Not Set
+                    {% endif %}
+                </p>
             </article>
             <article class="detail-stat-card">
                 <p class="detail-stat-label">Service Days</p>
@@ -223,8 +237,14 @@
                         <div class="menu-grid-corner">Concept / Day</div>
                         {% for day in day_options if day.value in menu.service_days %}
                             {% set day_slots = week_slots | selectattr('day_of_week', 'equalto', day.value) | selectattr('meal_period', 'equalto', meal.value) | list %}
+                            {% set day_date = menu.week_day_dates.get(selected_week_number, {}).get(day.value, {}) %}
                             <div class="menu-grid-day-header">
                                 <span>{{ day.label }}</span>
+                                {% if day_date.display %}
+                                    <span class="menu-grid-date-label {% if not day_date.is_in_range %}is-out-of-range{% endif %}">
+                                        {{ day_date.display }}
+                                    </span>
+                                {% endif %}
                                 {% if use_day_headers and day_slots %}
                                     <label class="menu-header-selector">
                                         <input type="checkbox" name="selected_slot_ids" value="{{ day_slots[0].menu_slot_id }}">

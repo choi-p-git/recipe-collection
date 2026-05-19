@@ -186,6 +186,8 @@ CREATE TABLE IF NOT EXISTS menu (
     meal_periods_json TEXT NOT NULL,
     concepts_json TEXT NOT NULL,
     menu_length_weeks INTEGER NOT NULL,
+    menu_start_date TEXT,
+    menu_end_date TEXT,
     status TEXT NOT NULL,
 
     created_at TEXT NOT NULL,
@@ -193,6 +195,9 @@ CREATE TABLE IF NOT EXISTS menu (
 
     CHECK (trim(menu_name) != ''),
     CHECK (menu_length_weeks > 0),
+    CHECK (menu_start_date IS NULL OR date(menu_start_date) IS NOT NULL),
+    CHECK (menu_end_date IS NULL OR date(menu_end_date) IS NOT NULL),
+    CHECK (menu_start_date IS NULL OR menu_end_date IS NULL OR date(menu_end_date) >= date(menu_start_date)),
     CHECK (status IN ('draft', 'active', 'archived'))
 );
 
@@ -345,6 +350,94 @@ CREATE TABLE IF NOT EXISTS menu_forecast_batch_split (
     UNIQUE (menu_slot_item_id, batch_sequence)
 );
 
+CREATE TABLE IF NOT EXISTS production_record (
+    production_record_id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    menu_id INTEGER NOT NULL,
+    week_number INTEGER NOT NULL,
+    day_of_week TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft',
+
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+
+    FOREIGN KEY (menu_id) REFERENCES menu(menu_id) ON DELETE CASCADE,
+
+    CHECK (week_number >= 1),
+    CHECK (day_of_week IN (
+        'sunday',
+        'monday',
+        'tuesday',
+        'wednesday',
+        'thursday',
+        'friday',
+        'saturday'
+    )),
+    CHECK (status IN ('draft', 'posted')),
+
+    UNIQUE (menu_id, week_number, day_of_week)
+);
+
+CREATE TABLE IF NOT EXISTS production_record_line (
+    production_record_line_id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    production_record_id INTEGER NOT NULL,
+    item_id INTEGER NOT NULL,
+    recipe_name TEXT NOT NULL,
+    assignment_count INTEGER NOT NULL DEFAULT 0,
+    slot_labels_json TEXT NOT NULL DEFAULT '[]',
+
+    forecast_quantity REAL NOT NULL DEFAULT 0,
+    forecast_unit TEXT NOT NULL,
+    actual_quantity REAL,
+    actual_quantity_formula TEXT,
+    actual_unit TEXT,
+    variance_quantity REAL,
+    variance_unit TEXT,
+    variance_percent REAL,
+    variance_level TEXT,
+    end_service_variance_quantity REAL,
+    end_service_variance_quantity_formula TEXT,
+    end_service_variance_unit TEXT,
+    implied_demand_quantity REAL,
+    implied_demand_unit TEXT,
+    forecast_error_quantity REAL,
+    forecast_error_unit TEXT,
+    forecast_error_percent REAL,
+    forecast_accuracy_level TEXT,
+    reason_code TEXT,
+    reason_note TEXT,
+    notes TEXT,
+
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+
+    FOREIGN KEY (production_record_id) REFERENCES production_record(production_record_id) ON DELETE CASCADE,
+    FOREIGN KEY (item_id) REFERENCES item(item_id),
+
+    CHECK (assignment_count >= 0),
+    CHECK (forecast_quantity >= 0),
+    CHECK (trim(forecast_unit) != ''),
+    CHECK (
+        actual_quantity IS NULL
+        OR actual_quantity >= 0
+    ),
+    CHECK (
+        (actual_quantity IS NULL AND actual_unit IS NULL)
+        OR (actual_quantity IS NOT NULL AND trim(actual_unit) != '')
+    ),
+    CHECK (
+        variance_level IS NULL
+        OR variance_level IN ('normal', 'mild', 'severe')
+    ),
+    CHECK (
+        forecast_accuracy_level IS NULL
+        OR forecast_accuracy_level IN ('accurate', 'review', 'miss')
+    ),
+
+    UNIQUE (production_record_id, item_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_item_type
 ON item(item_type);
 
@@ -410,6 +503,15 @@ ON menu_forecast(menu_slot_item_id);
 
 CREATE INDEX IF NOT EXISTS idx_menu_forecast_batch_split_slot_item_id
 ON menu_forecast_batch_split(menu_slot_item_id);
+
+CREATE INDEX IF NOT EXISTS idx_production_record_menu_day
+ON production_record(menu_id, week_number, day_of_week);
+
+CREATE INDEX IF NOT EXISTS idx_production_record_line_record_id
+ON production_record_line(production_record_id);
+
+CREATE INDEX IF NOT EXISTS idx_production_record_line_item_id
+ON production_record_line(item_id);
 
 CREATE INDEX IF NOT EXISTS idx_item_case_pack_item_id
 ON item_case_pack(item_id);

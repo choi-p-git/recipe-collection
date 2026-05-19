@@ -8,9 +8,9 @@
             <h2>{{ "Edit Menu Config" if page_mode == "edit" else "Create Menu" }}</h2>
             <p class="page-subtitle">
                 {% if page_mode == "edit" %}
-                    Update the base menu structure by adjusting service days, meal periods, concepts, and menu length. Changes are only applied when you click Update Config.
+                    Update the base menu structure by adjusting the menu date range, service days, meal periods, and concepts. Changes are only applied when you click Update Config.
                 {% else %}
-                    Build the base menu structure by selecting service days, meal periods, concepts, and menu length.
+                    Build the base menu structure by selecting a menu date range, service days, meal periods, and concepts.
                 {% endif %}
             </p>
         </div>
@@ -32,6 +32,32 @@
                 placeholder="Spring Cycle Menu"
             >
         </div>
+
+        <div class="form-grid two-column-form-grid" data-menu-date-range>
+            <div class="form-row">
+                <label for="menu_start_date">Menu Start Date</label>
+                <input
+                    type="date"
+                    id="menu_start_date"
+                    name="menu_start_date"
+                    value="{{ form_data.menu_start_date }}"
+                    required
+                    data-menu-start-date
+                >
+            </div>
+            <div class="form-row">
+                <label for="menu_end_date">Menu End Date</label>
+                <input
+                    type="date"
+                    id="menu_end_date"
+                    name="menu_end_date"
+                    value="{{ form_data.menu_end_date }}"
+                    required
+                    data-menu-end-date
+                >
+            </div>
+        </div>
+        <p class="menu-date-range-summary" data-menu-date-summary aria-live="polite"></p>
 
         <fieldset class="form-checkbox-group">
             <legend>Days of Service</legend>
@@ -105,25 +131,15 @@
             </div>
         </fieldset>
 
-        <div class="form-row">
-            <label for="menu_length_weeks">Menu Length in Weeks</label>
-            <input
-                type="number"
-                id="menu_length_weeks"
-                name="menu_length_weeks"
-                min="1"
-                step="1"
-                value="{{ form_data.menu_length_weeks }}"
-            >
-        </div>
+        <input type="hidden" id="menu_length_weeks" name="menu_length_weeks" value="{{ form_data.menu_length_weeks }}">
 
         <section class="item-detail-section">
             <h3>Confirmation</h3>
             <p class="muted">
                 {% if page_mode == "edit" %}
-                    Updating this menu will sync the slot structure to the selected weeks, days, meal periods, and concepts. Slots that no longer fit the config will be removed.
+                    Updating this menu will sync the slot structure to the selected date range, service days, meal periods, and concepts. Slots that no longer fit the config will be removed.
                 {% else %}
-                    Saving this menu will create the base slot structure for every selected week, day, meal period, and concept.
+                    Saving this menu will create the base slot structure for every week in the date range and every selected service day, meal period, and concept.
                 {% endif %}
             </p>
             <button type="submit">{{ "Update Config" if page_mode == "edit" else "Create Menu" }}</button>

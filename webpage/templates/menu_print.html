@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+
+{% block title %}Print Menu - {{ menu.menu_name }}{% endblock %}
+{% block main_class %}container container-menu-builder container-menu-print{% endblock %}
+
+{% block content %}
+    {% set selected_day_label = (day_options | selectattr('value', 'equalto', selected_day) | list | first) %}
+    {% set selected_day_date = menu.week_day_dates.get(selected_week_number, {}).get(selected_day, {}) %}
+    <div class="page-header print-control-panel">
+        <div>
+            <h2>Print Menu</h2>
+            <p class="page-subtitle">
+                {{ menu.menu_name }} | Week {{ selected_week_number }}
+                {% if print_mode == 'day' and selected_day_label %}
+                    | {{ selected_day_label.label }}
+                {% endif %}
+            </p>
+        </div>
+        <div class="production-record-review-actions">
+            <a class="page-action-link secondary" href="{{ url_for('menu_detail', menu_id=menu.menu_id, week=selected_week_number) }}">Menu Overview</a>
+            <button type="button" class="workflow-button workflow-button-secondary" onclick="window.print()">Print</button>
+        </div>
+    </div>
+
+    <section class="item-detail-section print-control-panel">
+        <div class="detail-toggle-row">
+            <a
+                class="page-action-link secondary {% if print_mode == 'week' %}is-current-toggle{% endif %}"
+                href="{{ url_for('menu_print', menu_id=menu.menu_id, mode='week', week=selected_week_number) }}"
+            >
+                Print Week
+            </a>
+            <a
+                class="page-action-link secondary {% if print_mode == 'day' %}is-current-toggle{% endif %}"
+                href="{{ url_for('menu_print', menu_id=menu.menu_id, mode='day', week=selected_week_number) }}"
+            >
+                Print Day
+            </a>
+        </div>
+        <div class="detail-toggle-row menu-print-selector-row">
+            {% for week_number in week_numbers %}
+                <a
+                    class="page-action-link secondary {% if week_number == selected_week_number %}is-current-toggle{% endif %}"
+                    href="{{ url_for('menu_print', menu_id=menu.menu_id, mode=print_mode, week=week_number, day=selected_day if print_mode == 'day' else None) }}"
+                >
+                    Week {{ week_number }}
+                </a>
+            {% endfor %}
+        </div>
+        {% if print_mode == 'day' %}
+            <div class="detail-toggle-row menu-print-selector-row">
+                {% for day in day_options if day.value in menu.service_days %}
+                    {% set day_date = menu.week_day_dates.get(selected_week_number, {}).get(day.value, {}) %}
+                    <a
+                        class="page-action-link secondary {% if day.value == selected_day %}is-current-toggle{% endif %}"
+                        href="{{ url_for('menu_print', menu_id=menu.menu_id, mode='day', week=selected_week_number, day=day.value) }}"
+                    >
+                        {{ day.label }}
+                        {% if day_date.display %}
+                            <span class="menu-print-control-date">{{ day_date.display }}</span>
+                        {% endif %}
+                    </a>
+                {% endfor %}
+            </div>
+        {% endif %}
+    </section>
+
+    <section class="menu-print-sheet {% if print_mode == 'day' %}menu-print-sheet-day{% endif %}">
+        <header class="menu-print-header">
+            <div>
+                <h1>{{ menu.menu_name }}</h1>
+                <p>
+                    Week {{ selected_week_number }}
+                    {% if print_mode == 'day' and selected_day_label %}
+                        | {{ selected_day_label.label }}
+                    {% endif %}
+                    {% if print_mode == 'day' and selected_day_date.display %}
+                        | {{ selected_day_date.display }}
+                    {% endif %}
+                </p>
+            </div>
+            <div class="menu-print-meta">
+                <p>{{ menu.author_display_name }}</p>
+                <p>{{ menu.menu_start_date }} to {{ menu.menu_end_date }}</p>
+            </div>
+        </header>
+
+        {% if print_mode == 'week' %}
+            {% for meal in meal_period_options if meal.value in menu.meal_periods %}
+                <div class="menu-print-meal-section">
+                    <h2>{{ meal.label }}</h2>
+                    <table class="menu-print-grid">
+                        <thead>
+                            <tr>
+                                <th>Concept</th>
+                                {% for day in day_options if day.value in menu.service_days %}
+                                    {% set day_date = menu.week_day_dates.get(selected_week_number, {}).get(day.value, {}) %}
+                                    <th>
+                                        {{ day.label }}
+                                        {% if day_date.display %}
+                                            <span>{{ day_date.display }}</span>
+                                        {% endif %}
+                                    </th>
+                                {% endfor %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for concept_name in menu.concepts %}
+                                <tr>
+                                    <th>{{ concept_name|replace('_', ' ')|title }}</th>
+                                    {% for day in day_options if day.value in menu.service_days %}
+                                        {% set slot = (week_slots | selectattr('day_of_week', 'equalto', day.value) | selectattr('meal_period', 'equalto', meal.value) | selectattr('concept_name', 'equalto', concept_name) | list | first) %}
+                                        <td>
+                                            {% if slot and slot.assigned_items %}
+                                                <ul class="menu-print-item-list">
+                                                    {% for assigned_item in slot.assigned_items %}
+                                                        <li>
+                                                            <span>{{ assigned_item.item_name }}</span>
+                                                            <small>{{ assigned_item.item_type|replace('_', ' ')|title }} #{{ assigned_item.item_id }}</small>
+                                                        </li>
+                                                    {% endfor %}
+                                                </ul>
+                                            {% else %}
+                                                <span class="menu-print-write-line"></span>
+                                                <span class="menu-print-write-line"></span>
+                                            {% endif %}
+                                        </td>
+                                    {% endfor %}
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% endfor %}
+        {% else %}
+            {% for meal in meal_period_options if meal.value in menu.meal_periods %}
+                <div class="menu-print-meal-section">
+                    <h2>{{ meal.label }}</h2>
+                    <table class="menu-print-grid menu-print-day-grid">
+                        <thead>
+                            <tr>
+                                <th>Concept</th>
+                                <th>Menu Items</th>
+                                <th>Planning Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for concept_name in menu.concepts %}
+                                {% set slot = (day_slots | selectattr('meal_period', 'equalto', meal.value) | selectattr('concept_name', 'equalto', concept_name) | list | first) %}
+                                <tr>
+                                    <th>{{ concept_name|replace('_', ' ')|title }}</th>
+                                    <td>
+                                        {% if slot and slot.assigned_items %}
+                                            <ul class="menu-print-item-list">
+                                                {% for assigned_item in slot.assigned_items %}
+                                                    <li>
+                                                        <span>{{ assigned_item.item_name }}</span>
+                                                        <small>{{ assigned_item.item_type|replace('_', ' ')|title }} #{{ assigned_item.item_id }}</small>
+                                                    </li>
+                                                {% endfor %}
+                                            </ul>
+                                        {% else %}
+                                            <span class="menu-print-write-line"></span>
+                                            <span class="menu-print-write-line"></span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="menu-print-write-line"></span>
+                                        <span class="menu-print-write-line"></span>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% endfor %}
+        {% endif %}
+    </section>
+{% endblock %}

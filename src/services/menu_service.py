@@ -1,4 +1,5 @@
 import json
+from datetime import date
 
 from db import get_connection, initialize_database
 
@@ -56,6 +57,21 @@ def _normalize_unique_concepts(values: list[str], allowed_values: list[str]) -> 
     return _normalize_unique_values(values, allowed_values)
 
 
+def _parse_menu_date(value, field_label: str) -> date | None:
+    cleaned = str(value or "").strip()
+    if not cleaned:
+        return None
+
+    try:
+        return date.fromisoformat(cleaned)
+    except ValueError:
+        raise InvalidMenuPayloadError(f"{field_label} must be a valid date.")
+
+
+def _calculate_menu_length_weeks(start_date: date, end_date: date) -> int:
+    return ((end_date - start_date).days // 7) + 1
+
+
 def _validate_menu_payload(
     *,
     menu_name: str,
@@ -66,7 +82,10 @@ def _validate_menu_payload(
     allowed_service_days: list[str],
     allowed_meal_periods: list[str],
     allowed_concepts: list[str],
-) -> tuple[str, list[str], list[str], list[str], int]:
+    menu_start_date=None,
+    menu_end_date=None,
+    require_date_range: bool = False,
+) -> tuple[str, list[str], list[str], list[str], int, str | None, str | None]:
     normalized_name = _normalize_name(menu_name)
     if not normalized_name:
         raise InvalidMenuPayloadError("Menu name is required.")
@@ -83,13 +102,27 @@ def _validate_menu_payload(
     if not normalized_concepts:
         raise InvalidMenuPayloadError("Select at least one concept.")
 
-    try:
-        normalized_menu_length_weeks = int(menu_length_weeks)
-    except (TypeError, ValueError):
-        raise InvalidMenuPayloadError("Menu length in weeks must be a whole number.")
+    normalized_start_date = _parse_menu_date(menu_start_date, "Menu start date")
+    normalized_end_date = _parse_menu_date(menu_end_date, "Menu end date")
 
-    if normalized_menu_length_weeks <= 0:
-        raise InvalidMenuPayloadError("Menu length in weeks must be greater than 0.")
+    if require_date_range and (normalized_start_date is None or normalized_end_date is None):
+        raise InvalidMenuPayloadError("Menu start date and end date are required.")
+
+    if (normalized_start_date is None) != (normalized_end_date is None):
+        raise InvalidMenuPayloadError("Menu start date and end date must be entered together.")
+
+    if normalized_start_date and normalized_end_date:
+        if normalized_end_date < normalized_start_date:
+            raise InvalidMenuPayloadError("Menu end date must be on or after the start date.")
+        normalized_menu_length_weeks = _calculate_menu_length_weeks(normalized_start_date, normalized_end_date)
+    else:
+        try:
+            normalized_menu_length_weeks = int(menu_length_weeks)
+        except (TypeError, ValueError):
+            raise InvalidMenuPayloadError("Menu length in weeks must be a whole number.")
+
+        if normalized_menu_length_weeks <= 0:
+            raise InvalidMenuPayloadError("Menu length in weeks must be greater than 0.")
 
     return (
         normalized_name,
@@ -97,6 +130,8 @@ def _validate_menu_payload(
         normalized_meal_periods,
         normalized_concepts,
         normalized_menu_length_weeks,
+        normalized_start_date.isoformat() if normalized_start_date else None,
+        normalized_end_date.isoformat() if normalized_end_date else None,
     )
 
 
@@ -129,6 +164,9 @@ def create_menu(
     allowed_service_days: list[str],
     allowed_meal_periods: list[str],
     allowed_concepts: list[str],
+    menu_start_date=None,
+    menu_end_date=None,
+    require_date_range: bool = False,
 ) -> int:
     initialize_database()
 
@@ -138,12 +176,17 @@ def create_menu(
         normalized_meal_periods,
         normalized_concepts,
         normalized_menu_length_weeks,
+        normalized_start_date,
+        normalized_end_date,
     ) = _validate_menu_payload(
         menu_name=menu_name,
         service_days=service_days,
         meal_periods=meal_periods,
         concepts=concepts,
         menu_length_weeks=menu_length_weeks,
+        menu_start_date=menu_start_date,
+        menu_end_date=menu_end_date,
+        require_date_range=require_date_range,
         allowed_service_days=allowed_service_days,
         allowed_meal_periods=allowed_meal_periods,
         allowed_concepts=allowed_concepts,
@@ -161,11 +204,13 @@ def create_menu(
                 meal_periods_json,
                 concepts_json,
                 menu_length_weeks,
+                menu_start_date,
+                menu_end_date,
                 status,
                 created_at,
                 updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', datetime('now'), datetime('now'))
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', datetime('now'), datetime('now'))
             """,
             (
                 normalized_name,
@@ -175,6 +220,8 @@ def create_menu(
                 json.dumps(normalized_meal_periods),
                 json.dumps(normalized_concepts),
                 normalized_menu_length_weeks,
+                normalized_start_date,
+                normalized_end_date,
             ),
         )
         menu_id = int(cursor.lastrowid)
@@ -221,6 +268,9 @@ def update_menu_config(
     allowed_service_days: list[str],
     allowed_meal_periods: list[str],
     allowed_concepts: list[str],
+    menu_start_date=None,
+    menu_end_date=None,
+    require_date_range: bool = False,
 ) -> None:
     initialize_database()
 
@@ -230,12 +280,17 @@ def update_menu_config(
         normalized_meal_periods,
         normalized_concepts,
         normalized_menu_length_weeks,
+        normalized_start_date,
+        normalized_end_date,
     ) = _validate_menu_payload(
         menu_name=menu_name,
         service_days=service_days,
         meal_periods=meal_periods,
         concepts=concepts,
         menu_length_weeks=menu_length_weeks,
+        menu_start_date=menu_start_date,
+        menu_end_date=menu_end_date,
+        require_date_range=require_date_range,
         allowed_service_days=allowed_service_days,
         allowed_meal_periods=allowed_meal_periods,
         allowed_concepts=allowed_concepts,
@@ -324,6 +379,8 @@ def update_menu_config(
                 meal_periods_json = ?,
                 concepts_json = ?,
                 menu_length_weeks = ?,
+                menu_start_date = ?,
+                menu_end_date = ?,
                 updated_at = datetime('now')
             WHERE menu_id = ?
             """,
@@ -333,6 +390,8 @@ def update_menu_config(
                 json.dumps(normalized_meal_periods),
                 json.dumps(normalized_concepts),
                 normalized_menu_length_weeks,
+                normalized_start_date,
+                normalized_end_date,
                 menu_id,
             ),
         )

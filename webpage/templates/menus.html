@@ -30,6 +30,11 @@
                                             | {{ menu.slot_count }} slot{% if menu.slot_count != 1 %}s{% endif %}
                                             | {{ menu.assigned_item_count }} assigned item{% if menu.assigned_item_count != 1 %}s{% endif %}
                                         </p>
+                                        {% if menu.menu_start_date and menu.menu_end_date %}
+                                            <p class="recipe-card-meta">
+                                                {{ menu.menu_start_date }} to {{ menu.menu_end_date }} | Current week {{ menu.current_week_number }}
+                                            </p>
+                                        {% endif %}
                                     </div>
                                 </div>
                                 <p class="recipe-card-dates">
@@ -38,7 +43,7 @@
                             </div>
                             <div class="collection-card-badges">
                                 <span class="collection-type-badge">Draft Menu</span>
-                                <a class="page-action-link secondary" href="{{ url_for('menu_detail', menu_id=menu.menu_id) }}">Open Menu</a>
+                                <a class="page-action-link secondary" href="{{ url_for('menu_detail', menu_id=menu.menu_id, week=menu.current_week_number) }}">Open Current Week</a>
                                 <form method="post" action="{{ url_for('delete_menu_route', menu_id=menu.menu_id) }}" class="menu-inline-action-form">
                                     <button type="submit" class="workflow-button workflow-button-danger">Delete Menu</button>
                                 </form>
@@ -49,7 +54,7 @@
             {% else %}
                 <div class="empty-state">
                     <h3>No menus yet</h3>
-                    <p>Start with a new menu shell, then we can build slot assignment, copy and paste, and future planning tools on top of it.</p>
+                    <p>Start with a new menu, then build slot assignment, copy and paste, forecasting, and production records on top of it.</p>
                 </div>
             {% endif %}
         </section>

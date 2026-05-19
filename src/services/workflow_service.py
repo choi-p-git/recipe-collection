@@ -3,7 +3,6 @@ from config.statuses import APPROVED_STATUSES, STATUS_LABELS
 from db import get_connection
 from services.item_event_service import build_transition_summary, record_item_event
 from services.notification_service import create_workflow_action_notifications
-from services.policy_service import can_edit_items
 
 
 PORTAL_DEFINITIONS = {

@@ -1,6 +1,9 @@
+import csv
+import io
+from datetime import date
 from pathlib import Path
 
-from flask import Flask, flash, jsonify, redirect, render_template, request, session, url_for
+from flask import Flask, Response, flash, jsonify, redirect, render_template, request, session, url_for
 
 from config.units import APPROVED_UNITS, STANDARD_UNITS
 from config.hotel_pan_units import (
@@ -56,7 +59,22 @@ from services.menu_forecast_service import (
     InvalidMenuForecastBatchError,
     InvalidMenuForecastError,
     save_menu_forecast_batch_splits,
+    save_item_case_pack,
     save_menu_forecast_yield,
+)
+from services.menu_navigation_service import (
+    current_day_of_week,
+    current_service_date,
+    default_menu_week_number,
+)
+from services.production_record_service import (
+    InvalidProductionRecordError,
+    PRODUCTION_RECORD_REASON_OPTIONS,
+    build_production_record_unit_options,
+    ensure_production_record,
+    get_production_record_review,
+    post_production_record,
+    save_production_record_line,
 )
 from services.item_note_service import (
     ItemNoteError,
@@ -138,6 +156,49 @@ app = Flask(
 app.secret_key = "dev-secret-key"
 
 
+def _current_day_of_week() -> str:
+    return current_day_of_week(_current_service_date())
+
+
+def _current_service_date() -> date:
+    return current_service_date()
+
+
+def _default_menu_week_number(menu: dict | None, current_date: date | None = None) -> int:
+    return default_menu_week_number(menu, current_date or _current_service_date())
+
+
+def _build_service_day_navigation(page_data: dict) -> dict:
+    entries = [
+        {
+            "week": week_number,
+            "day": day,
+            "label": f"Week {week_number} {day.title()}",
+            "date_display": page_data.get("week_day_dates", {}).get(week_number, {}).get(day, {}).get("display", ""),
+        }
+        for week_number in page_data.get("week_numbers", [])
+        for day in page_data.get("menu", {}).get("service_days", [])
+    ]
+    selected = {
+        "week": page_data.get("selected_week_number"),
+        "day": page_data.get("selected_day"),
+    }
+    selected_index = next(
+        (
+            index
+            for index, entry in enumerate(entries)
+            if entry["week"] == selected["week"] and entry["day"] == selected["day"]
+        ),
+        None,
+    )
+    if selected_index is None:
+        return {"previous": None, "next": None}
+    return {
+        "previous": entries[selected_index - 1] if selected_index > 0 else None,
+        "next": entries[selected_index + 1] if selected_index + 1 < len(entries) else None,
+    }
+
+
 @app.template_filter("unit_label")
 def unit_label_filter(unit: str | None) -> str:
     return format_unit_label(unit)
@@ -169,6 +230,8 @@ def index():
 def get_menu_form_data() -> dict:
     return {
         "menu_name": request.form.get("menu_name", "").strip(),
+        "menu_start_date": request.form.get("menu_start_date", "").strip(),
+        "menu_end_date": request.form.get("menu_end_date", "").strip(),
         "service_days": request.form.getlist("service_days"),
         "meal_periods": request.form.getlist("meal_periods"),
         "concepts": request.form.getlist("concepts"),
@@ -385,6 +448,8 @@ def new_recipe():
 def new_menu():
     form_data = {
         "menu_name": "",
+        "menu_start_date": "",
+        "menu_end_date": "",
         "service_days": [],
         "meal_periods": [],
         "concepts": [],
@@ -400,6 +465,8 @@ def new_menu():
                 menu_name=form_data["menu_name"],
                 author_user_id=current_user["user_id"],
                 author_display_name=current_user["display_name"],
+                menu_start_date=form_data["menu_start_date"],
+                menu_end_date=form_data["menu_end_date"],
                 service_days=form_data["service_days"],
                 meal_periods=form_data["meal_periods"],
                 concepts=form_data["concepts"],
@@ -407,6 +474,7 @@ def new_menu():
                 allowed_service_days=[option["value"] for option in DAY_OF_WEEK_OPTIONS],
                 allowed_meal_periods=[option["value"] for option in MEAL_PERIOD_OPTIONS],
                 allowed_concepts=[option["value"] for option in CONCEPT_OPTIONS],
+                require_date_range=True,
             )
             flash(f"Menu '{form_data['menu_name']}' created successfully.", "success")
             return redirect(url_for("menu_detail", menu_id=menu_id))
@@ -437,6 +505,8 @@ def edit_menu(menu_id: int):
 
     form_data = {
         "menu_name": menu["menu_name"],
+        "menu_start_date": menu["menu_start_date"],
+        "menu_end_date": menu["menu_end_date"],
         "service_days": menu["service_days"],
         "meal_periods": menu["meal_periods"],
         "concepts": menu["concepts"],
@@ -450,6 +520,8 @@ def edit_menu(menu_id: int):
                 menu_id=menu_id,
                 actor_user_id=current_user["user_id"],
                 menu_name=form_data["menu_name"],
+                menu_start_date=form_data["menu_start_date"],
+                menu_end_date=form_data["menu_end_date"],
                 service_days=form_data["service_days"],
                 meal_periods=form_data["meal_periods"],
                 concepts=form_data["concepts"],
@@ -457,6 +529,7 @@ def edit_menu(menu_id: int):
                 allowed_service_days=[option["value"] for option in DAY_OF_WEEK_OPTIONS],
                 allowed_meal_periods=[option["value"] for option in MEAL_PERIOD_OPTIONS],
                 allowed_concepts=[option["value"] for option in CONCEPT_OPTIONS],
+                require_date_range=True,
             )
             flash(f"Menu '{form_data['menu_name']}' config updated successfully.", "success")
             return redirect(url_for("menu_detail", menu_id=menu_id))
@@ -478,6 +551,8 @@ def edit_menu(menu_id: int):
 def my_menus():
     current_user = get_current_mock_user(session)
     page_data = get_my_menus(current_user["user_id"])
+    for menu in page_data["menus"]:
+        menu["current_week_number"] = _default_menu_week_number(menu)
     return render_template(
         "menus.html",
         page_data=page_data,
@@ -492,9 +567,9 @@ def menu_detail(menu_id: int):
         return "Menu not found.", 404
 
     week_numbers = list(range(1, menu["menu_length_weeks"] + 1))
-    selected_week = request.args.get("week", "1").strip()
+    selected_week = request.args.get("week", "").strip()
     try:
-        selected_week_number = int(selected_week)
+        selected_week_number = int(selected_week) if selected_week else _default_menu_week_number(menu)
     except ValueError:
         selected_week_number = 1
 
@@ -528,18 +603,68 @@ def menu_detail(menu_id: int):
     )
 
 
+@app.route("/menus/<int:menu_id>/print")
+def menu_print(menu_id: int):
+    menu = get_menu_detail(menu_id)
+    if menu is None:
+        return "Menu not found.", 404
+
+    week_numbers = list(range(1, menu["menu_length_weeks"] + 1))
+    selected_week = request.args.get("week", "").strip()
+    try:
+        selected_week_number = int(selected_week) if selected_week else _default_menu_week_number(menu)
+    except ValueError:
+        selected_week_number = _default_menu_week_number(menu)
+    if selected_week_number not in week_numbers:
+        selected_week_number = 1
+
+    print_mode = request.args.get("mode", "week").strip()
+    if print_mode not in {"week", "day"}:
+        print_mode = "week"
+
+    service_days = menu.get("service_days", [])
+    current_week_number = _default_menu_week_number(menu)
+    requested_day = request.args.get("day", "").strip()
+    if requested_day in service_days:
+        selected_day = requested_day
+    elif selected_week_number == current_week_number and _current_day_of_week() in service_days:
+        selected_day = _current_day_of_week()
+    else:
+        selected_day = service_days[0] if service_days else ""
+
+    week_slots = [slot for slot in menu["slots"] if slot["week_number"] == selected_week_number]
+    day_slots = [slot for slot in week_slots if slot["day_of_week"] == selected_day]
+
+    return render_template(
+        "menu_print.html",
+        menu=menu,
+        week_numbers=week_numbers,
+        selected_week_number=selected_week_number,
+        current_week_number=current_week_number,
+        selected_day=selected_day,
+        print_mode=print_mode,
+        week_slots=week_slots,
+        day_slots=day_slots,
+        day_options=DAY_OF_WEEK_OPTIONS,
+        meal_period_options=MEAL_PERIOD_OPTIONS,
+    )
+
+
 @app.route("/menus/<int:menu_id>/forecast")
 def menu_forecast(menu_id: int):
-    week = request.args.get("week", "1").strip()
+    menu_context = get_menu_detail(menu_id)
+    week = request.args.get("week", "").strip()
     try:
-        week_number = int(week)
+        week_number = int(week) if week else _default_menu_week_number(menu_context)
     except ValueError:
-        week_number = 1
+        week_number = _default_menu_week_number(menu_context)
+
+    requested_day = request.args.get("day", "").strip()
 
     page_data = get_menu_forecast_page(
         menu_id,
         week_number=week_number,
-        day_of_week=request.args.get("day", "").strip(),
+        day_of_week=requested_day or _current_day_of_week(),
         search_term=request.args.get("q", "").strip(),
         meal_period=request.args.get("meal_period", "").strip(),
         concept=request.args.get("concept", "").strip(),
@@ -557,6 +682,366 @@ def menu_forecast(menu_id: int):
         approved_units=APPROVED_UNITS,
         serving_size_units=STANDARD_UNITS,
     )
+
+
+@app.route("/menus/<int:menu_id>/production-record")
+def production_record(menu_id: int):
+    menu_context = get_menu_detail(menu_id)
+    week = request.args.get("week", "").strip()
+    try:
+        week_number = int(week) if week else _default_menu_week_number(menu_context)
+    except ValueError:
+        week_number = _default_menu_week_number(menu_context)
+
+    current_user = get_current_mock_user(session)
+    requested_day = request.args.get("day", "").strip()
+    page_data = get_menu_forecast_page(
+        menu_id,
+        week_number=week_number,
+        day_of_week=requested_day or _current_day_of_week(),
+        search_term=request.args.get("q", "").strip(),
+        meal_period=request.args.get("meal_period", "").strip(),
+        concept=request.args.get("concept", "").strip(),
+        sort_by=request.args.get("sort", "").strip(),
+        sort_order=request.args.get("order", "").strip(),
+    )
+    if page_data is None:
+        return "Menu not found.", 404
+
+    try:
+        production_record_data = ensure_production_record(
+            menu_id=menu_id,
+            week_number=page_data["selected_week_number"],
+            day_of_week=page_data["selected_day"],
+            production_summary=page_data["production_summary"],
+            actor_user_id=current_user["user_id"],
+        )
+    except InvalidProductionRecordError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("menu_detail", menu_id=menu_id, week=week_number))
+
+    summary_lookup = {
+        int(row["item_id"]): row
+        for row in page_data["production_summary"]["rows"]
+    }
+    for line in production_record_data["lines"]:
+        summary_row = summary_lookup.get(line["item_id"], {})
+        line["unit_options"] = build_production_record_unit_options(summary_row) if summary_row else [line["forecast_unit"]]
+
+    return render_template(
+        "production_record.html",
+        page_data=page_data,
+        production_record=production_record_data,
+        service_day_navigation=_build_service_day_navigation(page_data),
+        production_record_reason_options=PRODUCTION_RECORD_REASON_OPTIONS,
+        day_options=DAY_OF_WEEK_OPTIONS,
+        approved_units=APPROVED_UNITS,
+    )
+
+
+@app.route("/api/menus/<int:menu_id>/production-record/lines/<int:production_record_line_id>", methods=["PUT"])
+def api_update_production_record_line(menu_id: int, production_record_line_id: int):
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"ok": False, "error": "Missing JSON payload."}), 400
+
+    current_user = get_current_mock_user(session)
+    try:
+        line = save_production_record_line(
+            menu_id=menu_id,
+            production_record_line_id=production_record_line_id,
+            actor_user_id=current_user["user_id"],
+            actual_quantity=payload.get("actual_quantity"),
+            actual_unit=payload.get("actual_unit"),
+            end_service_variance_quantity=payload.get("end_service_variance_quantity"),
+            end_service_variance_unit=payload.get("end_service_variance_unit"),
+            reason_code=payload.get("reason_code"),
+            reason_note=payload.get("reason_note"),
+            notes=payload.get("notes"),
+        )
+        return jsonify({"ok": True, "line": line})
+    except InvalidProductionRecordError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"ok": False, "error": f"Unexpected error: {exc}"}), 500
+
+
+@app.route("/menus/<int:menu_id>/production-record/<int:production_record_id>/post", methods=["POST"])
+def post_production_record_route(menu_id: int, production_record_id: int):
+    week = request.form.get("week", "1").strip() or "1"
+    day = request.form.get("day", "").strip()
+    current_user = get_current_mock_user(session)
+
+    try:
+        post_production_record(
+            menu_id=menu_id,
+            production_record_id=production_record_id,
+            actor_user_id=current_user["user_id"],
+        )
+        flash("Production record posted.", "success")
+        return redirect(url_for("production_record_review", menu_id=menu_id, production_record_id=production_record_id))
+    except InvalidProductionRecordError as exc:
+        flash(str(exc), "error")
+
+    return redirect(url_for("production_record", menu_id=menu_id, week=week, day=day or None))
+
+
+@app.route("/menus/<int:menu_id>/production-record/<int:production_record_id>/review")
+def production_record_review(menu_id: int, production_record_id: int):
+    current_user = get_current_mock_user(session)
+    try:
+        production_record_data = get_production_record_review(
+            menu_id=menu_id,
+            production_record_id=production_record_id,
+            actor_user_id=current_user["user_id"],
+        )
+    except InvalidProductionRecordError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("menu_detail", menu_id=menu_id))
+
+    menu = get_menu_detail(menu_id)
+    if menu is None:
+        return "Menu not found.", 404
+
+    service_date = menu.get("week_day_dates", {}).get(production_record_data["week_number"], {}).get(
+        production_record_data["day_of_week"],
+        {},
+    )
+
+    return render_template(
+        "production_record_review.html",
+        menu=menu,
+        production_record=production_record_data,
+        service_date=service_date,
+    )
+
+
+@app.route("/menus/<int:menu_id>/production-record/<int:production_record_id>/export.csv")
+def production_record_export_csv(menu_id: int, production_record_id: int):
+    current_user = get_current_mock_user(session)
+    try:
+        production_record_data = get_production_record_review(
+            menu_id=menu_id,
+            production_record_id=production_record_id,
+            actor_user_id=current_user["user_id"],
+        )
+    except InvalidProductionRecordError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("menu_detail", menu_id=menu_id))
+
+    menu = get_menu_detail(menu_id)
+    if menu is None:
+        return "Menu not found.", 404
+
+    service_date = menu.get("week_day_dates", {}).get(production_record_data["week_number"], {}).get(
+        production_record_data["day_of_week"],
+        {},
+    )
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(
+        [
+            "Menu",
+            "Week",
+            "Day",
+            "Service Date",
+            "Status",
+            "Item",
+            "Slots",
+            "Forecast Quantity",
+            "Forecast Unit",
+            "Actual Quantity",
+            "Actual Unit",
+            "Actual Formula",
+            "Leftover / Shortage Quantity",
+            "Leftover / Shortage Unit",
+            "Leftover / Shortage Formula",
+            "Implied Demand Quantity",
+            "Implied Demand Unit",
+            "Forecast Error Quantity",
+            "Forecast Error Unit",
+            "Forecast Error Percent",
+            "Forecast Accuracy",
+            "Reason",
+            "Reason Note",
+            "Line Notes",
+        ],
+    )
+    for line in production_record_data["lines"]:
+        writer.writerow(
+            [
+                menu["menu_name"],
+                production_record_data["week_number"],
+                production_record_data["day_of_week"].title(),
+                service_date.get("iso", ""),
+                production_record_data["status_label"],
+                line["recipe_name"],
+                ", ".join(line["slot_labels"]),
+                line["forecast_quantity_display"],
+                format_unit_label(line["forecast_unit"]),
+                line["actual_quantity_display"],
+                format_unit_label(line["actual_unit"]),
+                line["actual_quantity_formula"],
+                line["end_service_variance_quantity_display"],
+                format_unit_label(line["end_service_variance_unit"]),
+                line["end_service_variance_quantity_formula"],
+                line["implied_demand_quantity_display"],
+                format_unit_label(line["implied_demand_unit"]),
+                line["forecast_error_quantity_display"],
+                format_unit_label(line["forecast_error_unit"]),
+                line["forecast_error_percent_display"],
+                line["forecast_accuracy_level"],
+                line["reason_label"],
+                line["reason_note"],
+                line["notes"],
+            ],
+        )
+
+    filename = (
+        f"production-record-menu-{menu_id}-week-{production_record_data['week_number']}-"
+        f"{production_record_data['day_of_week']}.csv"
+    )
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+def _build_recipe_print_context(item_id: int) -> dict | None:
+    item = get_item_detail(item_id)
+    if item is None or item["item_type"] != "recipe":
+        return None
+
+    current_user = get_current_mock_user(session)
+    current_preferences = current_user.get("preferences", {})
+    display_mode = normalize_display_mode(
+        request.args.get("display_mode", current_preferences.get("display_mode", DISPLAY_MODE_DEFAULT))
+    )
+    unit_system = normalize_unit_system(
+        request.args.get("unit_system", current_preferences.get("unit_system", UNIT_SYSTEM_IMPERIAL))
+    )
+
+    scale_quantity = request.args.get("scale_quantity", "").strip()
+    scale_unit = request.args.get("scale_unit", "").strip()
+    user_serving_size_quantity = request.args.get("user_serving_size_quantity", "").strip()
+    user_serving_size_unit = request.args.get("user_serving_size_unit", "").strip()
+    desired_portions = request.args.get("desired_portions", "").strip()
+    scale_mode = request.args.get("scale_mode", "yield").strip()
+    advanced_scale_row_key = request.args.get("advanced_scale_row_key", "").strip()
+    advanced_scale_quantity = request.args.get("advanced_scale_quantity", "").strip()
+    advanced_scale_unit = request.args.get("advanced_scale_unit", "").strip()
+    source_ingredient_view = request.args.get("ingredient_view", "hierarchical").strip()
+    if source_ingredient_view not in {"hierarchical", "flattened"}:
+        source_ingredient_view = "hierarchical"
+
+    desired_portions_target = None
+    if item["status"] == "live" and desired_portions:
+        desired_portions_target = build_desired_portions_yield_target(
+            recipe_measurements=item,
+            desired_portions=desired_portions,
+            serving_quantity=user_serving_size_quantity or item.get("serving_size_quantity"),
+            serving_unit=user_serving_size_unit or item.get("serving_size_unit"),
+            target_unit=scale_unit or item.get("yield_unit"),
+        )
+        if desired_portions_target and desired_portions_target.get("available"):
+            scale_quantity = f"{desired_portions_target['target_quantity']:g}"
+            scale_unit = desired_portions_target["target_unit"]
+            scale_mode = "yield"
+
+    bottom_up_scaled_recipe_view = (
+        build_bottom_up_scaled_recipe_view(
+            item_id,
+            ingredient_view=source_ingredient_view,
+            target_row_key=advanced_scale_row_key,
+            target_quantity=advanced_scale_quantity,
+            target_unit=advanced_scale_unit,
+        )
+        if item["status"] == "live"
+        and scale_mode == "ingredient"
+        and (advanced_scale_row_key or advanced_scale_quantity or advanced_scale_unit)
+        else None
+    )
+    if bottom_up_scaled_recipe_view and bottom_up_scaled_recipe_view.get("is_scaled"):
+        scale_quantity = f"{bottom_up_scaled_recipe_view['forecast_yield_quantity']:g}"
+        scale_unit = bottom_up_scaled_recipe_view["forecast_yield_unit"]
+
+    scaled_recipe_view = (
+        build_scaled_recipe_view(
+            item_id,
+            target_quantity=scale_quantity,
+            target_unit=scale_unit,
+            ingredient_view="flattened",
+        )
+        if item["status"] == "live" and (scale_quantity or scale_unit)
+        else None
+    )
+    flattened_recipe_view = (
+        build_flattened_recipe_view(item_id)
+        if item["status"] == "live" and not (scaled_recipe_view and scaled_recipe_view.get("is_scaled"))
+        else None
+    )
+
+    ingredient_rows = []
+    warnings = []
+    if scaled_recipe_view and scaled_recipe_view.get("is_scaled"):
+        apply_unit_system_to_recipe_snapshot(scaled_recipe_view, unit_system)
+        processed_rows = apply_display_preferences_to_rows(
+            rows=scaled_recipe_view.get("rows", []),
+            row_mode="flattened",
+            display_mode=display_mode,
+            unit_system=unit_system,
+        )
+        ingredient_rows = processed_rows["rows"]
+        warnings = [*scaled_recipe_view.get("warnings", []), *processed_rows["warnings"]]
+        yield_snapshot = scaled_recipe_view["scaled_snapshot"]
+        yield_quantity = yield_snapshot["yield_quantity"]
+        yield_unit = yield_snapshot["yield_unit"]
+        mass_quantity = yield_snapshot.get("mass_display_quantity_display") or yield_snapshot.get("mass_quantity")
+        mass_unit = yield_snapshot.get("mass_display_unit") or yield_snapshot.get("mass_unit")
+        volume_quantity = yield_snapshot.get("volume_display_quantity_display") or yield_snapshot.get("volume_quantity")
+        volume_unit = yield_snapshot.get("volume_display_unit") or yield_snapshot.get("volume_unit")
+        is_scaled = True
+    else:
+        apply_unit_system_to_recipe_item_snapshot(item, unit_system)
+        processed_rows = apply_display_preferences_to_rows(
+            rows=(flattened_recipe_view or {}).get("rows", []),
+            row_mode="flattened",
+            display_mode=display_mode,
+            unit_system=unit_system,
+        )
+        ingredient_rows = processed_rows["rows"]
+        warnings = [*((flattened_recipe_view or {}).get("warnings", [])), *processed_rows["warnings"]]
+        yield_quantity = item["yield_quantity"]
+        yield_unit = item["yield_unit"]
+        mass_quantity = item.get("mass_display_quantity_display") or item.get("mass_quantity")
+        mass_unit = item.get("mass_display_unit") or item.get("mass_unit")
+        volume_quantity = item.get("volume_display_quantity_display") or item.get("volume_quantity")
+        volume_unit = item.get("volume_display_unit") or item.get("volume_unit")
+        is_scaled = False
+
+    return {
+        "item": item,
+        "display_mode": display_mode,
+        "unit_system": unit_system,
+        "is_scaled": is_scaled,
+        "yield_quantity": yield_quantity,
+        "yield_unit": yield_unit,
+        "mass_quantity": mass_quantity,
+        "mass_unit": mass_unit,
+        "volume_quantity": volume_quantity,
+        "volume_unit": volume_unit,
+        "ingredient_rows": ingredient_rows,
+        "warnings": warnings,
+    }
+
+
+@app.route("/items/<int:item_id>/print")
+def recipe_print(item_id: int):
+    context = _build_recipe_print_context(item_id)
+    if context is None:
+        return "Recipe not found.", 404
+    return render_template("recipe_print.html", **context)
 
 
 @app.route("/menus/<int:menu_id>/forecast/recipes/<int:item_id>/advanced")
@@ -642,6 +1127,30 @@ def api_update_menu_forecast_batches(menu_id: int, menu_slot_item_id: int):
         )
         return jsonify({"ok": True, "batch_plan": batch_plan})
     except InvalidMenuForecastBatchError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"ok": False, "error": f"Unexpected error: {exc}"}), 500
+
+
+@app.route("/api/menus/<int:menu_id>/forecast/<int:menu_slot_item_id>/case-packs", methods=["POST"])
+def api_save_menu_forecast_case_pack(menu_id: int, menu_slot_item_id: int):
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"ok": False, "error": "Missing JSON payload."}), 400
+
+    current_user = get_current_mock_user(session)
+    try:
+        case_pack = save_item_case_pack(
+            menu_id=menu_id,
+            menu_slot_item_id=menu_slot_item_id,
+            actor_user_id=current_user["user_id"],
+            item_id=payload.get("item_id"),
+            pack_quantity=payload.get("pack_quantity"),
+            subunit_quantity=payload.get("subunit_quantity"),
+            subunit_unit=payload.get("subunit_unit"),
+        )
+        return jsonify({"ok": True, "case_pack": case_pack})
+    except InvalidMenuForecastError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     except Exception as exc:
         return jsonify({"ok": False, "error": f"Unexpected error: {exc}"}), 500
@@ -829,12 +1338,25 @@ def menu_week_paste(menu_id: int):
         week_numbers[index:index + 4]
         for index in range(0, len(week_numbers), 4)
     ]
+    week_date_ranges = {}
+    for week_number in week_numbers:
+        week_dates = [
+            day_date
+            for day_date in menu.get("week_day_dates", {}).get(week_number, {}).values()
+            if day_date.get("display")
+        ]
+        if not week_dates:
+            continue
+        first_date = week_dates[0]["display"]
+        last_date = week_dates[-1]["display"]
+        week_date_ranges[week_number] = first_date if first_date == last_date else f"{first_date} - {last_date}"
 
     return render_template(
         "menu_week_paste.html",
         menu=menu,
         source_week_number=source_week_number,
         week_rows=week_rows,
+        week_date_ranges=week_date_ranges,
     )
 
 

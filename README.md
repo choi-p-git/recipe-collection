@@ -13,7 +13,7 @@ Current MVP behavior
 - Reviewer, dietitian, and admin workflow portals support status movement across the MVP lifecycle.
 - Workflow history, note threads, and notifications are active across the review lifecycle.
 - Dietitian-owned official serving fields are separated from submitter-facing recipe entry.
-- Menu Builder and Forecasting shells are active for live menu planning and recipe production scaling.
+- Menu Builder, Forecasting, and Production Record workflows are active for live menu planning, production scaling, floor entry, posted review, CSV export, and print handoff.
 - Advanced hotel-pan units are available only in live recipe scaling, forecasting, and future production-record workflows; recipe/base-food authoring remains limited to standard mass, volume, and count units.
 
 System priorities
@@ -129,8 +129,22 @@ Menu Builder foundation note
 - Forecasting now supports a first-pass `case` mode for recipes and base foods. Users enter case quantity, pack quantity, subunit size, and subunit unit; the visible forecast remains `case` while the calculated production yield is stored separately for batch and rollup math.
 - Advanced case mode can link the case pack to one recipe ingredient, allowing recipe-yield and user-serving calculations to stay available when the ingredient basis can be converted back to recipe yield.
 - Forecast, menu overview, and slot assignment item names link to item detail pages. Forecasted recipes open with the saved scale and user-serving values applied so the recipe view matches the production target.
-- First release planning is aimed at menu creation, week/day/meal/concept overview rendering, slot assignment, and assignment-only copy/paste actions
-- Print, drag-and-drop, rules checks, richer batch timing workflows, and inventory-facing rollups remain deferred until the base Menu Builder/Forecasting behavior is stable
+- Menu Builder now has dedicated print views for week and day planning. Week print uses the selected overview week; day print defaults to the current service day when appropriate and otherwise the first service day of the selected week.
+- Production Record is implemented as the first operational floor workflow after Forecasting. It snapshots the forecast for the selected menu week/day, supports actual production and end-of-service leftover/shortage entry, calculates implied demand and forecast accuracy, and captures reason codes plus notes.
+- Production Record quantity fields support simple formula entry for floor-count math. Complete formulas save the calculated result while preserving the original formula for refocus/editing; incomplete but allowed formulas save as draft text until the user finishes the expression.
+- Production Record can be posted and locked, reviewed from a posted record view, exported to CSV, and printed as a kitchen floor sheet.
+- Recipe print is implemented as a single kitchen production sheet. It respects the active scaled target when present, always prints flattened ingredients, follows the selected display mode/unit system, and visually groups sub-recipe ingredients under their parent sub-recipes.
+- Drag-and-drop, rules checks, richer batch timing workflows, production-record analytics, and inventory-facing rollups remain deferred until the current operational loop is refined.
+
+Production Record refinement roadmap
+
+- Current data flow: Menu Builder assignment -> Forecasting scale/display/case planning -> Production Summary rollup -> Production Record snapshot -> line-level actual production and end-of-service variance -> implied demand and forecast accuracy -> posted review, print, and CSV export.
+- Current operational workflow: menu owner opens the current service day, optionally prints a kitchen floor sheet, cooks/managers record actual production and leftover/shortage, reason/notes capture operating context, then the manager posts the record to lock it for future review.
+- Next refinement slice should add a Production Record history/index page per menu. It should show draft and posted records by date, week, and day, with quick links back to entry/review.
+- Next reporting slice should add simple filters and summaries for date range, accuracy level, reason code, item, and posted/draft status. The first aggregate view should focus on count of accurate/review/miss records, top reason codes, and leftover/shortage trends.
+- Future inventory tie-in should consume posted Production Record and Forecasting data rather than draft records. Forecasting should drive expected demand/order needs; posted Production Records should feed actual usage, leftover/shortage, and variance signals.
+- Inventory pack/case definitions should be item-linked, not recipe-linked, and should reuse saved pack sizes where possible. Forecast-linked case sizes can remain local to a menu cell until explicitly saved to the item-level pack library.
+- Future inventory availability should attach to ingredient/base-food item IDs and later offer live system matches, available quantity, case size, and ordering status back into Forecasting and Production Record views.
 
 Scaling foundation note
 
@@ -168,6 +182,8 @@ MVP validation checklist
 5. Verify notes, automatic workflow notifications, and notification clearing on item view
 6. Verify live item default view hides workflow notes/history, with advanced toggle for privileged roles
 7. Verify Forecasting autosave, advanced scaling confirm-back, and hotel-pan unit availability only on live scaling/forecast controls
+8. Verify Production Record current-day landing, formula entry, post/lock, review, CSV export, and kitchen floor print
+9. Verify Menu Builder week/day print and Recipe production-sheet print, including scaled flattened sub-recipe grouping
 
 Test temp housekeeping
 
@@ -208,3 +224,15 @@ Highlights
 - Added lightweight forward-only SQLite migration/versioning support through `database/migrations/`
 - Added centralized role/policy service for workflow and item-level permissions
 - Expanded automated validation coverage across schema, services, policies, queries, routes, workflow, notifications, and instruction codec behavior
+
+## Current working milestone
+
+The current proof-of-concept has a complete operational vertical stack:
+
+- Menu Builder creates dated menu cycles, assigns ordered live items into service slots, supports bulk planning actions, and provides week/day print views.
+- Forecasting scales menu assignments by yield, portions, cases, advanced hotel-pan units, and linked ingredient case packs.
+- Production Summary rolls Forecasting data into production-facing totals.
+- Production Record captures floor actuals, leftover/shortage, formula-based quantity entry, reason codes, notes, implied demand, forecast accuracy, post/lock, review, CSV export, and floor-sheet print.
+- Recipe Detail supports scaled and flattened production views, display-mode/unit-system toggles, and a kitchen production-sheet print with sub-recipe grouping.
+
+The next recommended development focus is Production Record history/reporting, followed by the first Inventory Management foundation.

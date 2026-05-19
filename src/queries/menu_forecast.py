@@ -2,11 +2,14 @@ from difflib import SequenceMatcher
 
 from config.menu_builder import DAY_OF_WEEK_OPTIONS, MEAL_PERIOD_OPTIONS
 from db import get_connection
+from services.menu_calendar_service import build_week_day_dates
 from services.menu_forecast_service import (
     InvalidMenuForecastError,
     build_menu_forecast_production_summary,
+    build_forecast_display_unit_options,
     calculate_advanced_case_effective_yield,
     decorate_batch_splits,
+    list_item_case_packs_for_items,
 )
 from services.recipe_flattening_service import build_flattened_recipe_view
 
@@ -142,6 +145,8 @@ def get_menu_forecast_page(
                 meal_periods_json,
                 concepts_json,
                 menu_length_weeks,
+                menu_start_date,
+                menu_end_date,
                 status
             FROM menu
             WHERE menu_id = ?
@@ -158,6 +163,8 @@ def get_menu_forecast_page(
         meal_periods = json.loads(menu_row[5])
         concepts = json.loads(menu_row[6])
         menu_length_weeks = int(menu_row[7])
+        menu_start_date = menu_row[8] or ""
+        menu_end_date = menu_row[9] or ""
 
         normalized_week = week_number if 1 <= week_number <= menu_length_weeks else 1
         normalized_day = day_of_week if day_of_week in service_days else service_days[0]
@@ -198,6 +205,7 @@ def get_menu_forecast_page(
                 mf.case_subunit_unit,
                 mf.calculated_forecast_quantity,
                 mf.calculated_forecast_unit,
+                mf.item_case_pack_id,
                 mf.case_basis_component_item_id,
                 mf.case_basis_component_name,
                 mf.case_basis_view_mode,
@@ -271,16 +279,25 @@ def get_menu_forecast_page(
             item_type=row[7],
             item_name=item_name,
         )
-        case_basis_view_mode = row[31] or "hierarchical"
-        case_basis_row_key = row[32] or _resolve_case_basis_row_key(
+        case_pack_item_ids = sorted(
+            {
+                int(candidate["component_item_id"])
+                for candidate_group in case_basis_candidates.values()
+                for candidate in candidate_group
+                if candidate.get("component_item_id")
+            }
+        )
+        saved_case_packs_by_item_id = list_item_case_packs_for_items(case_pack_item_ids)
+        case_basis_view_mode = row[32] or "hierarchical"
+        case_basis_row_key = row[33] or _resolve_case_basis_row_key(
             case_basis_candidates,
-            component_item_id=row[29],
+            component_item_id=row[30],
             view_mode=case_basis_view_mode,
         )
         if (
             forecast_unit == "case"
             and row[7] == "recipe"
-            and row[29] is not None
+            and row[30] is not None
             and case_basis_row_key
             and forecast_quantity is not None
             and row[24] is not None
@@ -340,13 +357,24 @@ def get_menu_forecast_page(
                 "effective_forecast_quantity": effective_forecast_quantity,
                 "effective_forecast_quantity_display": f"{effective_forecast_quantity:g}" if effective_forecast_quantity is not None else "",
                 "effective_forecast_unit": effective_forecast_unit,
+                "display_unit_options": build_forecast_display_unit_options(
+                    base_unit=effective_forecast_unit,
+                    row={
+                        "mass_quantity": row[10],
+                        "mass_unit": row[11] or "",
+                        "volume_quantity": row[12],
+                        "volume_unit": row[13] or "",
+                    },
+                ),
                 "is_case_forecast": forecast_unit == "case",
-                "case_basis_component_item_id": row[29],
-                "case_basis_component_name": row[30] or "",
+                "item_case_pack_id": row[29],
+                "case_basis_component_item_id": row[30],
+                "case_basis_component_name": row[31] or "",
                 "case_basis_view_mode": case_basis_view_mode,
                 "case_basis_row_key": case_basis_row_key,
                 "case_basis_candidates": case_basis_candidates,
-                "forecast_updated_at": row[33],
+                "saved_case_packs_by_item_id": saved_case_packs_by_item_id,
+                "forecast_updated_at": row[34],
                 "batch_splits": batch_splits,
                 "menu_order": (
                     meal_index.get(meal_value, 999),
@@ -371,6 +399,13 @@ def get_menu_forecast_page(
     week_numbers = list(range(1, menu_length_weeks + 1))
     cycle_start = ((normalized_week - 1) // 4) * 4 + 1
     cycle_weeks = [week for week in range(cycle_start, min(cycle_start + 4, menu_length_weeks + 1))]
+    week_day_dates = build_week_day_dates(
+        menu_start_date=menu_start_date,
+        menu_end_date=menu_end_date,
+        week_numbers=week_numbers,
+        service_days=service_days,
+    )
+    selected_service_date = week_day_dates.get(normalized_week, {}).get(normalized_day, {})
 
     return {
         "menu": {
@@ -382,12 +417,17 @@ def get_menu_forecast_page(
             "meal_periods": meal_periods,
             "concepts": concepts,
             "menu_length_weeks": menu_length_weeks,
-            "status": menu_row[8],
+            "menu_start_date": menu_start_date,
+            "menu_end_date": menu_end_date,
+            "status": menu_row[10],
         },
         "selected_week_number": normalized_week,
         "selected_day": normalized_day,
         "selected_day_label": day_labels.get(normalized_day, normalized_day.title()),
         "week_numbers": week_numbers,
+        "week_day_dates": week_day_dates,
+        "selected_service_date": selected_service_date.get("date", ""),
+        "selected_service_date_display": selected_service_date.get("display", ""),
         "cycle_start": cycle_start,
         "cycle_weeks": cycle_weeks,
         "previous_cycle_week": cycle_start - 4 if cycle_start > 1 else None,

@@ -11,6 +11,8 @@ def get_my_menus(author_user_id: str) -> dict:
                 m.menu_name,
                 m.author_display_name,
                 m.menu_length_weeks,
+                m.menu_start_date,
+                m.menu_end_date,
                 m.status,
                 m.created_at,
                 m.updated_at,
@@ -27,6 +29,8 @@ def get_my_menus(author_user_id: str) -> dict:
                 m.menu_name,
                 m.author_display_name,
                 m.menu_length_weeks,
+                m.menu_start_date,
+                m.menu_end_date,
                 m.status,
                 m.created_at,
                 m.updated_at
@@ -43,11 +47,13 @@ def get_my_menus(author_user_id: str) -> dict:
                 "menu_name": row[1],
                 "author_display_name": row[2],
                 "menu_length_weeks": row[3],
-                "status": row[4],
-                "created_at": row[5],
-                "updated_at": row[6],
-                "slot_count": row[7],
-                "assigned_item_count": row[8],
+                "menu_start_date": row[4] or "",
+                "menu_end_date": row[5] or "",
+                "status": row[6],
+                "created_at": row[7],
+                "updated_at": row[8],
+                "slot_count": row[9],
+                "assigned_item_count": row[10],
             }
             for row in rows
         ]

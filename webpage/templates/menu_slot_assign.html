@@ -8,6 +8,9 @@
             <h2>Assign Slot Items</h2>
             <p class="page-subtitle">
                 {{ slot_detail.menu_name }} | Week {{ slot_detail.week_number }} | {{ slot_detail.day_of_week|title }} | {{ slot_detail.meal_period|title }} | {{ slot_detail.concept_name|replace('_', ' ')|title }}
+                {% if slot_detail.service_date_display %}
+                    | {{ slot_detail.service_date_display }}
+                {% endif %}
             </p>
         </div>
     </div>

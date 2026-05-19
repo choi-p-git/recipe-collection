@@ -22,6 +22,16 @@
                 {% if can_edit_item_for_current_user %}
                     <p><a class="page-action-link secondary" href="{{ url_for('edit_item', item_id=item.item_id) }}">Edit Item</a></p>
                 {% endif %}
+                {% if item.item_type == "recipe" %}
+                    <p>
+                        <a
+                            class="page-action-link secondary"
+                            href="{{ url_for('recipe_print', item_id=item.item_id, ingredient_view=ingredient_view_mode, scale_quantity=scale_quantity or None, scale_unit=scale_unit or None, display_mode=display_mode, unit_system=unit_system, scale_mode=scale_mode if scale_mode == 'ingredient' else None, advanced_scale_row_key=advanced_scale_row_key or None, advanced_scale_quantity=advanced_scale_quantity or None, advanced_scale_unit=advanced_scale_unit or None, user_serving_size_quantity=user_serving_size_quantity or None, user_serving_size_unit=user_serving_size_unit or None, desired_portions=desired_portions or None, forecast_menu_id=forecast_context.menu_id or None, forecast_menu_slot_item_id=forecast_context.menu_slot_item_id or None, forecast_week=forecast_context.week or None, forecast_day=forecast_context.day or None) }}"
+                        >
+                            Print Recipe
+                        </a>
+                    </p>
+                {% endif %}
             </div>
 
             <div class="item-detail-meta">

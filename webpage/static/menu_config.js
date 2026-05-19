@@ -1,4 +1,57 @@
 document.addEventListener("DOMContentLoaded", () => {
+    const dateRange = document.querySelector("[data-menu-date-range]");
+    if (dateRange) {
+        const startInput = dateRange.querySelector("[data-menu-start-date]");
+        const endInput = dateRange.querySelector("[data-menu-end-date]");
+        const summary = document.querySelector("[data-menu-date-summary]");
+        const hiddenWeekInput = document.querySelector("#menu_length_weeks");
+
+        const parseDate = (value) => {
+            if (!value) {
+                return null;
+            }
+            const date = new Date(`${value}T00:00:00`);
+            return Number.isNaN(date.getTime()) ? null : date;
+        };
+
+        const updateDateRange = () => {
+            if (!startInput || !endInput || !summary) {
+                return;
+            }
+
+            endInput.min = startInput.value || "";
+            endInput.setCustomValidity("");
+
+            const startDate = parseDate(startInput.value);
+            const endDate = parseDate(endInput.value);
+
+            if (!startDate || !endDate) {
+                summary.textContent = "Select a start and end date to calculate menu weeks.";
+                summary.classList.remove("is-error");
+                return;
+            }
+
+            if (endDate < startDate) {
+                summary.textContent = "End date must be on or after the start date.";
+                summary.classList.add("is-error");
+                endInput.setCustomValidity("End date must be on or after the start date.");
+                return;
+            }
+
+            const daySpan = Math.floor((endDate - startDate) / 86400000);
+            const weekCount = Math.floor(daySpan / 7) + 1;
+            if (hiddenWeekInput) {
+                hiddenWeekInput.value = String(weekCount);
+            }
+            summary.textContent = `${weekCount} menu week${weekCount === 1 ? "" : "s"} will be created from this date range.`;
+            summary.classList.remove("is-error");
+        };
+
+        startInput?.addEventListener("input", updateDateRange);
+        endInput?.addEventListener("input", updateDateRange);
+        updateDateRange();
+    }
+
     const builder = document.querySelector("[data-concept-builder]");
     if (!builder) {
         return;

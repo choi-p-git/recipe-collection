@@ -1,5 +1,8 @@
+import json
+
 from db import get_connection
 from queries.item_search import search_items_page
+from services.menu_calendar_service import build_week_day_dates
 
 
 def get_menu_slot_detail(menu_id: int, menu_slot_id: int, *, search_term: str = "", item_type: str = "") -> dict | None:
@@ -14,7 +17,11 @@ def get_menu_slot_detail(menu_id: int, menu_slot_id: int, *, search_term: str = 
                 ms.week_number,
                 ms.day_of_week,
                 ms.meal_period,
-                ms.concept_name
+                ms.concept_name,
+                m.service_days_json,
+                m.menu_start_date,
+                m.menu_end_date,
+                m.menu_length_weeks
             FROM menu_slot ms
             JOIN menu m
               ON m.menu_id = ms.menu_id
@@ -55,14 +62,30 @@ def get_menu_slot_detail(menu_id: int, menu_slot_id: int, *, search_term: str = 
         )
         assigned_rows = cursor.fetchall()
 
+    week_number = int(slot_row[3])
+    day_of_week = slot_row[4]
+    service_days = json.loads(slot_row[7])
+    menu_start_date = slot_row[8] or ""
+    menu_end_date = slot_row[9] or ""
+    menu_length_weeks = int(slot_row[10])
+    week_day_dates = build_week_day_dates(
+        menu_start_date=menu_start_date,
+        menu_end_date=menu_end_date,
+        week_numbers=list(range(1, menu_length_weeks + 1)),
+        service_days=service_days,
+    )
+    service_date = week_day_dates.get(week_number, {}).get(day_of_week, {})
+
     return {
         "menu_id": slot_row[0],
         "menu_name": slot_row[1],
         "menu_slot_id": slot_row[2],
-        "week_number": slot_row[3],
-        "day_of_week": slot_row[4],
+        "week_number": week_number,
+        "day_of_week": day_of_week,
         "meal_period": slot_row[5],
         "concept_name": slot_row[6],
+        "service_date": service_date.get("date", ""),
+        "service_date_display": service_date.get("display", ""),
         "assigned_items": [
             {
                 "menu_slot_item_id": row[0],

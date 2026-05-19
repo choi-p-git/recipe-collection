@@ -525,10 +525,15 @@ Locked future design direction:
 * continue improving non-recipe/base-food detail presentation
 * preserve current shared item-detail route while improving presentation
 
-### 2. Menu Builder Integration
+### 2. Menu Builder / Forecasting / Production Integration
 
-* live recipes available for selection in Menu Builder
-* later use recipe/base food items in broader planning workflows
+Current state:
+
+* live recipes and base foods are available for selection in Menu Builder
+* Menu Builder supports dated menu cycles, service-day grids, ordered slot assignments, bulk copy/paste/clear actions, and dedicated week/day print views
+* Forecasting supports assignment-level scaling, user-serving targets, case mode, saved item case packs, advanced hotel-pan display, production batch splits, and production summary rollups
+* Production Record is active as the operational floor workflow after Forecasting
+* Recipe print is active as a single kitchen production sheet using the active scaled target, flattened ingredients, display preferences, and sub-recipe grouping
 
 ### 2A. Menu Builder Spec v0.1
 
@@ -593,7 +598,7 @@ Locked current direction:
   * right-side pending assignment context
   * confirm / cancel actions
 
-* drag-and-drop is deferred to a later release
+* drag-and-drop is deferred to a later release, but slot item ordering should remain drag-ready
 * first copy / paste scope should be limited to item assignments only
 * first utility actions should support:
 
@@ -611,15 +616,115 @@ Locked current direction:
   * system solves backward for the parent recipe scale factor
 
 * bottom-up scaling belongs in the shared scaling service layer, not only in Menu Builder UI
-* first Menu Builder release should defer:
+* current Menu Builder / Forecasting / Production stack still defers:
 
   * drag-and-drop
   * rules engine / conditional checks
   * slot-level scaling overrides
   * nutrition balancing
-  * inventory rollups
+  * inventory rollups and ordering calculations
 
 * rules checks and conditional checks should be implemented only after base Menu Builder object behavior is stable
+
+### 2C. Production Record Current State
+
+Current data flow:
+
+* Menu Builder assigns live items to date-aware service slots
+* Forecasting stores scaled production targets per assignment
+* Production Summary rolls assignment forecasts into item-level production requirements
+* Production Record snapshots the selected week/day production summary into record lines
+* Users enter actual production and end-of-service leftover/shortage by line
+* The service calculates implied demand and forecast accuracy from actual production minus leftover/shortage
+* Users select a reason code and may add reason notes or line notes
+* Posting locks the record and preserves it for review, print, CSV export, and future analysis
+
+Current operational workflow:
+
+* the production user lands on the current service day by default
+* a manager or lead can print a kitchen floor sheet before service
+* cooks/managers can enter actual production, leftover/shortage, reason, and notes digitally
+* quantity fields accept simple math formulas for live count totals
+* incomplete formula drafts are preserved while typing and do not count as completed quantities
+* posted records are locked from editing and reviewed from a separate posted view
+
+Important current semantics:
+
+* `end_service_variance_quantity` represents end-of-service leftover or shortage from actual production
+* positive variance means leftover food
+* negative variance means under-production against demand
+* implied demand is calculated as `actual production - end service variance`
+* forecast accuracy is calculated against implied demand, not raw actual production
+* reason codes are available even when the record is within the accurate range
+
+### 2D. Production Record Refinement Roadmap
+
+Next recommended slice:
+
+* add a Production Record index/history page scoped to a menu
+* list draft and posted records by service date, week, and day
+* expose quick actions:
+
+  * continue draft entry
+  * review posted record
+  * print floor sheet
+  * export CSV
+
+* default Production Record landing should still favor the current service day
+* history views should make past posted records easy to retrieve without rebuilding a forecast context manually
+
+Next reporting slice:
+
+* add filters for:
+
+  * date range
+  * week/day
+  * item
+  * reason code
+  * accuracy level
+  * draft/posted status
+
+* add aggregate summaries for:
+
+  * accurate / review / miss counts
+  * top reason codes
+  * leftover quantities by item
+  * shortage quantities by item
+  * forecast error trend by item over time
+
+Implementation guidance:
+
+* reporting should consume posted Production Records first
+* draft records may be visible operationally but should not drive analytics by default
+* keep report calculations in a service/query layer instead of templates
+* preserve formula text separately from calculated numeric values
+* keep reason-code values stable because future analytics and inventory/waste workflows will depend on them
+
+### 2E. Future Inventory Tie-In Plan
+
+Inventory should build on the current Menu Builder / Forecasting / Production data path:
+
+* Forecasting provides expected demand and order-planning quantities
+* Production Record provides actual usage, leftover, shortage, and forecast miss signals
+* posted Production Records should feed historical demand and variance analysis
+* inventory should attach to item IDs, especially base-food ingredient IDs
+* reusable pack/case definitions should attach to item IDs, not recipes
+* menu-cell-local case sizes may exist for forecast work, but saving a reusable pack size should explicitly write an item-level pack definition
+* future live inventory feeds should match an inventory line to an item ID and case-size definition
+* inventory availability can later surface back into Forecasting as:
+
+  * available on hand
+  * expected shortage
+  * suggested order quantity
+  * case/pack order count
+  * live price or estimated cost when pricing data exists
+
+Deferred inventory work:
+
+* live vendor or inventory-system integrations
+* order guide generation
+* food-cost projection
+* food-waste app handoff beyond preserving positive Production Record variance as future leftover-food input
 
 ### 2B. Menu Builder Schema Draft v0.1
 
@@ -1042,6 +1147,10 @@ When extending this project:
 4. verify recipe create, edit, return-to-submitter, resubmit, analyze, and live flow
 5. verify notes, automatic workflow notifications, and notification clearing on item view
 6. verify live item default view hides workflow notes/history, with advanced toggle for privileged roles
+7. verify Menu Builder dated overview, slot assignment, bulk actions, and week/day print
+8. verify Forecasting scaling, case mode, batch splits, production summary, and recipe scale links
+9. verify Production Record current-day landing, formula entry, reason/notes, post/lock, review, CSV export, and print
+10. verify Recipe print uses active scaling, flattened ingredients, display preferences, and sub-recipe grouping
 
 ## Schema Change Checklist
 
@@ -1055,6 +1164,7 @@ When extending this project:
 
 ## Current Next Logical Development Steps
 
-1. draft first Menu Builder schema and route/service path from `Menu Builder Spec v0.1`
-2. implement Menu Builder create flow
-3. implement Menu overview shell and slot assignment flow
+1. implement Production Record index/history page per menu
+2. implement Production Record filters and lightweight reporting summaries
+3. refine posted-record data contracts for future analytics and inventory use
+4. begin Inventory Management foundation with item-linked inventory lines and item-linked pack/case definitions

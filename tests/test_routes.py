@@ -20,6 +20,11 @@ def test_index_and_form_routes_render(app_client):
     assert app_client.get("/menus").status_code == 200
     assert app_client.get("/menus/new").status_code == 200
 
+    new_menu_page = app_client.get("/menus/new").get_data(as_text=True)
+    assert 'type="date"' in new_menu_page
+    assert "data-menu-date-range" in new_menu_page
+    assert "data-menu-date-summary" in new_menu_page
+
 
 def test_new_base_food_post_redirects_to_item_detail(app_client):
     response = app_client.post(
@@ -92,6 +97,8 @@ def test_new_menu_post_creates_menu_and_materializes_slots(app_client, isolated_
         "/menus/new",
         data={
             "menu_name": "Spring Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-17",
             "service_days": ["monday", "wednesday"],
             "meal_periods": ["lunch", "dinner"],
             "concepts": ["hot_line", "salad_bar"],
@@ -115,11 +122,31 @@ def test_new_menu_post_creates_menu_and_materializes_slots(app_client, isolated_
     assert slot_count == 16
 
 
+def test_new_menu_post_requires_date_range(app_client):
+    response = app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "Missing Date Menu",
+            "service_days": ["monday"],
+            "meal_periods": ["lunch"],
+            "concepts": ["hot_line"],
+            "menu_length_weeks": "1",
+        },
+        follow_redirects=False,
+    )
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Menu start date and end date are required." in page
+
+
 def test_menu_detail_route_renders_week_overview(app_client):
     create_response = app_client.post(
         "/menus/new",
         data={
             "menu_name": "Week Test Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-17",
             "service_days": ["monday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line", "salad_bar"],
@@ -139,11 +166,19 @@ def test_menu_detail_route_renders_week_overview(app_client):
     assert "Salad Bar" in page
 
 
-def test_my_menus_route_renders_current_user_menus(app_client):
+def test_my_menus_route_renders_current_user_menus(app_client, monkeypatch):
+    from datetime import date
+
+    import app as app_module
+
+    monkeypatch.setattr(app_module, "_current_service_date", lambda: date(2026, 5, 20))
+
     create_response = app_client.post(
         "/menus/new",
         data={
             "menu_name": "Owner Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-24",
             "service_days": ["monday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line"],
@@ -153,6 +188,7 @@ def test_my_menus_route_renders_current_user_menus(app_client):
     )
 
     assert create_response.status_code == 302
+    menu_location = create_response.headers["Location"]
 
     response = app_client.get("/menus")
     page = response.get_data(as_text=True)
@@ -160,6 +196,10 @@ def test_my_menus_route_renders_current_user_menus(app_client):
     assert response.status_code == 200
     assert "My Menus" in page
     assert "Owner Menu" in page
+    assert "2026-05-04 to 2026-05-24" in page
+    assert "Current week 3" in page
+    assert f"{menu_location}?week=3" in page
+    assert "Open Current Week" in page
     assert "Future Menu Workspaces" in page
 
 
@@ -168,6 +208,8 @@ def test_my_menus_route_shows_delete_action(app_client):
         "/menus/new",
         data={
             "menu_name": "Delete Action Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
             "service_days": ["monday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line"],
@@ -188,6 +230,8 @@ def test_menu_slot_assign_route_renders_search_and_current_slot(app_client):
         "/menus/new",
         data={
             "menu_name": "Assign Route Menu",
+            "menu_start_date": "2026-05-18",
+            "menu_end_date": "2026-05-22",
             "service_days": ["monday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line"],
@@ -203,6 +247,7 @@ def test_menu_slot_assign_route_renders_search_and_current_slot(app_client):
 
     assert response.status_code == 200
     assert "Assign Slot Items" in page
+    assert "May 18" in page
     assert "Pending Assignment" in page
     assert "menu_slot_assign.js" in page
 
@@ -212,6 +257,8 @@ def test_menu_detail_route_shows_delete_action(app_client):
         "/menus/new",
         data={
             "menu_name": "Delete Detail Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
             "service_days": ["monday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line"],
@@ -228,11 +275,72 @@ def test_menu_detail_route_shows_delete_action(app_client):
     assert "Edit Menu Config" in page
     assert "Delete Menu" in page
     assert "Forecasting" in page
+    assert "Production Record" in page
     assert "/forecast" in page
+    assert "/forecast?week=1" in page
+    assert "/production-record" in page
+    assert "/production-record?week=1" in page
+    assert "/print?week=1" in page
     assert "Bulk Slot Actions" in page
     assert "Update Bulk Mode" in page
     assert "menu_detail.js" in page
     assert "Menu Summary" in page
+
+
+def test_menu_detail_route_shows_service_dates(app_client):
+    create_response = app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "Dated Detail Menu",
+            "menu_start_date": "2026-05-18",
+            "menu_end_date": "2026-05-31",
+            "service_days": ["monday", "wednesday"],
+            "meal_periods": ["lunch"],
+            "concepts": ["hot_line"],
+            "menu_length_weeks": "1",
+        },
+        follow_redirects=False,
+    )
+    menu_location = create_response.headers["Location"]
+
+    response = app_client.get(f"{menu_location}?week=2")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Week 2 Overview" in page
+    assert "May 25" in page
+    assert "May 27" in page
+
+
+def test_menu_detail_route_defaults_to_current_menu_week(app_client, monkeypatch):
+    from datetime import date
+
+    import app as app_module
+
+    monkeypatch.setattr(app_module, "_current_service_date", lambda: date(2026, 5, 20))
+
+    create_response = app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "Current Week Detail Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-24",
+            "service_days": ["monday", "wednesday"],
+            "meal_periods": ["lunch"],
+            "concepts": ["hot_line"],
+            "menu_length_weeks": "1",
+        },
+        follow_redirects=False,
+    )
+    menu_location = create_response.headers["Location"]
+
+    response = app_client.get(menu_location)
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Week 3 Overview" in page
+    assert "May 18" in page
+    assert "May 20" in page
 
 
 def test_menu_forecast_route_renders_day_recipes_in_menu_order(app_client, isolated_db):
@@ -275,6 +383,8 @@ def test_menu_forecast_route_renders_day_recipes_in_menu_order(app_client, isola
         "/menus/new",
         data={
             "menu_name": "Forecast Route Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-06-07",
             "service_days": ["monday", "wednesday"],
             "meal_periods": ["lunch", "dinner"],
             "concepts": ["hot_line", "salad_bar"],
@@ -335,6 +445,8 @@ def test_menu_forecast_route_renders_day_recipes_in_menu_order(app_client, isola
     assert "<th>Portions Made</th>" in page
     assert "menu_forecast.js" in page
     assert "data-forecast-control" in page
+    assert "data-batch-display-unit" in page
+    assert "data-production-display-control" in page
     assert "data-user-serving-control" in page
     assert "data-desired-portions" in page
     assert "data-user-serving-result" in page
@@ -364,6 +476,8 @@ def test_api_update_menu_forecast_persists_scale_by_yield(app_client, isolated_d
         "/menus/new",
         data={
             "menu_name": "Forecast Save Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
             "service_days": ["monday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line"],
@@ -465,6 +579,565 @@ def test_api_update_menu_forecast_persists_scale_by_yield(app_client, isolated_d
     assert '<option value="oz" selected>oz</option>' in advanced_page
 
 
+def test_menu_forecast_defaults_to_current_menu_week(app_client, isolated_db, monkeypatch):
+    from datetime import date
+
+    import app as app_module
+
+    monkeypatch.setattr(app_module, "_current_service_date", lambda: date(2026, 5, 20))
+
+    base_food_id = create_base_food(item_name="Current Week Forecast Base")
+    recipe_id = create_recipe(
+        {
+            "item_name": "Current Week Forecast Entree",
+            "yield_quantity": 8,
+            "yield_unit": "each",
+            "primary_cooking_method_code": "bake",
+            "instruction_steps": ["Bake"],
+            "ingredients": [
+                {
+                    "component_item_id": base_food_id,
+                    "component_quantity": 1,
+                    "component_unit": "lb",
+                }
+            ],
+        }
+    )
+    create_response = app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "Current Week Forecast Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-24",
+            "service_days": ["monday", "wednesday"],
+            "meal_periods": ["lunch"],
+            "concepts": ["hot_line"],
+            "menu_length_weeks": "1",
+        },
+        follow_redirects=False,
+    )
+    menu_id = int(create_response.headers["Location"].rstrip("/").split("/")[-1])
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id IN (?, ?)", (base_food_id, recipe_id))
+    cursor.execute(
+        """
+        SELECT menu_length_weeks
+        FROM menu
+        WHERE menu_id = ?
+        """,
+        (menu_id,),
+    )
+    menu_length_weeks = cursor.fetchone()[0]
+    cursor.execute(
+        """
+        SELECT menu_slot_id
+        FROM menu_slot
+        WHERE menu_id = ?
+          AND week_number = 3
+          AND day_of_week = 'wednesday'
+        """,
+        (menu_id,),
+    )
+    menu_slot_id = cursor.fetchone()[0]
+    conn.commit()
+    conn.close()
+
+    app_client.post(
+        f"/menus/{menu_id}/slots/{menu_slot_id}/assign",
+        data={"week": "3", "selected_item_ids": [str(recipe_id)]},
+        follow_redirects=False,
+    )
+
+    page_response = app_client.get(f"/menus/{menu_id}/forecast")
+    page = page_response.get_data(as_text=True)
+
+    assert page_response.status_code == 200
+    assert menu_length_weeks == 3
+    assert "Items For Wednesday, Week 3" in page
+    assert "May 20" in page
+    assert "Current Week Forecast Entree" in page
+
+
+def test_production_record_route_defaults_to_current_service_day(app_client, isolated_db, monkeypatch):
+    from datetime import date
+
+    import app as app_module
+
+    monkeypatch.setattr(app_module, "_current_day_of_week", lambda: "wednesday")
+    monkeypatch.setattr(app_module, "_current_service_date", lambda: date(2026, 5, 20))
+
+    base_food_id = create_base_food(item_name="Current Day Record Base")
+    recipe_id = create_recipe(
+        {
+            "item_name": "Current Day Record Soup",
+            "yield_quantity": 8,
+            "yield_unit": "each",
+            "primary_cooking_method_code": "simmer",
+            "instruction_steps": ["Cook"],
+            "ingredients": [
+                {
+                    "component_item_id": base_food_id,
+                    "component_quantity": 1,
+                    "component_unit": "cup",
+                }
+            ],
+        }
+    )
+    create_response = app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "Current Day Record Menu",
+            "menu_start_date": "2026-05-18",
+            "menu_end_date": "2026-05-22",
+            "service_days": ["monday", "wednesday"],
+            "meal_periods": ["lunch"],
+            "concepts": ["hot_line"],
+            "menu_length_weeks": "1",
+        },
+        follow_redirects=False,
+    )
+    menu_id = int(create_response.headers["Location"].rstrip("/").split("/")[-1])
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id IN (?, ?)", (base_food_id, recipe_id))
+    cursor.execute(
+        "SELECT menu_slot_id FROM menu_slot WHERE menu_id = ? AND day_of_week = 'wednesday'",
+        (menu_id,),
+    )
+    menu_slot_id = cursor.fetchone()[0]
+    conn.commit()
+    conn.close()
+
+    app_client.post(
+        f"/menus/{menu_id}/slots/{menu_slot_id}/assign",
+        data={"week": "1", "selected_item_ids": [str(recipe_id)]},
+        follow_redirects=False,
+    )
+
+    page_response = app_client.get(f"/menus/{menu_id}/production-record")
+    page = page_response.get_data(as_text=True)
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT COUNT(*)
+        FROM production_record pr
+        JOIN production_record_line prl
+          ON pr.production_record_id = prl.production_record_id
+        WHERE pr.menu_id = ?
+          AND pr.week_number = 1
+          AND pr.day_of_week = 'wednesday'
+          AND prl.item_id = ?
+        """,
+        (menu_id, recipe_id),
+    )
+    record_count = cursor.fetchone()[0]
+    conn.close()
+
+    assert page_response.status_code == 200
+    assert "Week 1 | Wednesday" in page
+    assert "May 20" in page
+    assert "Previous Service Day: May 18" in page
+    assert "Next Service Day" in page
+    assert "Current Day Record Soup" in page
+    assert record_count == 1
+
+
+def test_production_record_route_snapshots_forecast_and_saves_variance(app_client, isolated_db):
+    base_food_id = create_base_food(item_name="Production Record Base")
+    recipe_id = create_recipe(
+        {
+            "item_name": "Production Record Soup",
+            "yield_quantity": 10,
+            "yield_unit": "each",
+            "primary_cooking_method_code": "simmer",
+            "instruction_steps": ["Cook"],
+            "ingredients": [
+                {
+                    "component_item_id": base_food_id,
+                    "component_quantity": 1,
+                    "component_unit": "cup",
+                }
+            ],
+        }
+    )
+    create_response = app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "Production Record Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
+            "service_days": ["monday"],
+            "meal_periods": ["lunch"],
+            "concepts": ["hot_line"],
+            "menu_length_weeks": "1",
+        },
+        follow_redirects=False,
+    )
+    menu_id = int(create_response.headers["Location"].rstrip("/").split("/")[-1])
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id IN (?, ?)", (base_food_id, recipe_id))
+    cursor.execute("SELECT menu_slot_id FROM menu_slot WHERE menu_id = ?", (menu_id,))
+    menu_slot_id = cursor.fetchone()[0]
+    conn.commit()
+    conn.close()
+
+    app_client.post(
+        f"/menus/{menu_id}/slots/{menu_slot_id}/assign",
+        data={"week": "1", "selected_item_ids": [str(recipe_id)]},
+        follow_redirects=False,
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT menu_slot_item_id FROM menu_slot_item WHERE menu_slot_id = ?", (menu_slot_id,))
+    menu_slot_item_id = cursor.fetchone()[0]
+    conn.close()
+
+    forecast_response = app_client.put(
+        f"/api/menus/{menu_id}/forecast/{menu_slot_item_id}",
+        json={
+            "forecast_yield_quantity": "10",
+            "forecast_yield_unit": "each",
+        },
+    )
+    assert forecast_response.status_code == 200
+
+    page_response = app_client.get(f"/menus/{menu_id}/production-record?week=1&day=monday")
+    page = page_response.get_data(as_text=True)
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT prl.production_record_line_id
+        FROM production_record_line prl
+        JOIN production_record pr
+          ON pr.production_record_id = prl.production_record_id
+        WHERE pr.menu_id = ?
+          AND pr.week_number = 1
+          AND pr.day_of_week = 'monday'
+          AND prl.item_id = ?
+        """,
+        (menu_id, recipe_id),
+    )
+    production_record_line_id = cursor.fetchone()[0]
+    conn.close()
+
+    assert page_response.status_code == 200
+    assert "Production Record" in page
+    assert "Production Record Soup" in page
+    assert "10 each" in page
+    assert "End of Service Variance" in page
+    assert "Forecast Accuracy" in page
+    assert "data-production-record-summary" in page
+    assert 'data-unrecorded-count="1"' in page
+    assert 'type="text"' in page
+    assert 'inputmode="decimal"' in page
+    assert "Use Forecast" in page
+    assert "Zero Leftover" in page
+    assert "Extra Guests" in page
+    assert "As Expected" in page
+    assert '<select id="production_week" name="week">' in page
+    assert "production_record.js" in page
+    assert "data-production-record-line" in page
+
+    save_response = app_client.put(
+        f"/api/menus/{menu_id}/production-record/lines/{production_record_line_id}",
+        json={
+            "actual_quantity": "10",
+            "actual_unit": "each",
+            "end_service_variance_quantity": "1",
+            "end_service_variance_unit": "each",
+            "reason_code": "other",
+            "reason_note": "Late lunch rush",
+            "notes": "Use kettle B next time",
+        },
+    )
+    payload = save_response.get_json()
+
+    assert save_response.status_code == 200
+    assert payload["line"]["actual_quantity"] == 10
+    assert payload["line"]["end_service_variance_quantity"] == 1
+    assert payload["line"]["implied_demand_quantity"] == 9
+    assert payload["line"]["forecast_error_quantity"] == 1
+    assert payload["line"]["forecast_error_percent"] == 10
+    assert payload["line"]["forecast_accuracy_level"] == "review"
+    assert payload["line"]["reason_code"] == "other"
+    assert payload["line"]["reason_note"] == "Late lunch rush"
+    assert payload["line"]["notes"] == "Use kettle B next time"
+
+    formula_response = app_client.put(
+        f"/api/menus/{menu_id}/production-record/lines/{production_record_line_id}",
+        json={
+            "actual_quantity": "(4+6)*2",
+            "actual_unit": "each",
+            "end_service_variance_quantity": "-",
+            "end_service_variance_unit": "each",
+            "reason_code": "as_expected",
+        },
+    )
+    formula_payload = formula_response.get_json()
+
+    assert formula_response.status_code == 200
+    assert formula_payload["line"]["actual_quantity"] == 20
+    assert formula_payload["line"]["actual_quantity_formula"] == "(4+6)*2"
+    assert formula_payload["line"]["end_service_variance_quantity"] is None
+    assert formula_payload["line"]["end_service_variance_quantity_formula"] == "-"
+
+    formula_page_response = app_client.get(f"/menus/{menu_id}/production-record?week=1&day=monday")
+    formula_page = formula_page_response.get_data(as_text=True)
+
+    assert formula_page_response.status_code == 200
+    assert 'data-formula-value="(4+6)*2"' in formula_page
+    assert 'data-formula-value="-"' in formula_page
+
+    draft_formula_response = app_client.put(
+        f"/api/menus/{menu_id}/production-record/lines/{production_record_line_id}",
+        json={
+            "actual_quantity": "2-",
+            "actual_unit": "each",
+            "end_service_variance_quantity": "0",
+            "end_service_variance_unit": "each",
+        },
+    )
+    draft_formula_payload = draft_formula_response.get_json()
+
+    assert draft_formula_response.status_code == 200
+    assert draft_formula_payload["line"]["actual_quantity"] is None
+    assert draft_formula_payload["line"]["actual_quantity_formula"] == "2-"
+    assert draft_formula_payload["line"]["end_service_variance_quantity"] == 0
+
+    invalid_formula_response = app_client.put(
+        f"/api/menus/{menu_id}/production-record/lines/{production_record_line_id}",
+        json={
+            "actual_quantity": "2..5",
+            "actual_unit": "each",
+            "end_service_variance_quantity": "0",
+            "end_service_variance_unit": "each",
+        },
+    )
+    invalid_formula_payload = invalid_formula_response.get_json()
+
+    assert invalid_formula_response.status_code == 400
+    assert "formula is incomplete or invalid" in invalid_formula_payload["error"]
+
+    shortage_response = app_client.put(
+        f"/api/menus/{menu_id}/production-record/lines/{production_record_line_id}",
+        json={
+            "actual_quantity": "11",
+            "actual_unit": "each",
+            "end_service_variance_quantity": "-1",
+            "end_service_variance_unit": "each",
+            "reason_code": "extra_guests",
+        },
+    )
+    shortage_payload = shortage_response.get_json()
+
+    assert shortage_response.status_code == 200
+    assert shortage_payload["line"]["end_service_variance_quantity"] == -1
+    assert shortage_payload["line"]["implied_demand_quantity"] == 12
+    assert shortage_payload["line"]["forecast_error_quantity"] == -2
+    assert shortage_payload["line"]["forecast_error_percent"] == -20
+    assert shortage_payload["line"]["forecast_accuracy_level"] == "miss"
+    assert shortage_payload["line"]["reason_code"] == "extra_guests"
+    assert shortage_payload["line"]["reason_note"] == ""
+
+    accurate_response = app_client.put(
+        f"/api/menus/{menu_id}/production-record/lines/{production_record_line_id}",
+        json={
+            "actual_quantity": "10",
+            "actual_unit": "each",
+            "end_service_variance_quantity": "0.0004",
+            "end_service_variance_unit": "each",
+            "reason_code": "as_expected",
+        },
+    )
+    accurate_payload = accurate_response.get_json()
+
+    assert accurate_response.status_code == 200
+    assert accurate_payload["line"]["end_service_variance_quantity_display"] == "0"
+    assert accurate_payload["line"]["forecast_error_quantity_display"] == "0"
+    assert accurate_payload["line"]["forecast_error_percent_display"] == "0.004"
+    assert "according to taste" not in str(accurate_payload)
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        UPDATE production_record_line
+        SET forecast_quantity = 1,
+            forecast_unit = 'pan_half_4'
+        WHERE production_record_line_id = ?
+        """,
+        (production_record_line_id,),
+    )
+    conn.commit()
+    conn.close()
+
+    pan_response = app_client.put(
+        f"/api/menus/{menu_id}/production-record/lines/{production_record_line_id}",
+        json={
+            "actual_quantity": "1",
+            "actual_unit": "pan_half_4",
+            "end_service_variance_quantity": "0",
+            "end_service_variance_unit": "pan_half_4",
+            "reason_code": "as_expected",
+        },
+    )
+    pan_payload = pan_response.get_json()
+
+    assert pan_response.status_code == 200
+    assert pan_payload["line"]["implied_demand_unit"] == "pan_half_4"
+    assert pan_payload["line"]["implied_demand_unit_label"] == 'Half pan, 4"'
+
+    missing_post_response = app_client.post(
+        f"/menus/{menu_id}/production-record/999999/post",
+        data={"week": "1", "day": "monday"},
+        follow_redirects=True,
+    )
+    assert "Production record not found." in missing_post_response.get_data(as_text=True)
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT pr.production_record_id
+        FROM production_record_line prl
+        JOIN production_record pr
+          ON pr.production_record_id = prl.production_record_id
+        WHERE prl.production_record_line_id = ?
+        """,
+        (production_record_line_id,),
+    )
+    production_record_id = cursor.fetchone()[0]
+    conn.close()
+
+    post_response = app_client.post(
+        f"/menus/{menu_id}/production-record/{production_record_id}/post",
+        data={"week": "1", "day": "monday"},
+        follow_redirects=True,
+    )
+    post_page = post_response.get_data(as_text=True)
+
+    assert post_response.status_code == 200
+    assert "Production record posted." in post_page
+    assert "Posted Production Record" in post_page
+    assert "Status: Posted" in post_page
+    assert "Print" in post_page
+    assert "Use kettle B next time" in post_page
+    assert "As Expected" in post_page
+    assert "Entry View" in post_page
+    assert "Export CSV" in post_page
+
+    csv_response = app_client.get(f"/menus/{menu_id}/production-record/{production_record_id}/export.csv")
+    csv_body = csv_response.get_data(as_text=True)
+
+    assert csv_response.status_code == 200
+    assert csv_response.mimetype == "text/csv"
+    assert "attachment; filename=production-record-menu-" in csv_response.headers["Content-Disposition"]
+    assert "Forecast Quantity,Forecast Unit,Actual Quantity,Actual Unit" in csv_body
+    assert "Production Record Menu" in csv_body
+    assert "Production Record Soup" in csv_body
+    assert "Half pan, 4\"" in csv_body
+    assert "As Expected" in csv_body
+    assert "Use kettle B next time" in csv_body
+
+    posted_entry_response = app_client.get(f"/menus/{menu_id}/production-record?week=1&day=monday")
+    posted_entry_page = posted_entry_response.get_data(as_text=True)
+
+    assert posted_entry_response.status_code == 200
+    assert "Review Posted Record" in posted_entry_page
+    assert "This production record is posted and locked for editing." in posted_entry_page
+
+    locked_response = app_client.put(
+        f"/api/menus/{menu_id}/production-record/lines/{production_record_line_id}",
+        json={
+            "actual_quantity": "2",
+            "actual_unit": "pan_half_4",
+            "end_service_variance_quantity": "0",
+            "end_service_variance_unit": "pan_half_4",
+        },
+    )
+    locked_payload = locked_response.get_json()
+
+    assert locked_response.status_code == 400
+    assert "cannot be edited" in locked_payload["error"]
+
+
+def test_production_record_post_requires_recorded_lines(app_client, isolated_db):
+    base_food_id = create_base_food(item_name="Incomplete Production Base")
+    recipe_id = create_recipe(
+        {
+            "item_name": "Incomplete Production Soup",
+            "yield_quantity": 10,
+            "yield_unit": "each",
+            "primary_cooking_method_code": "simmer",
+            "instruction_steps": ["Cook"],
+            "ingredients": [
+                {
+                    "component_item_id": base_food_id,
+                    "component_quantity": 1,
+                    "component_unit": "cup",
+                }
+            ],
+        }
+    )
+    create_response = app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "Incomplete Production Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
+            "service_days": ["monday"],
+            "meal_periods": ["lunch"],
+            "concepts": ["hot_line"],
+            "menu_length_weeks": "1",
+        },
+        follow_redirects=False,
+    )
+    menu_id = int(create_response.headers["Location"].rstrip("/").split("/")[-1])
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id IN (?, ?)", (base_food_id, recipe_id))
+    cursor.execute("SELECT menu_slot_id FROM menu_slot WHERE menu_id = ?", (menu_id,))
+    menu_slot_id = cursor.fetchone()[0]
+    conn.commit()
+    conn.close()
+
+    app_client.post(
+        f"/menus/{menu_id}/slots/{menu_slot_id}/assign",
+        data={"week": "1", "selected_item_ids": [str(recipe_id)]},
+        follow_redirects=False,
+    )
+    page_response = app_client.get(f"/menus/{menu_id}/production-record?week=1&day=monday")
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT production_record_id FROM production_record WHERE menu_id = ?", (menu_id,))
+    production_record_id = cursor.fetchone()[0]
+    conn.close()
+
+    post_response = app_client.post(
+        f"/menus/{menu_id}/production-record/{production_record_id}/post",
+        data={"week": "1", "day": "monday"},
+        follow_redirects=True,
+    )
+    page = post_response.get_data(as_text=True)
+
+    assert page_response.status_code == 200
+    assert post_response.status_code == 200
+    assert "Record every production line before posting." in page
+    assert "Status: Draft" in page
+
+
 def test_api_update_menu_forecast_rejects_invalid_quantity(app_client, isolated_db):
     base_food_id = create_base_food(item_name="Forecast Invalid Base")
     recipe_id = create_recipe(
@@ -487,6 +1160,8 @@ def test_api_update_menu_forecast_rejects_invalid_quantity(app_client, isolated_
         "/menus/new",
         data={
             "menu_name": "Forecast Invalid Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
             "service_days": ["monday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line"],
@@ -536,6 +1211,8 @@ def test_menu_forecast_case_mode_persists_calculated_yield(app_client, isolated_
         "/menus/new",
         data={
             "menu_name": "Forecast Case Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
             "service_days": ["monday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line"],
@@ -594,6 +1271,62 @@ def test_menu_forecast_case_mode_persists_calculated_yield(app_client, isolated_
     assert payload["forecast"]["user_serving_size_quantity"] is None
     assert payload["forecast"]["desired_portions"] is None
 
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM item_case_pack WHERE item_id = ?", (base_food_id,))
+    assert cursor.fetchone()[0] == 0
+    conn.close()
+
+    save_case_response = app_client.post(
+        f"/api/menus/{menu_id}/forecast/{menu_slot_item_id}/case-packs",
+        json={
+            "item_id": str(base_food_id),
+            "pack_quantity": "5",
+            "subunit_quantity": "10",
+            "subunit_unit": "lb",
+        },
+    )
+    save_case_payload = save_case_response.get_json()
+
+    assert save_case_response.status_code == 200
+    assert save_case_payload["case_pack"]["item_id"] == base_food_id
+    assert save_case_payload["case_pack"]["pack_quantity"] == 5
+    assert save_case_payload["case_pack"]["subunit_quantity"] == 10
+    assert save_case_payload["case_pack"]["subunit_unit"] == "lb"
+
+    duplicate_case_response = app_client.post(
+        f"/api/menus/{menu_id}/forecast/{menu_slot_item_id}/case-packs",
+        json={
+            "item_id": str(base_food_id),
+            "pack_quantity": "5.0",
+            "subunit_quantity": "10.000",
+            "subunit_unit": "lb",
+        },
+    )
+    duplicate_case_payload = duplicate_case_response.get_json()
+
+    assert duplicate_case_response.status_code == 400
+    assert "already saved" in duplicate_case_payload["error"]
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO item_case_pack (
+            item_id,
+            pack_quantity,
+            subunit_quantity,
+            subunit_unit,
+            created_at,
+            updated_at
+        )
+        VALUES (?, 5, 10, 'lb', datetime('now'), datetime('now'))
+        """,
+        (base_food_id,),
+    )
+    conn.commit()
+    conn.close()
+
     page_response = app_client.get(f"/menus/{menu_id}/forecast?week=1&day=monday")
     page = page_response.get_data(as_text=True)
 
@@ -604,6 +1337,10 @@ def test_menu_forecast_case_mode_persists_calculated_yield(app_client, isolated_
     assert '<option value="lb" selected>lb</option>' in page
     assert "Linked to Forecast Case Fries" in page
     assert "data-case-config" in page
+    assert "data-save-case-pack" in page
+    assert "data-case-pack-options" in page
+    assert page.count('"pack_quantity": 5.0') == 1
+    assert "data-production-display-unit" in page
     assert "150 lb" in page
 
     zero_response = app_client.put(
@@ -667,6 +1404,8 @@ def test_menu_forecast_case_overlay_renders_flattened_candidates(app_client, iso
         "/menus/new",
         data={
             "menu_name": "Forecast Flat Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
             "service_days": ["monday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line"],
@@ -722,6 +1461,8 @@ def test_advanced_case_forecast_calculates_recipe_yield_and_allows_serving_size(
         "/menus/new",
         data={
             "menu_name": "Forecast Case Recipe Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
             "service_days": ["monday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line"],
@@ -816,6 +1557,8 @@ def test_advanced_case_forecast_bridges_ingredient_mass_to_recipe_each(app_clien
         "/menus/new",
         data={
             "menu_name": "Forecast Case Chicken Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
             "service_days": ["monday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line"],
@@ -907,6 +1650,8 @@ def test_forecast_advanced_scaling_confirms_bottom_up_yield(app_client, isolated
         "/menus/new",
         data={
             "menu_name": "Forecast Advanced Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
             "service_days": ["monday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line"],
@@ -1010,6 +1755,8 @@ def test_forecast_yield_scaling_can_confirm_back_to_forecast(app_client, isolate
         "/menus/new",
         data={
             "menu_name": "Forecast Yield Confirm Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
             "service_days": ["monday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line"],
@@ -1337,6 +2084,8 @@ def test_forecast_bottom_up_scaling_saves_scaled_recipe_mass_unit(app_client, is
         "/menus/new",
         data={
             "menu_name": "Forecast Mass Save Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
             "service_days": ["monday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line"],
@@ -1449,6 +2198,8 @@ def test_menu_forecast_route_filters_and_fuzzy_searches_recipes(app_client, isol
         "/menus/new",
         data={
             "menu_name": "Forecast Filter Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
             "service_days": ["monday"],
             "meal_periods": ["lunch", "dinner"],
             "concepts": ["hot_line", "salad_bar"],
@@ -1501,6 +2252,8 @@ def test_edit_menu_route_prefills_existing_config(app_client):
         "/menus/new",
         data={
             "menu_name": "Prefill Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-17",
             "service_days": ["monday", "wednesday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line"],
@@ -1518,6 +2271,8 @@ def test_edit_menu_route_prefills_existing_config(app_client):
     assert 'value="Prefill Menu"' in page
     assert "Update Config" in page
     assert "menu_config.js" in page
+    assert "data-menu-start-date" in page
+    assert "data-menu-end-date" in page
 
 
 def test_edit_menu_post_updates_config_and_pops_removed_slots(app_client, isolated_db):
@@ -1525,6 +2280,8 @@ def test_edit_menu_post_updates_config_and_pops_removed_slots(app_client, isolat
         "/menus/new",
         data={
             "menu_name": "Update Route Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-17",
             "service_days": ["monday", "tuesday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line", "salad_bar"],
@@ -1564,6 +2321,8 @@ def test_edit_menu_post_updates_config_and_pops_removed_slots(app_client, isolat
         f"/menus/{menu_id}/edit",
         data={
             "menu_name": "Updated Route Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
             "service_days": ["monday", "wednesday"],
             "meal_periods": ["lunch", "dinner"],
             "concepts": ["hot_line"],
@@ -1609,6 +2368,8 @@ def test_menu_detail_route_uses_updated_concept_order(app_client):
         "/menus/new",
         data={
             "menu_name": "Concept Order Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
             "service_days": ["monday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line", "salad_bar", "grab_go"],
@@ -1622,6 +2383,8 @@ def test_menu_detail_route_uses_updated_concept_order(app_client):
         f"/menus/{menu_id}/edit",
         data={
             "menu_name": "Concept Order Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
             "service_days": ["monday"],
             "meal_periods": ["lunch"],
             "concepts": ["grab_go", "hot_line", "salad_bar"],
@@ -1648,6 +2411,8 @@ def test_menu_slot_assign_route_renders_search_results(app_client, isolated_db):
         "/menus/new",
         data={
             "menu_name": "Assign Search Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
             "service_days": ["monday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line"],
@@ -1680,6 +2445,8 @@ def test_menu_slot_assign_route_exposes_search_pagination_metadata(app_client, i
         "/menus/new",
         data={
             "menu_name": "Assign Search Paging Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
             "service_days": ["monday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line"],
@@ -1719,6 +2486,8 @@ def test_menu_slot_assign_post_updates_slot_and_renders_in_menu_overview(app_cli
         "/menus/new",
         data={
             "menu_name": "Assigned Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
             "service_days": ["monday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line"],
@@ -1764,10 +2533,44 @@ def test_menu_slot_assign_post_updates_slot_and_renders_in_menu_overview(app_cli
     )
     page = response.get_data(as_text=True)
 
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT item_id, item_sequence
+        FROM menu_slot_item
+        WHERE menu_slot_id = ?
+        ORDER BY item_sequence ASC
+        """,
+        (menu_slot_id,),
+    )
+    assigned_rows = cursor.fetchall()
+    conn.close()
+
     assert response.status_code == 200
     assert "Menu slot assignments updated." in page
     assert "Assigned Slot Salad" in page
     assert "Assigned Slot Lettuce" in page
+    assert assigned_rows == [(recipe_id, 1), (base_food_id, 2)]
+
+    week_print_response = app_client.get(f"/menus/{menu_id}/print?week=1")
+    week_print_page = week_print_response.get_data(as_text=True)
+
+    assert week_print_response.status_code == 200
+    assert "Print Menu" in week_print_page
+    assert "Print Week" in week_print_page
+    assert "Print Day" in week_print_page
+    assert "Assigned Slot Salad" in week_print_page
+    assert f"Recipe #{recipe_id}" in week_print_page
+    assert f"Base Food #{base_food_id}" in week_print_page
+
+    day_print_response = app_client.get(f"/menus/{menu_id}/print?mode=day&week=1")
+    day_print_page = day_print_response.get_data(as_text=True)
+
+    assert day_print_response.status_code == 200
+    assert "Planning Notes" in day_print_page
+    assert "Monday" in day_print_page
+    assert "menu-print-write-line" in day_print_page
 
 
 def test_copy_and_paste_menu_slot_routes_update_session_and_target_slot(app_client, isolated_db):
@@ -1775,6 +2578,8 @@ def test_copy_and_paste_menu_slot_routes_update_session_and_target_slot(app_clie
         "/menus/new",
         data={
             "menu_name": "Clipboard Route Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
             "service_days": ["monday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line", "salad_bar"],
@@ -1848,6 +2653,8 @@ def test_menu_detail_route_renders_bulk_selection_mode(app_client):
         "/menus/new",
         data={
             "menu_name": "Bulk Selection Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
             "service_days": ["monday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line"],
@@ -1871,6 +2678,8 @@ def test_menu_detail_route_renders_concept_header_selection_mode(app_client):
         "/menus/new",
         data={
             "menu_name": "Bulk Concept Selection Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
             "service_days": ["monday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line"],
@@ -1894,6 +2703,8 @@ def test_menu_detail_route_renders_day_header_copy_selection_mode(app_client):
         "/menus/new",
         data={
             "menu_name": "Bulk Day Copy Selection Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
             "service_days": ["monday", "tuesday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line"],
@@ -1917,6 +2728,8 @@ def test_menu_detail_route_renders_week_copy_confirmation_without_checkboxes(app
         "/menus/new",
         data={
             "menu_name": "Bulk Week Copy Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-17",
             "service_days": ["monday", "tuesday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line"],
@@ -1942,6 +2755,8 @@ def test_menu_detail_route_renders_day_header_selection_mode(app_client):
         "/menus/new",
         data={
             "menu_name": "Bulk Day Selection Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
             "service_days": ["monday", "tuesday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line"],
@@ -1964,6 +2779,8 @@ def test_menu_detail_route_renders_week_clear_confirmation_without_checkboxes(ap
         "/menus/new",
         data={
             "menu_name": "Bulk Week Clear Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
             "service_days": ["monday", "tuesday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line"],
@@ -1989,6 +2806,8 @@ def test_menu_bulk_copy_and_paste_routes_work_for_cell_mode(app_client, isolated
         "/menus/new",
         data={
             "menu_name": "Bulk Cell Route Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
             "service_days": ["monday", "tuesday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line"],
@@ -2054,6 +2873,8 @@ def test_menu_bulk_copy_and_paste_routes_work_for_day_mode(app_client, isolated_
         "/menus/new",
         data={
             "menu_name": "Bulk Day Route Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
             "service_days": ["monday", "tuesday"],
             "meal_periods": ["lunch", "dinner"],
             "concepts": ["hot_line"],
@@ -2135,6 +2956,8 @@ def test_menu_bulk_copy_week_redirects_to_week_selection_page(app_client, isolat
         "/menus/new",
         data={
             "menu_name": "Bulk Week Route Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-06-14",
             "service_days": ["monday", "tuesday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line"],
@@ -2173,6 +2996,8 @@ def test_menu_week_paste_page_renders_cycle_selection_grid(app_client, isolated_
         "/menus/new",
         data={
             "menu_name": "Week Paste Page Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-06-28",
             "service_days": ["monday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line"],
@@ -2210,6 +3035,8 @@ def test_menu_week_paste_page_renders_cycle_selection_grid(app_client, isolated_
     assert "Select Matching Cycle Weeks" in page
     assert "Week 1" in page
     assert "Week 8" in page
+    assert "May 4" in page
+    assert "Jun 22" in page
     assert "Source Week" in page
     assert "menu_week_paste.js" in page
 
@@ -2219,6 +3046,8 @@ def test_menu_detail_route_redirects_week_clipboard_paste_to_week_selection_link
         "/menus/new",
         data={
             "menu_name": "Week Clipboard Link Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-06-07",
             "service_days": ["monday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line"],
@@ -2262,6 +3091,8 @@ def test_menu_week_paste_post_applies_copied_week_to_selected_destination(app_cl
         "/menus/new",
         data={
             "menu_name": "Week Paste Apply Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-17",
             "service_days": ["monday", "tuesday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line", "salad_bar"],
@@ -2366,6 +3197,8 @@ def test_menu_bulk_clear_route_supports_day_scope(app_client, isolated_db):
         "/menus/new",
         data={
             "menu_name": "Bulk Day Clear Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
             "service_days": ["monday", "tuesday"],
             "meal_periods": ["lunch", "dinner"],
             "concepts": ["hot_line"],
@@ -2439,6 +3272,8 @@ def test_clear_menu_slot_route_removes_assignments(app_client, isolated_db):
         "/menus/new",
         data={
             "menu_name": "Clear Route Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
             "service_days": ["monday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line"],
@@ -2486,6 +3321,8 @@ def test_paste_menu_slot_route_requires_copied_items(app_client, isolated_db):
         "/menus/new",
         data={
             "menu_name": "Paste Empty Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
             "service_days": ["monday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line"],
@@ -2515,6 +3352,8 @@ def test_delete_menu_route_removes_menu_and_redirects_to_my_menus(app_client, is
         "/menus/new",
         data={
             "menu_name": "Delete Route Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
             "service_days": ["monday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line"],
@@ -2546,6 +3385,8 @@ def test_delete_menu_route_rejects_non_owner(app_client, isolated_db):
         "/menus/new",
         data={
             "menu_name": "Protected Route Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
             "service_days": ["monday"],
             "meal_periods": ["lunch"],
             "concepts": ["hot_line"],
@@ -2583,6 +3424,8 @@ def test_new_menu_post_shows_validation_error_for_missing_selections(app_client)
         "/menus/new",
         data={
             "menu_name": "Invalid Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
             "menu_length_weeks": "1",
         },
         follow_redirects=True,
@@ -4115,6 +4958,27 @@ def test_live_recipe_detail_supports_scaled_flattened_view(app_client, isolated_
     assert "Scaling to 2.0 each" in page
     assert "base yield 1.0 each." in page
     assert "Route Flat Sauce" in page
+    assert "Print Recipe" in page
+
+    print_response = app_client.get(f"/items/{recipe_id}/print?scale_quantity=2&scale_unit=each&display_mode=mass")
+    print_page = print_response.get_data(as_text=True)
+
+    assert print_response.status_code == 200
+    assert "Kitchen Production Sheet" in print_page
+    assert "Route Flat Parent" in print_page
+    assert f"Recipe / Item ID {recipe_id}" in print_page
+    assert "Scaled Yield" in print_page
+    assert "2.0 each" in print_page
+    assert "Ingredients" in print_page
+    assert "recipe-print-ingredient-sub_recipe depth-0" in print_page
+    assert "recipe-print-ingredient-base_food depth-1" in print_page
+    assert "Sub-recipe group" in print_page
+    assert "Route Flat Oil" in print_page
+    assert f"Base Food #{oil_id}" in print_page
+    assert "Method" in print_page
+    assert "Assemble" in print_page
+    assert "HACCP / Process Notes" in print_page
+    assert "Production Notes" in print_page
 
 
 def test_live_recipe_detail_shows_scaling_warning_for_incompatible_target_unit(app_client, isolated_db):
