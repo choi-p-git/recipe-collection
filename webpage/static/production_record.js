@@ -2,6 +2,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const SAVE_DEBOUNCE_MS = 500;
     const lineRows = Array.from(document.querySelectorAll("[data-production-record-line]"));
     const summary = document.querySelector("[data-production-record-summary]");
+    const dateSelectorForm = document.querySelector("[data-production-date-selector]");
 
     const isFilled = (value) => value !== null && value !== undefined && String(value).trim() !== "";
 
@@ -11,6 +12,32 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         return !(input.dataset.formulaValue && !isFilled(input.dataset.displayValue));
     };
+
+    const syncProductionDayLabels = () => {
+        if (!dateSelectorForm) {
+            return;
+        }
+        const weekSelect = dateSelectorForm.querySelector("#production_week");
+        const daySelect = dateSelectorForm.querySelector("#production_day");
+        if (!weekSelect || !daySelect) {
+            return;
+        }
+        let weekDayDates = {};
+        try {
+            weekDayDates = JSON.parse(dateSelectorForm.dataset.weekDayDates || "{}");
+        } catch {
+            weekDayDates = {};
+        }
+        const selectedWeekDates = weekDayDates[weekSelect.value] || {};
+        Array.from(daySelect.options).forEach((option) => {
+            const label = option.dataset.dayLabel || option.textContent.split(" - ")[0];
+            const displayDate = selectedWeekDates[option.value]?.display || "";
+            option.textContent = displayDate ? `${label} - ${displayDate}` : label;
+        });
+    };
+
+    dateSelectorForm?.querySelector("#production_week")?.addEventListener("change", syncProductionDayLabels);
+    syncProductionDayLabels();
 
     const updateSummary = () => {
         if (!summary) {

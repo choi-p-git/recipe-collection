@@ -59,6 +59,10 @@ def _coerce_optional_float(value, label: str) -> float | None:
     return normalized
 
 
+def _is_recordable_summary_row(row: dict) -> bool:
+    return bool(str(row.get("total_forecast_unit") or "").strip())
+
+
 def _evaluate_formula_node(node):
     if isinstance(node, ast.Expression):
         return _evaluate_formula_node(node.body)
@@ -273,7 +277,12 @@ def ensure_production_record(
         record_row = cursor.fetchone()
         production_record_id = int(record_row[0])
 
-        for summary_row in production_summary.get("rows", []):
+        recordable_summary_rows = [
+            summary_row
+            for summary_row in production_summary.get("rows", [])
+            if _is_recordable_summary_row(summary_row)
+        ]
+        for summary_row in recordable_summary_rows:
             cursor.execute(
                 """
                 INSERT INTO production_record_line (
@@ -310,7 +319,7 @@ def ensure_production_record(
                 ),
             )
 
-        summary_item_ids = [int(row["item_id"]) for row in production_summary.get("rows", [])]
+        summary_item_ids = [int(row["item_id"]) for row in recordable_summary_rows]
         if summary_item_ids:
             cursor.execute(
                 """
@@ -732,6 +741,39 @@ def get_production_record_review(
         "summary": _build_record_summary(lines),
         "lines": lines,
     }
+
+
+def get_production_record_for_service_day(
+    *,
+    menu_id: int,
+    week_number: int,
+    day_of_week: str,
+    actor_user_id: str,
+) -> dict | None:
+    initialize_database()
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        _ensure_menu_can_update(cursor, menu_id=menu_id, actor_user_id=actor_user_id)
+        cursor.execute(
+            """
+            SELECT production_record_id
+            FROM production_record
+            WHERE menu_id = ?
+              AND week_number = ?
+              AND day_of_week = ?
+            """,
+            (menu_id, week_number, day_of_week),
+        )
+        record_row = cursor.fetchone()
+        if record_row is None:
+            return None
+
+    return get_production_record_review(
+        menu_id=menu_id,
+        production_record_id=int(record_row[0]),
+        actor_user_id=actor_user_id,
+    )
 
 
 def build_production_record_unit_options(summary_row: dict) -> list[str]:

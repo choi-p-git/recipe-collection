@@ -1,4 +1,5 @@
 from difflib import SequenceMatcher
+import json
 
 from config.menu_builder import DAY_OF_WEEK_OPTIONS, MEAL_PERIOD_OPTIONS
 from db import get_connection
@@ -15,6 +16,7 @@ from services.recipe_flattening_service import build_flattened_recipe_view
 
 
 MIN_FORECAST_FUZZY_RATIO = 0.62
+MAX_OCCURRENCES_PER_GROUP = 6
 
 
 def _label_lookup(options: list[dict[str, str]]) -> dict[str, str]:
@@ -53,6 +55,155 @@ def _normalize_sort(sort_by: str, sort_order: str) -> tuple[str, str]:
     normalized_sort_by = sort_by if sort_by in {"menu_order", "meal_period", "concept"} else "menu_order"
     normalized_sort_order = sort_order if sort_order in {"asc", "desc"} else "asc"
     return normalized_sort_by, normalized_sort_order
+
+
+def _format_history_quantity(value) -> str:
+    if value is None:
+        return ""
+    rounded_quantity = round(float(value), 3)
+    if rounded_quantity == 0:
+        return "0"
+    return f"{rounded_quantity:g}"
+
+
+def _format_reason_label(reason_code: str | None) -> str:
+    if not reason_code:
+        return ""
+    return str(reason_code).replace("_", " ").title()
+
+
+def _build_occurrence_lookup(
+    cursor,
+    *,
+    item_ids: list[int],
+    current_menu_id: int,
+    selected_service_date: str,
+) -> dict[int, dict]:
+    unique_item_ids = sorted({int(item_id) for item_id in item_ids if item_id is not None})
+    if not unique_item_ids:
+        return {}
+
+    cursor.execute(
+        """
+        SELECT
+            pr.menu_id,
+            m.menu_name,
+            m.menu_start_date,
+            m.menu_end_date,
+            pr.production_record_id,
+            pr.week_number,
+            pr.day_of_week,
+            pr.status,
+            prl.item_id,
+            prl.slot_labels_json,
+            prl.forecast_quantity,
+            prl.forecast_unit,
+            prl.actual_quantity,
+            prl.actual_unit,
+            prl.end_service_variance_quantity,
+            prl.end_service_variance_unit,
+            prl.implied_demand_quantity,
+            prl.implied_demand_unit,
+            prl.forecast_error_quantity,
+            prl.forecast_error_unit,
+            prl.forecast_error_percent,
+            prl.forecast_accuracy_level,
+            prl.reason_code,
+            prl.reason_note,
+            prl.notes
+        FROM production_record_line prl
+        JOIN production_record pr
+          ON pr.production_record_id = prl.production_record_id
+        JOIN menu m
+          ON m.menu_id = pr.menu_id
+        WHERE prl.item_id IN ({})
+          AND prl.actual_quantity IS NOT NULL
+          AND prl.end_service_variance_quantity IS NOT NULL
+        """.format(", ".join("?" for _ in unique_item_ids)),
+        unique_item_ids,
+    )
+    occurrence_rows = cursor.fetchall()
+    max_week_by_menu: dict[int, int] = {}
+    menu_date_source: dict[int, tuple[str, str, set[str]]] = {}
+    for row in occurrence_rows:
+        menu_id = int(row[0])
+        max_week_by_menu[menu_id] = max(max_week_by_menu.get(menu_id, 1), int(row[5]))
+        source = menu_date_source.setdefault(menu_id, (row[2] or "", row[3] or "", set()))
+        source[2].add(row[6])
+    menu_date_lookup = {
+        menu_id: build_week_day_dates(
+            menu_start_date=source[0],
+            menu_end_date=source[1],
+            week_numbers=list(range(1, max_week_by_menu[menu_id] + 1)),
+            service_days=sorted(source[2]),
+        )
+        for menu_id, source in menu_date_source.items()
+    }
+
+    lookup: dict[int, dict] = {
+        item_id: {"current_menu": [], "other_menus": [], "total_count": 0}
+        for item_id in unique_item_ids
+    }
+    for row in occurrence_rows:
+        menu_id = int(row[0])
+        week_number = int(row[5])
+        day_of_week = row[6]
+        service_date = (
+            menu_date_lookup.get(menu_id, {})
+            .get(week_number, {})
+            .get(day_of_week, {})
+        )
+        service_date_iso = service_date.get("date", "")
+        if selected_service_date and service_date_iso and service_date_iso >= selected_service_date:
+            continue
+
+        slot_labels = json.loads(row[9] or "[]")
+        occurrence = {
+            "menu_id": menu_id,
+            "menu_name": row[1],
+            "production_record_id": int(row[4]),
+            "week_number": week_number,
+            "day_of_week": day_of_week,
+            "day_label": day_of_week.title(),
+            "status": row[7],
+            "status_label": str(row[7]).title(),
+            "service_date": service_date_iso,
+            "service_date_display": service_date.get("display") or service_date_iso or f"Week {week_number} {day_of_week.title()}",
+            "slot_labels": slot_labels,
+            "slot_context": ", ".join(slot_labels),
+            "forecast_quantity_display": _format_history_quantity(row[10]),
+            "forecast_unit": row[11],
+            "actual_quantity_display": _format_history_quantity(row[12]),
+            "actual_unit": row[13] or row[11],
+            "variance_quantity_display": _format_history_quantity(row[14]),
+            "variance_unit": row[15] or row[11],
+            "implied_demand_quantity_display": _format_history_quantity(row[16]),
+            "implied_demand_unit": row[17] or row[11],
+            "forecast_error_quantity_display": _format_history_quantity(row[18]),
+            "forecast_error_unit": row[19] or row[11],
+            "forecast_error_percent_display": _format_history_quantity(row[20]),
+            "forecast_accuracy_level": row[21] or "",
+            "reason_label": _format_reason_label(row[22]),
+            "has_notes": bool(row[23] or row[24]),
+        }
+        group_key = "current_menu" if menu_id == current_menu_id else "other_menus"
+        lookup[int(row[8])][group_key].append(occurrence)
+
+    for item_history in lookup.values():
+        for group_key in ("current_menu", "other_menus"):
+            item_history[group_key].sort(
+                key=lambda occurrence: (
+                    occurrence["service_date"] or "",
+                    occurrence["menu_id"],
+                    occurrence["week_number"],
+                    occurrence["day_of_week"],
+                ),
+                reverse=True,
+            )
+            item_history[group_key] = item_history[group_key][:MAX_OCCURRENCES_PER_GROUP]
+        item_history["total_count"] = len(item_history["current_menu"]) + len(item_history["other_menus"])
+
+    return lookup
 
 
 def _get_case_basis_candidates(cursor, *, item_id: int, item_type: str, item_name: str) -> dict:
@@ -157,8 +308,6 @@ def get_menu_forecast_page(
         if menu_row is None:
             return None
 
-        import json
-
         service_days = json.loads(menu_row[4])
         meal_periods = json.loads(menu_row[5])
         concepts = json.loads(menu_row[6])
@@ -227,6 +376,20 @@ def get_menu_forecast_page(
             (menu_id, normalized_week, normalized_day),
         )
         recipe_rows = cursor.fetchall()
+        week_numbers = list(range(1, menu_length_weeks + 1))
+        week_day_dates = build_week_day_dates(
+            menu_start_date=menu_start_date,
+            menu_end_date=menu_end_date,
+            week_numbers=week_numbers,
+            service_days=service_days,
+        )
+        selected_service_date = week_day_dates.get(normalized_week, {}).get(normalized_day, {})
+        occurrence_lookup = _build_occurrence_lookup(
+            cursor,
+            item_ids=[row[5] for row in recipe_rows],
+            current_menu_id=menu_id,
+            selected_service_date=selected_service_date.get("date", ""),
+        )
         menu_slot_item_ids = [row[3] for row in recipe_rows]
         batch_split_lookup: dict[int, list[dict]] = {}
         if menu_slot_item_ids:
@@ -376,6 +539,7 @@ def get_menu_forecast_page(
                 "saved_case_packs_by_item_id": saved_case_packs_by_item_id,
                 "forecast_updated_at": row[34],
                 "batch_splits": batch_splits,
+                "history": occurrence_lookup.get(int(row[5]), {"current_menu": [], "other_menus": [], "total_count": 0}),
                 "menu_order": (
                     meal_index.get(meal_value, 999),
                     concept_index.get(concept_value, 999),
@@ -396,16 +560,8 @@ def get_menu_forecast_page(
     if normalized_sort_order == "desc":
         rows.reverse()
 
-    week_numbers = list(range(1, menu_length_weeks + 1))
     cycle_start = ((normalized_week - 1) // 4) * 4 + 1
     cycle_weeks = [week for week in range(cycle_start, min(cycle_start + 4, menu_length_weeks + 1))]
-    week_day_dates = build_week_day_dates(
-        menu_start_date=menu_start_date,
-        menu_end_date=menu_end_date,
-        week_numbers=week_numbers,
-        service_days=service_days,
-    )
-    selected_service_date = week_day_dates.get(normalized_week, {}).get(normalized_day, {})
 
     return {
         "menu": {

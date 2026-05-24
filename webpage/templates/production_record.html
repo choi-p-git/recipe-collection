@@ -57,7 +57,12 @@
                 <span class="page-action-link secondary is-disabled">Next Service Day</span>
             {% endif %}
         </div>
-        <form method="get" class="menu-forecast-control-form">
+        <form
+            method="get"
+            class="menu-forecast-control-form"
+            data-production-date-selector
+            data-week-day-dates='{{ page_data.week_day_dates|tojson }}'
+        >
             <label for="production_week">Week</label>
             <select id="production_week" name="week">
                 {% for week_number in page_data.week_numbers %}
@@ -69,7 +74,7 @@
                 {% for day in day_options %}
                     {% if day.value in page_data.menu.service_days %}
                         {% set day_date = page_data.week_day_dates.get(page_data.selected_week_number, {}).get(day.value, {}) %}
-                        <option value="{{ day.value }}" {% if day.value == page_data.selected_day %}selected{% endif %}>
+                        <option value="{{ day.value }}" data-day-label="{{ day.label }}" {% if day.value == page_data.selected_day %}selected{% endif %}>
                             {{ day.label }}{% if day_date.display %} - {{ day_date.display }}{% endif %}
                         </option>
                     {% endif %}
@@ -256,7 +261,7 @@
                         </tr>
                     {% else %}
                         <tr>
-                            <td colspan="8">No forecasted production lines are available for this day.</td>
+                            <td colspan="9">No forecasted production lines are available for this day.</td>
                         </tr>
                     {% endfor %}
                 </tbody>

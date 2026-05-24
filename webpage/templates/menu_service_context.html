@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block title %}Service Context - {{ menu.menu_name }}{% endblock %}
+{% block main_class %}container container-menu-builder{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <div>
+            <h2>Service Context</h2>
+            <p class="page-subtitle">
+                {{ menu.menu_name }} | Week {{ week_number }} | {{ selected_day_label }}
+                {% if service_date.display %}
+                    | {{ service_date.display }}
+                {% endif %}
+            </p>
+        </div>
+        <div class="production-record-review-actions">
+            <a class="page-action-link secondary" href="{{ url_for('menu_forecast', menu_id=menu.menu_id, week=week_number, day=selected_day) }}">Forecasting</a>
+            <a class="page-action-link secondary" href="{{ url_for('production_record', menu_id=menu.menu_id, week=week_number, day=selected_day) }}">Production Record</a>
+            <a class="page-action-link secondary" href="{{ url_for('menu_detail', menu_id=menu.menu_id, week=week_number) }}">Menu Overview</a>
+        </div>
+    </div>
+
+    <section class="item-detail-section">
+        <h3>Combined Context View</h3>
+        <div class="service-context-summary-grid">
+            <article class="detail-stat-card">
+                <p class="detail-stat-label">Forecast Items</p>
+                <p class="detail-stat-value">{{ forecast_page_data.rows|length if forecast_page_data else 0 }}</p>
+            </article>
+            <article class="detail-stat-card">
+                <p class="detail-stat-label">Production Record</p>
+                <p class="detail-stat-value">{{ production_record.status_label if production_record else "Not Started" }}</p>
+            </article>
+            <article class="detail-stat-card">
+                <p class="detail-stat-label">Recorded Lines</p>
+                <p class="detail-stat-value">{{ production_record.summary.recorded if production_record else 0 }}</p>
+            </article>
+        </div>
+    </section>
+
+    <section class="item-detail-section">
+        <h3>Forecast Context</h3>
+        <div class="menu-forecast-table-shell">
+            <table class="menu-forecast-table service-context-table">
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        <th>Meal</th>
+                        <th>Concept</th>
+                        <th>Forecast</th>
+                        <th>Effective Production</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in forecast_page_data.rows %}
+                        <tr>
+                            <td>{{ row.recipe_name }}</td>
+                            <td>{{ row.meal_period_label }}</td>
+                            <td>{{ row.concept_label }}</td>
+                            <td>{{ row.forecast_quantity }} {{ row.forecast_unit|unit_label }}</td>
+                            <td>{{ row.effective_forecast_quantity_display }} {{ row.effective_forecast_unit|unit_label }}</td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="5">No forecast rows are available for this service date.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="item-detail-section">
+        <h3>Production Record Context</h3>
+        {% if production_record %}
+            <div class="menu-forecast-table-shell">
+                <table class="menu-forecast-table service-context-table">
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th>Forecast</th>
+                            <th>Actual</th>
+                            <th>Leftover / Shortage</th>
+                            <th>Implied Demand</th>
+                            <th>Accuracy</th>
+                            <th>Reason</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for line in production_record.lines %}
+                            <tr data-forecast-accuracy-level="{{ line.forecast_accuracy_level }}">
+                                <td>{{ line.recipe_name }}</td>
+                                <td>{{ line.forecast_quantity_display }} {{ line.forecast_unit|unit_label }}</td>
+                                <td>{{ line.actual_quantity_display or "--" }} {{ line.actual_unit|unit_label }}</td>
+                                <td>{{ line.end_service_variance_quantity_display or "--" }} {{ line.end_service_variance_unit|unit_label }}</td>
+                                <td>{{ line.implied_demand_quantity_display or "--" }} {{ line.implied_demand_unit|unit_label }}</td>
+                                <td>
+                                    {% if line.forecast_error_percent_display %}
+                                        {{ line.forecast_error_quantity_display }} {{ line.forecast_error_unit|unit_label }}
+                                        <span class="muted">({{ line.forecast_error_percent_display }}%)</span>
+                                    {% else %}
+                                        --
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {{ line.reason_label or "--" }}
+                                    {% if line.reason_note or line.notes %}
+                                        <span class="muted"> | Notes</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p>No Production Record has been started for this service date.</p>
+        {% endif %}
+    </section>
+{% endblock %}

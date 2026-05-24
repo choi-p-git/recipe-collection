@@ -72,6 +72,7 @@ from services.production_record_service import (
     PRODUCTION_RECORD_REASON_OPTIONS,
     build_production_record_unit_options,
     ensure_production_record,
+    get_production_record_for_service_day,
     get_production_record_review,
     post_production_record,
     save_production_record_line,
@@ -681,6 +682,55 @@ def menu_forecast(menu_id: int):
         meal_period_options=MEAL_PERIOD_OPTIONS,
         approved_units=APPROVED_UNITS,
         serving_size_units=STANDARD_UNITS,
+    )
+
+
+@app.route("/menus/<int:menu_id>/service-context")
+def menu_service_context(menu_id: int):
+    menu = get_menu_detail(menu_id)
+    if menu is None:
+        return "Menu not found.", 404
+
+    week = request.args.get("week", "").strip()
+    try:
+        week_number = int(week) if week else _default_menu_week_number(menu)
+    except ValueError:
+        week_number = _default_menu_week_number(menu)
+    if week_number not in range(1, int(menu["menu_length_weeks"]) + 1):
+        week_number = 1
+
+    day = request.args.get("day", "").strip()
+    selected_day = day if day in menu["service_days"] else (menu["service_days"][0] if menu["service_days"] else "")
+    service_date = menu.get("week_day_dates", {}).get(week_number, {}).get(selected_day, {})
+    day_label = next(
+        (option["label"] for option in DAY_OF_WEEK_OPTIONS if option["value"] == selected_day),
+        selected_day.title(),
+    )
+    forecast_page_data = get_menu_forecast_page(
+        menu_id,
+        week_number=week_number,
+        day_of_week=selected_day,
+    )
+    current_user = get_current_mock_user(session)
+    try:
+        production_record_data = get_production_record_for_service_day(
+            menu_id=menu_id,
+            week_number=week_number,
+            day_of_week=selected_day,
+            actor_user_id=current_user["user_id"],
+        )
+    except InvalidProductionRecordError:
+        production_record_data = None
+
+    return render_template(
+        "menu_service_context.html",
+        menu=menu,
+        week_number=week_number,
+        selected_day=selected_day,
+        selected_day_label=day_label,
+        service_date=service_date,
+        forecast_page_data=forecast_page_data,
+        production_record=production_record_data,
     )
 
 

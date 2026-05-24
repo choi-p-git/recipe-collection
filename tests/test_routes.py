@@ -454,6 +454,154 @@ def test_menu_forecast_route_renders_day_recipes_in_menu_order(app_client, isola
     assert '<option value="gal" selected>gal</option>' in page
 
 
+def test_menu_forecast_shows_item_occurrence_history(app_client, isolated_db):
+    base_food_id = create_base_food(item_name="History Forecast Apple")
+    recipe_id = create_recipe(
+        {
+            "item_name": "History Forecast Crisp",
+            "yield_quantity": 10,
+            "yield_unit": "each",
+            "primary_cooking_method_code": "bake",
+            "instruction_steps": ["Bake"],
+            "ingredients": [
+                {
+                    "component_item_id": base_food_id,
+                    "component_quantity": 2,
+                    "component_unit": "each",
+                }
+            ],
+        }
+    )
+    create_response = app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "History Forecast Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
+            "service_days": ["monday", "wednesday"],
+            "meal_periods": ["lunch"],
+            "concepts": ["hot_line"],
+            "menu_length_weeks": "1",
+        },
+        follow_redirects=False,
+    )
+    menu_id = int(create_response.headers["Location"].rstrip("/").split("/")[-1])
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id IN (?, ?)", (base_food_id, recipe_id))
+    cursor.execute(
+        """
+        SELECT menu_slot_id, day_of_week
+        FROM menu_slot
+        WHERE menu_id = ?
+        ORDER BY day_of_week
+        """,
+        (menu_id,),
+    )
+    slot_lookup = {day_of_week: menu_slot_id for menu_slot_id, day_of_week in cursor.fetchall()}
+    conn.commit()
+    conn.close()
+
+    for day in ("monday", "wednesday"):
+        app_client.post(
+            f"/menus/{menu_id}/slots/{slot_lookup[day]}/assign",
+            data={"week": "1", "selected_item_ids": [str(recipe_id), str(base_food_id)]},
+            follow_redirects=False,
+        )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT msi.menu_slot_item_id, msi.item_id
+        FROM menu_slot_item msi
+        JOIN menu_slot ms
+          ON ms.menu_slot_id = msi.menu_slot_id
+        WHERE ms.menu_id = ?
+          AND ms.day_of_week = 'monday'
+        """,
+        (menu_id,),
+    )
+    monday_slot_items = {item_id: menu_slot_item_id for menu_slot_item_id, item_id in cursor.fetchall()}
+    conn.close()
+
+    for item_id, quantity in ((recipe_id, "10"), (base_food_id, "4")):
+        response = app_client.put(
+            f"/api/menus/{menu_id}/forecast/{monday_slot_items[item_id]}",
+            json={
+                "forecast_yield_quantity": quantity,
+                "forecast_yield_unit": "each",
+            },
+        )
+        assert response.status_code == 200
+
+    app_client.get(f"/menus/{menu_id}/production-record?week=1&day=monday")
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT prl.production_record_line_id, prl.item_id
+        FROM production_record_line prl
+        JOIN production_record pr
+          ON pr.production_record_id = prl.production_record_id
+        WHERE pr.menu_id = ?
+          AND pr.week_number = 1
+          AND pr.day_of_week = 'monday'
+        """,
+        (menu_id,),
+    )
+    line_lookup = {item_id: line_id for line_id, item_id in cursor.fetchall()}
+    conn.close()
+
+    for item_id, actual_quantity, variance_quantity in ((recipe_id, "9", "1"), (base_food_id, "5", "0")):
+        response = app_client.put(
+            f"/api/menus/{menu_id}/production-record/lines/{line_lookup[item_id]}",
+            json={
+                "actual_quantity": actual_quantity,
+                "actual_unit": "each",
+                "end_service_variance_quantity": variance_quantity,
+                "end_service_variance_unit": "each",
+                "reason_code": "as_expected",
+            },
+        )
+        assert response.status_code == 200
+
+    forecast_response = app_client.get(f"/menus/{menu_id}/forecast?week=1&day=wednesday")
+    forecast_page = forecast_response.get_data(as_text=True)
+
+    assert forecast_response.status_code == 200
+    assert "History Forecast Crisp" in forecast_page
+    assert "History Forecast Apple" in forecast_page
+    assert "History" in forecast_page
+    assert "Current Menu" in forecast_page
+    assert "May 4" in forecast_page
+    assert "Forecast 10 each" in forecast_page
+    assert "Actual 9 each" in forecast_page
+    assert "Demand 8 each" in forecast_page
+    assert "Forecast 4 each" in forecast_page
+    assert "Actual 5 each" in forecast_page
+    assert f"/menus/{menu_id}/service-context?week=1&amp;day=monday" in forecast_page
+
+    context_response = app_client.get(f"/menus/{menu_id}/service-context?week=1&day=monday")
+    context_page = context_response.get_data(as_text=True)
+
+    assert context_response.status_code == 200
+    assert "Combined Context View" in context_page
+    assert "History Forecast Menu" in context_page
+    assert "Forecasting" in context_page
+    assert "Production Record" in context_page
+    assert "Forecast Context" in context_page
+    assert "Production Record Context" in context_page
+    assert "History Forecast Crisp" in context_page
+    assert "Forecast 10 each" not in context_page
+    assert "<td>10 each</td>" in context_page
+    assert "<td>9 each</td>" in context_page
+    assert "<td>1 each</td>" in context_page
+    assert "<td>8 each</td>" in context_page
+
+
 def test_api_update_menu_forecast_persists_scale_by_yield(app_client, isolated_db):
     base_food_id = create_base_food(item_name="Forecast Save Base")
     recipe_id = create_recipe(
@@ -1136,6 +1284,71 @@ def test_production_record_post_requires_recorded_lines(app_client, isolated_db)
     assert post_response.status_code == 200
     assert "Record every production line before posting." in page
     assert "Status: Draft" in page
+
+
+def test_production_record_skips_unforecasted_base_food_lines(app_client, isolated_db):
+    base_food_id = create_base_food(item_name="Unforecasted Record Apple")
+    create_response = app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "Unforecasted Record Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-31",
+            "service_days": ["tuesday"],
+            "meal_periods": ["lunch"],
+            "concepts": ["hot_line"],
+            "menu_length_weeks": "4",
+        },
+        follow_redirects=False,
+    )
+    menu_id = int(create_response.headers["Location"].rstrip("/").split("/")[-1])
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id = ?", (base_food_id,))
+    cursor.execute(
+        """
+        SELECT menu_slot_id
+        FROM menu_slot
+        WHERE menu_id = ?
+          AND week_number = 4
+          AND day_of_week = 'tuesday'
+        """,
+        (menu_id,),
+    )
+    menu_slot_id = cursor.fetchone()[0]
+    conn.commit()
+    conn.close()
+
+    app_client.post(
+        f"/menus/{menu_id}/slots/{menu_slot_id}/assign",
+        data={"week": "4", "selected_item_ids": [str(base_food_id)]},
+        follow_redirects=False,
+    )
+
+    response = app_client.get(f"/menus/{menu_id}/production-record?week=4&day=tuesday")
+    page = response.get_data(as_text=True)
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT COUNT(*)
+        FROM production_record_line prl
+        JOIN production_record pr
+          ON pr.production_record_id = prl.production_record_id
+        WHERE pr.menu_id = ?
+          AND pr.week_number = 4
+          AND pr.day_of_week = 'tuesday'
+        """,
+        (menu_id,),
+    )
+    line_count = cursor.fetchone()[0]
+    conn.close()
+
+    assert response.status_code == 200
+    assert "No forecasted production lines are available for this day." in page
+    assert line_count == 0
 
 
 def test_api_update_menu_forecast_rejects_invalid_quantity(app_client, isolated_db):

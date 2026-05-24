@@ -661,6 +661,37 @@ Important current semantics:
 
 Next recommended slice:
 
+* add a Forecasting occurrence history panel per forecast row / item
+* support both `recipe` and `base_food` items
+* group occurrences into:
+
+  * current menu occurrences
+  * other menu occurrences
+
+* include posted records and draft/current in-progress records when production fields have been filled
+* same-menu occurrence history should include only past service dates with filled Production Records
+* occurrence rows should show:
+
+  * service date
+  * menu name
+  * week/day
+  * meal period and concept context
+  * forecast quantity/unit
+  * actual production quantity/unit
+  * end-of-service leftover/shortage quantity/unit
+  * implied demand quantity/unit
+  * forecast error / accuracy percent
+  * reason code label
+  * notes indicator
+
+* occurrence dates should be clickable links that open a future combined context view in a new tab
+* combined context view should show the selected service date's Forecasting context and Production Record context together
+* algorithmic suggested forecast should be deferred until the occurrence UI is stable
+* future suggested forecast should use historical implied demand as the primary early signal
+* future algorithm inputs may include menu mix, attendance, weather, field trips, sports/team away days, seasonality, and service-day patterns
+
+Follow-up operational slice:
+
 * add a Production Record index/history page scoped to a menu
 * list draft and posted records by service date, week, and day
 * expose quick actions:
@@ -671,7 +702,7 @@ Next recommended slice:
   * export CSV
 
 * default Production Record landing should still favor the current service day
-* history views should make past posted records easy to retrieve without rebuilding a forecast context manually
+* history views should make past posted and draft records easy to retrieve without rebuilding a forecast context manually
 
 Next reporting slice:
 
@@ -694,11 +725,12 @@ Next reporting slice:
 
 Implementation guidance:
 
-* reporting should consume posted Production Records first
-* draft records may be visible operationally but should not drive analytics by default
+* Forecasting occurrence history may show posted and draft/current filled records because managers need operational memory while forecasting
+* reporting and corporate analytics should prefer posted Production Records by default, with explicit filters if draft records are included
 * keep report calculations in a service/query layer instead of templates
 * preserve formula text separately from calculated numeric values
 * keep reason-code values stable because future analytics and inventory/waste workflows will depend on them
+* occurrence lookup should be implemented as a read-only query/service first; avoid introducing algorithm tables until the UI behavior is validated
 
 ### 2E. Future Inventory Tie-In Plan
 
@@ -1164,7 +1196,9 @@ When extending this project:
 
 ## Current Next Logical Development Steps
 
-1. implement Production Record index/history page per menu
-2. implement Production Record filters and lightweight reporting summaries
-3. refine posted-record data contracts for future analytics and inventory use
-4. begin Inventory Management foundation with item-linked inventory lines and item-linked pack/case definitions
+1. implement Forecasting occurrence history for recipe/base-food items
+2. add the combined forecast + production context view linked from occurrence dates
+3. implement Production Record index/history page per menu
+4. implement Production Record filters and lightweight reporting summaries
+5. refine posted-record data contracts for future analytics and inventory use
+6. begin Inventory Management foundation with item-linked inventory lines and item-linked pack/case definitions

@@ -1626,6 +1626,100 @@ button:disabled {
     max-width: 11rem;
 }
 
+.menu-forecast-history {
+    position: relative;
+    display: inline-block;
+    margin-top: 0.35rem;
+    font-size: 0.86rem;
+}
+
+.menu-forecast-history-trigger {
+    border: 0;
+    background: transparent;
+    padding: 0;
+    cursor: pointer;
+    color: #1d4ed8;
+    font-weight: 700;
+    font: inherit;
+}
+
+.menu-forecast-history-trigger:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+}
+
+.menu-forecast-history-panel {
+    position: absolute;
+    z-index: 30;
+    top: calc(100% + 0.35rem);
+    left: 0;
+    display: none;
+    width: min(34rem, 78vw);
+    max-height: 22rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 18px 45px rgb(15 23 42 / 0.18);
+    padding: 0.75rem;
+}
+
+.menu-forecast-history:hover .menu-forecast-history-panel,
+.menu-forecast-history:focus-within .menu-forecast-history-panel,
+.menu-forecast-history.is-open .menu-forecast-history-panel {
+    display: block;
+}
+
+.menu-forecast-history.is-open .menu-forecast-history-trigger {
+    color: #1e40af;
+}
+
+.menu-forecast-history-group {
+    border-left: 3px solid #d1d5db;
+    padding-left: 0.5rem;
+}
+
+.menu-forecast-history-group + .menu-forecast-history-group {
+    margin-top: 0.7rem;
+}
+
+.menu-forecast-history-heading {
+    font-weight: 700;
+    margin: 0 0 0.25rem;
+}
+
+.menu-forecast-history-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.4rem;
+}
+
+.menu-forecast-history-list li {
+    display: grid;
+    gap: 0.12rem;
+}
+
+.service-context-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(140px, 1fr));
+    gap: 0.75rem;
+}
+
+.service-context-table td {
+    vertical-align: top;
+}
+
+.service-context-table tr[data-forecast-accuracy-level="review"] {
+    background: #fffbeb;
+}
+
+.service-context-table tr[data-forecast-accuracy-level="miss"] {
+    background: #fff1f2;
+}
+
 .production-record-entry {
     display: flex;
     gap: 0.4rem;
@@ -2369,22 +2463,26 @@ button:disabled {
         width: 100%;
         table-layout: fixed;
         border-collapse: collapse;
-        font-size: 9pt;
+        border: 2px solid #111;
+        font-size: 8.5pt;
     }
 
     .production-record-table th,
     .production-record-table td,
     .production-record-review-table th,
     .production-record-review-table td {
-        border: 1px solid #222;
-        padding: 0.06in;
+        border: 1px solid #6b7280;
+        padding: 0.055in;
         vertical-align: top;
     }
 
     .production-record-table th,
     .production-record-review-table th {
-        background: #f1f5f9 !important;
+        background: #e5e7eb !important;
         color: #111;
+        font-size: 7.8pt;
+        font-weight: 800;
+        text-transform: uppercase;
     }
 
     .production-record-table th:nth-child(2),
@@ -2400,16 +2498,16 @@ button:disabled {
     .production-record-table textarea {
         display: block;
         width: 100%;
-        min-height: 0.28in;
-        border: 0;
-        border-bottom: 1px solid #111;
+        min-height: 0.3in;
+        border: 1px solid #9ca3af;
+        border-radius: 0;
         background: transparent;
-        padding: 0;
+        padding: 0.035in;
         font: inherit;
     }
 
     .production-record-table textarea {
-        min-height: 0.46in;
+        min-height: 0.5in;
         resize: none;
     }
 
@@ -2426,9 +2524,19 @@ button:disabled {
     .production-record-table td:nth-child(5)::after {
         content: "Unit: ______";
         display: block;
+        border: 1px solid #9ca3af;
+        border-top: 0;
         color: #444;
         font-size: 8pt;
-        margin-top: 0.05in;
+        padding: 0.035in;
+    }
+
+    .production-record-table td:first-child {
+        font-weight: 700;
+    }
+
+    .production-record-table tbody tr:nth-child(even) td {
+        background: #f8fafc !important;
     }
 
     .production-record-table tr,
