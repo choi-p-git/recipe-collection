@@ -17,6 +17,72 @@
     </div>
 
     <section class="item-detail-section">
+        <form method="get" class="filter-form production-record-history-filter-form">
+            <div class="filter-row">
+                <label for="history_date_from">From</label>
+                <input id="history_date_from" name="date_from" type="date" value="{{ history.filters.date_from }}">
+            </div>
+            <div class="filter-row">
+                <label for="history_date_to">To</label>
+                <input id="history_date_to" name="date_to" type="date" value="{{ history.filters.date_to }}">
+            </div>
+            <div class="filter-row">
+                <label for="history_week">Week</label>
+                <select id="history_week" name="week">
+                    <option value="">All Weeks</option>
+                    {% for week_number in range(1, menu.menu_length_weeks + 1) %}
+                        <option value="{{ week_number }}" {% if history.filters.week == week_number|string %}selected{% endif %}>Week {{ week_number }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="filter-row">
+                <label for="history_day">Day</label>
+                <select id="history_day" name="day">
+                    <option value="">All Days</option>
+                    {% for day in day_options %}
+                        {% if day.value in menu.service_days %}
+                            <option value="{{ day.value }}" {% if history.filters.day == day.value %}selected{% endif %}>{{ day.label }}</option>
+                        {% endif %}
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="filter-row">
+                <label for="history_status">Status</label>
+                <select id="history_status" name="status">
+                    <option value="">All Statuses</option>
+                    <option value="draft" {% if history.filters.status == 'draft' %}selected{% endif %}>Draft</option>
+                    <option value="posted" {% if history.filters.status == 'posted' %}selected{% endif %}>Posted</option>
+                </select>
+            </div>
+            <div class="filter-row">
+                <label for="history_accuracy">Accuracy</label>
+                <select id="history_accuracy" name="accuracy">
+                    <option value="">All Accuracy</option>
+                    <option value="accurate" {% if history.filters.accuracy == 'accurate' %}selected{% endif %}>Accurate</option>
+                    <option value="review" {% if history.filters.accuracy == 'review' %}selected{% endif %}>Review</option>
+                    <option value="miss" {% if history.filters.accuracy == 'miss' %}selected{% endif %}>Miss</option>
+                    <option value="unrecorded" {% if history.filters.accuracy == 'unrecorded' %}selected{% endif %}>Unrecorded</option>
+                </select>
+            </div>
+            <div class="filter-row">
+                <label for="history_reason">Reason</label>
+                <select id="history_reason" name="reason_code">
+                    <option value="">All Reasons</option>
+                    {% for reason in production_record_reason_options %}
+                        <option value="{{ reason.value }}" {% if history.filters.reason_code == reason.value %}selected{% endif %}>{{ reason.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="filter-row">
+                <label for="history_item">Item</label>
+                <input id="history_item" name="item" type="search" value="{{ history.filters.item_query }}" placeholder="Item name">
+            </div>
+            <button type="submit">Apply Filters</button>
+            <a class="text-link" href="{{ url_for('production_record_history', menu_id=menu.menu_id) }}">Reset</a>
+        </form>
+    </section>
+
+    <section class="item-detail-section">
         <div class="production-record-summary">
             <div class="production-record-summary-card">
                 <span class="detail-stat-label">Records</span>
@@ -47,6 +113,67 @@
                 <span class="detail-stat-label">Miss</span>
                 <strong>{{ history.totals.miss }}</strong>
             </div>
+        </div>
+    </section>
+
+    <section class="item-detail-section production-record-report-section">
+        <div class="menu-forecast-title-row">
+            <h3>Reporting Summary</h3>
+            <span class="muted">Filtered production lines</span>
+        </div>
+        <div class="production-record-report-grid">
+            <article>
+                <h4>Top Reasons</h4>
+                <div class="menu-forecast-table-shell">
+                    <table class="menu-forecast-table production-record-report-table">
+                        <thead>
+                            <tr>
+                                <th>Reason</th>
+                                <th>Lines</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for reason in history.report.top_reason_codes %}
+                                <tr>
+                                    <td>{{ reason.reason_label }}</td>
+                                    <td>{{ reason.count }}</td>
+                                </tr>
+                            {% else %}
+                                <tr>
+                                    <td colspan="2">No reason codes match this view.</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+            <article>
+                <h4>Leftover / Shortage By Item</h4>
+                <div class="menu-forecast-table-shell">
+                    <table class="menu-forecast-table production-record-report-table">
+                        <thead>
+                            <tr>
+                                <th>Item</th>
+                                <th>Leftover</th>
+                                <th>Shortage</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in history.report.variance_by_item %}
+                                <tr>
+                                    <td>{{ item.recipe_name }}</td>
+                                    <td>{{ item.leftover_quantity_display }} {{ item.unit|unit_label }}</td>
+                                    <td>{{ item.shortage_quantity_display }} {{ item.unit|unit_label }}</td>
+                                </tr>
+                            {% else %}
+                                <tr>
+                                    <td colspan="3">No leftover or shortage data matches this view.</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </article>
         </div>
     </section>
 

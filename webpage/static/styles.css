@@ -1724,6 +1724,15 @@ button:disabled {
     vertical-align: top;
 }
 
+.production-record-history-filter-form {
+    align-items: end;
+}
+
+.production-record-history-filter-form input,
+.production-record-history-filter-form select {
+    min-width: 8rem;
+}
+
 .production-record-history-table tr[data-production-record-status="posted"] {
     background: #f8fafc;
 }
@@ -1739,6 +1748,20 @@ button:disabled {
     display: inline-flex;
     margin-right: 0.45rem;
     font-weight: 700;
+}
+
+.production-record-report-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(18rem, 1fr));
+    gap: 1rem;
+}
+
+.production-record-report-grid h4 {
+    margin: 0 0 0.5rem;
+}
+
+.production-record-report-table td {
+    vertical-align: top;
 }
 
 .production-record-entry {

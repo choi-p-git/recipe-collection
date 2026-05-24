@@ -43,6 +43,16 @@ PRODUCTION_RECORD_STATUS_LABELS = {
     "draft": "Draft",
     "posted": "Posted",
 }
+PRODUCTION_RECORD_HISTORY_FILTER_DEFAULTS = {
+    "status": "",
+    "accuracy": "",
+    "reason_code": "",
+    "item_query": "",
+    "week": "",
+    "day": "",
+    "date_from": "",
+    "date_to": "",
+}
 
 
 class InvalidProductionRecordError(ValueError):
@@ -233,6 +243,142 @@ def _build_record_summary(lines: list[dict]) -> dict:
             summary[accuracy_level] += 1
 
     return summary
+
+
+def _normalize_history_filters(filters: dict | None) -> dict:
+    normalized = dict(PRODUCTION_RECORD_HISTORY_FILTER_DEFAULTS)
+    for key in normalized:
+        normalized[key] = str((filters or {}).get(key, "") or "").strip()
+
+    if normalized["status"] not in {"", "draft", "posted"}:
+        normalized["status"] = ""
+    if normalized["accuracy"] not in {"", "accurate", "review", "miss", "unrecorded"}:
+        normalized["accuracy"] = ""
+    if normalized["reason_code"] not in {"", *PRODUCTION_RECORD_REASON_VALUES}:
+        normalized["reason_code"] = ""
+    if normalized["day"] not in {"", "sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"}:
+        normalized["day"] = ""
+    try:
+        if normalized["week"]:
+            normalized["week"] = str(max(1, int(normalized["week"])))
+    except ValueError:
+        normalized["week"] = ""
+
+    return normalized
+
+
+def _line_matches_history_filters(line: dict, filters: dict) -> bool:
+    if filters["accuracy"]:
+        is_recorded = (
+            line.get("actual_quantity") is not None
+            and line.get("end_service_variance_quantity") is not None
+        )
+        if filters["accuracy"] == "unrecorded":
+            if is_recorded:
+                return False
+        elif line.get("forecast_accuracy_level") != filters["accuracy"]:
+            return False
+
+    if filters["reason_code"] and line.get("reason_code") != filters["reason_code"]:
+        return False
+
+    if filters["item_query"]:
+        item_query = filters["item_query"].casefold()
+        if item_query not in str(line.get("recipe_name") or "").casefold():
+            return False
+
+    return True
+
+
+def _record_matches_history_filters(record: dict, filters: dict) -> bool:
+    if filters["status"] and record["status"] != filters["status"]:
+        return False
+    if filters["week"] and str(record["week_number"]) != filters["week"]:
+        return False
+    if filters["day"] and record["day_of_week"] != filters["day"]:
+        return False
+
+    service_date = record.get("service_date", {}).get("date", "")
+    if filters["date_from"] and service_date and service_date < filters["date_from"]:
+        return False
+    if filters["date_to"] and service_date and service_date > filters["date_to"]:
+        return False
+
+    return True
+
+
+def _build_history_totals(records: list[dict]) -> dict:
+    totals = {
+        "total_records": len(records),
+        "draft": 0,
+        "posted": 0,
+        "total_lines": 0,
+        "recorded": 0,
+        "unrecorded": 0,
+        "accurate": 0,
+        "review": 0,
+        "miss": 0,
+    }
+    for record in records:
+        if record["status"] in {"draft", "posted"}:
+            totals[record["status"]] += 1
+        for key in ("total", "recorded", "unrecorded", "accurate", "review", "miss"):
+            totals["total_lines" if key == "total" else key] += record["summary"][key]
+    return totals
+
+
+def _build_history_report(records: list[dict]) -> dict:
+    reason_counts: dict[str, dict] = {}
+    variance_by_item: dict[tuple[int, str], dict] = {}
+    for record in records:
+        for line in record.get("lines", []):
+            if line.get("reason_code"):
+                reason = reason_counts.setdefault(
+                    line["reason_code"],
+                    {
+                        "reason_code": line["reason_code"],
+                        "reason_label": line["reason_label"],
+                        "count": 0,
+                    },
+                )
+                reason["count"] += 1
+
+            variance_quantity = line.get("end_service_variance_quantity")
+            if variance_quantity is None:
+                continue
+            variance_unit = line.get("end_service_variance_unit") or line.get("forecast_unit")
+            variance_key = (line["item_id"], variance_unit)
+            item_total = variance_by_item.setdefault(
+                variance_key,
+                {
+                    "item_id": line["item_id"],
+                    "recipe_name": line["recipe_name"],
+                    "unit": variance_unit,
+                    "leftover_quantity": 0.0,
+                    "shortage_quantity": 0.0,
+                },
+            )
+            if float(variance_quantity) >= 0:
+                item_total["leftover_quantity"] += float(variance_quantity)
+            else:
+                item_total["shortage_quantity"] += abs(float(variance_quantity))
+
+    reason_rows = sorted(
+        reason_counts.values(),
+        key=lambda row: (-row["count"], row["reason_label"]),
+    )[:8]
+    variance_rows = sorted(
+        variance_by_item.values(),
+        key=lambda row: (-(row["leftover_quantity"] + row["shortage_quantity"]), row["recipe_name"]),
+    )[:8]
+    for row in variance_rows:
+        row["leftover_quantity_display"] = _format_quantity(row["leftover_quantity"])
+        row["shortage_quantity_display"] = _format_quantity(row["shortage_quantity"])
+
+    return {
+        "top_reason_codes": reason_rows,
+        "variance_by_item": variance_rows,
+    }
 
 
 def ensure_production_record(
@@ -780,8 +926,11 @@ def list_production_records_for_menu(
     *,
     menu_id: int,
     actor_user_id: str,
+    service_date_lookup: dict | None = None,
+    filters: dict | None = None,
 ) -> dict:
     initialize_database()
+    normalized_filters = _normalize_history_filters(filters)
 
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -814,17 +963,6 @@ def list_production_records_for_menu(
         record_rows = cursor.fetchall()
 
         records = []
-        totals = {
-            "total_records": len(record_rows),
-            "draft": 0,
-            "posted": 0,
-            "total_lines": 0,
-            "recorded": 0,
-            "unrecorded": 0,
-            "accurate": 0,
-            "review": 0,
-            "miss": 0,
-        }
         for record_row in record_rows:
             production_record_id = int(record_row[0])
             cursor.execute(
@@ -864,31 +1002,50 @@ def list_production_records_for_menu(
                 (production_record_id,),
             )
             lines = [_build_line_payload(line_row) for line_row in cursor.fetchall()]
-            summary = _build_record_summary(lines)
-            status = record_row[3]
-            if status in {"draft", "posted"}:
-                totals[status] += 1
-            for key in ("total", "recorded", "unrecorded", "accurate", "review", "miss"):
-                totals["total_lines" if key == "total" else key] += summary[key]
+            record_week = int(record_row[1])
+            record_day = record_row[2]
+            service_date = (service_date_lookup or {}).get(record_week, {}).get(record_day, {})
+            record = {
+                "production_record_id": production_record_id,
+                "week_number": record_week,
+                "day_of_week": record_day,
+                "day_label": str(record_day).title(),
+                "status": record_row[3],
+                "status_label": PRODUCTION_RECORD_STATUS_LABELS.get(record_row[3], str(record_row[3]).title()),
+                "is_posted": record_row[3] == "posted",
+                "created_at": record_row[4],
+                "updated_at": record_row[5],
+                "service_date": service_date,
+                "service_date_display": service_date.get("display", ""),
+                "lines": lines,
+            }
+            if not _record_matches_history_filters(record, normalized_filters):
+                continue
 
-            records.append(
-                {
-                    "production_record_id": production_record_id,
-                    "week_number": int(record_row[1]),
-                    "day_of_week": record_row[2],
-                    "day_label": str(record_row[2]).title(),
-                    "status": status,
-                    "status_label": PRODUCTION_RECORD_STATUS_LABELS.get(status, str(status).title()),
-                    "is_posted": status == "posted",
-                    "created_at": record_row[4],
-                    "updated_at": record_row[5],
-                    "summary": summary,
-                },
+            filtered_lines = [
+                line
+                for line in lines
+                if _line_matches_history_filters(line, normalized_filters)
+            ]
+            has_line_filters = bool(
+                normalized_filters["accuracy"]
+                or normalized_filters["reason_code"]
+                or normalized_filters["item_query"]
             )
+            if has_line_filters and not filtered_lines:
+                continue
+
+            record["lines"] = filtered_lines
+            record["summary"] = _build_record_summary(filtered_lines)
+            status = record_row[3]
+            record["status_label"] = PRODUCTION_RECORD_STATUS_LABELS.get(status, str(status).title())
+            records.append(record)
 
     return {
         "records": records,
-        "totals": totals,
+        "totals": _build_history_totals(records),
+        "report": _build_history_report(records),
+        "filters": normalized_filters,
     }
 
 

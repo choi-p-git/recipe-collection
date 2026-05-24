@@ -821,23 +821,28 @@ def production_record_history(menu_id: int):
         history = list_production_records_for_menu(
             menu_id=menu_id,
             actor_user_id=current_user["user_id"],
+            service_date_lookup=menu.get("week_day_dates", {}),
+            filters={
+                "status": request.args.get("status", ""),
+                "accuracy": request.args.get("accuracy", ""),
+                "reason_code": request.args.get("reason_code", ""),
+                "item_query": request.args.get("item", ""),
+                "week": request.args.get("week", ""),
+                "day": request.args.get("day", ""),
+                "date_from": request.args.get("date_from", ""),
+                "date_to": request.args.get("date_to", ""),
+            },
         )
     except InvalidProductionRecordError as exc:
         flash(str(exc), "error")
         return redirect(url_for("menus"))
 
-    for record in history["records"]:
-        service_date = menu.get("week_day_dates", {}).get(record["week_number"], {}).get(
-            record["day_of_week"],
-            {},
-        )
-        record["service_date"] = service_date
-        record["service_date_display"] = service_date.get("display", "")
-
     return render_template(
         "production_record_history.html",
         menu=menu,
         history=history,
+        day_options=DAY_OF_WEEK_OPTIONS,
+        production_record_reason_options=PRODUCTION_RECORD_REASON_OPTIONS,
     )
 
 

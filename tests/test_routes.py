@@ -1215,10 +1215,40 @@ def test_production_record_route_snapshots_forecast_and_saves_variance(app_clien
     assert "Accurate 1" in history_page
     assert "Review 0" in history_page
     assert "Miss 0" in history_page
+    assert "Reporting Summary" in history_page
+    assert "Top Reasons" in history_page
+    assert "Leftover / Shortage By Item" in history_page
+    assert "<td>As Expected</td>" in history_page
+    assert "<td>1</td>" in history_page
+    assert "Production Record Soup" in history_page
+    assert "0 Half pan, 4&#34;" in history_page
+    assert 'name="accuracy"' in history_page
+    assert 'name="reason_code"' in history_page
+    assert 'name="item"' in history_page
     assert f"/menus/{menu_id}/production-record?week=1&amp;day=monday" in history_page
     assert f"/menus/{menu_id}/production-record/{production_record_id}/review" in history_page
     assert f"/menus/{menu_id}/production-record/{production_record_id}/export.csv" in history_page
     assert f"/menus/{menu_id}/service-context?week=1&amp;day=monday" in history_page
+
+    filtered_history_response = app_client.get(
+        f"/menus/{menu_id}/production-record/history?status=posted&accuracy=accurate&reason_code=as_expected&item=Soup"
+    )
+    filtered_history_page = filtered_history_response.get_data(as_text=True)
+
+    assert filtered_history_response.status_code == 200
+    assert "Production Record Soup" in filtered_history_page
+    assert 'value="posted" selected' in filtered_history_page
+    assert 'value="accurate" selected' in filtered_history_page
+    assert 'value="as_expected" selected' in filtered_history_page
+    assert 'value="Soup"' in filtered_history_page
+
+    empty_filtered_history_response = app_client.get(
+        f"/menus/{menu_id}/production-record/history?date_from=2026-05-05"
+    )
+    empty_filtered_history_page = empty_filtered_history_response.get_data(as_text=True)
+
+    assert empty_filtered_history_response.status_code == 200
+    assert "No production records have been started for this menu." in empty_filtered_history_page
 
     csv_response = app_client.get(f"/menus/{menu_id}/production-record/{production_record_id}/export.csv")
     csv_body = csv_response.get_data(as_text=True)

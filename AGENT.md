@@ -719,14 +719,14 @@ Current operational/reporting slice:
 
 * default Production Record landing should still favor the current service day
 * history views should make past posted and draft records easy to retrieve without rebuilding a forecast context manually
-* add filtering and lightweight reporting on top of the existing Production Record history data
+* filtering and lightweight reporting are implemented on top of the existing Production Record history data
 * algorithmic suggested forecast should be deferred until the occurrence/history/reporting UI is stable
 * future suggested forecast should use historical implied demand as the primary early signal
 * future algorithm inputs may include menu mix, attendance, weather, field trips, sports/team away days, seasonality, and service-day patterns
 
-Next reporting slice:
+Implemented reporting slice:
 
-* add filters for:
+* filters for:
 
   * date range
   * week/day
@@ -735,13 +735,17 @@ Next reporting slice:
   * accuracy level
   * draft/posted status
 
-* add aggregate summaries for:
+* aggregate summaries for:
 
   * accurate / review / miss counts
   * top reason codes
   * leftover quantities by item
   * shortage quantities by item
-  * forecast error trend by item over time
+
+Future reporting slice:
+
+* add forecast error trend by item over time
+* add posted-only default views for analytics-oriented reporting while keeping draft inclusion explicit
 
 Implementation guidance:
 
@@ -1304,9 +1308,9 @@ Test data cleanup boundaries:
 
 ## Current Next Logical Development Steps
 
-1. implement Production Record filters and lightweight reporting summaries
-2. refine posted-record data contracts for future analytics and inventory use
-3. begin Inventory Management foundation with item-linked inventory lines, current counts, count freshness, and item-linked pack/case definitions
-4. define Forecasting / Production Record / Inventory API contracts for availability, expected demand, actual usage, and purchasing suggestions
+1. refine posted-record data contracts for future analytics and inventory use
+2. begin Inventory Management foundation with item-linked inventory lines, current counts, count freshness, and item-linked pack/case definitions
+3. define Forecasting / Production Record / Inventory API contracts for availability, expected demand, actual usage, and purchasing suggestions
+4. add forecast error trend reporting by item over time
 5. defer analytics algorithms until usage, menu, inventory, purchasing, and cost record contracts are stable
 

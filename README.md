@@ -142,6 +142,7 @@ Menu Builder foundation note
 - Production Record quantity fields support simple formula entry for floor-count math. Complete formulas save the calculated result while preserving the original formula for refocus/editing; incomplete but allowed formulas save as draft text until the user finishes the expression.
 - Production Record can be posted and locked, reviewed from a posted record view, exported to CSV, and printed as a kitchen floor sheet.
 - Production Record history is available per menu, listing draft and posted service-day records with quick links back to entry, posted review, CSV export, and combined service context.
+- Production Record history includes first-pass reporting filters for date range, week/day, status, accuracy, reason, and item, plus summary rollups for accurate/review/miss counts, top reason codes, and leftover/shortage by item.
 - Recipe print is implemented as a single kitchen production sheet. It respects the active scaled target when present, always prints flattened ingredients, follows the selected display mode/unit system, and visually groups sub-recipe ingredients under their parent sub-recipes.
 - Drag-and-drop, rules checks, richer batch timing workflows, production-record analytics, and inventory-facing rollups remain deferred until the current operational loop is refined.
 
@@ -155,7 +156,7 @@ Production Record refinement roadmap
 - Occurrence dates link to a combined context view for that menu service day. That combined context view shows the forecast and production-record context together for the selected date.
 - Production Record history/index is implemented per menu. It shows draft and posted records by service date, week, and day, with quick links back to entry/review, service context, and CSV export for posted records.
 - Algorithmic suggested forecast should be deferred until the occurrence UI is stable. The later algorithm should use historical implied demand as the primary demand signal, with room to add menu mix, attendance, weather, field trips, sports/team schedule, seasonality, and other context.
-- Next reporting slice should add simple filters and summaries for date range, accuracy level, reason code, item, and posted/draft status. The first aggregate view should focus on count of accurate/review/miss records, top reason codes, and leftover/shortage trends.
+- First reporting slice is implemented with simple filters and summaries for date range, accuracy level, reason code, item, and posted/draft status. The aggregate view focuses on count of accurate/review/miss records, top reason codes, and leftover/shortage totals by item.
 - Future inventory tie-in should consume posted Production Record and Forecasting data rather than draft records. Forecasting should drive expected demand/order needs; posted Production Records should feed actual usage, leftover/shortage, and variance signals.
 - Future inventory app should hold current inventory counts, expose API access to/from Forecasting and Production Record, compare estimated versus actual usage, and support purchasing suggestions.
 - Inventory pack/case definitions should be item-linked, not recipe-linked, and should reuse saved pack sizes where possible. Forecast-linked case sizes can remain local to a menu cell until explicitly saved to the item-level pack library.
@@ -277,4 +278,4 @@ The current proof-of-concept has a complete operational vertical stack:
 - Production Record captures floor actuals, leftover/shortage, formula-based quantity entry, reason codes, notes, implied demand, forecast accuracy, post/lock, review, CSV export, and floor-sheet print.
 - Recipe Detail supports scaled and flattened production views, display-mode/unit-system toggles, and a kitchen production-sheet print with sub-recipe grouping.
 
-The next recommended development focus is Production Record reporting, followed by the first Inventory Management foundation.
+The next recommended development focus is refining posted-record data contracts for analytics/inventory, followed by the first Inventory Management foundation.
