@@ -181,7 +181,7 @@ Scaling foundation note
 MVP validation checklist
 
 1. Run `.\.venv\Scripts\python.exe .\src\db.py`
-2. Run `.\.venv\Scripts\python.exe -m pytest -q`
+2. Run the constrained module-suite pytest command for the area being changed
 3. Verify base food create, detail view, and reviewer/dietitian/admin workflow movement
 4. Verify recipe create, edit, return-to-submitter, resubmit, analyze, and live flow
 5. Verify notes, automatic workflow notifications, and notification clearing on item view
@@ -193,10 +193,27 @@ MVP validation checklist
 Test temp housekeeping
 
 - Isolated tests create temporary SQLite databases under `.test_tmp/run-*` and remove them after normal completion.
-- If test runs are interrupted or Windows file locks prevent cleanup, stale run directories can accumulate.
+- Pytest also removes generated test artifacts at session end: `.test_tmp/run-*`, `.pytest_cache`, and project-local `__pycache__` directories.
+- If test runs are interrupted before pytest can finish, or Windows file locks prevent cleanup, stale run directories can accumulate.
 - Preview cleanup with `.\.venv\Scripts\python.exe .\src\db.py --gc-test-tmp`
 - Apply cleanup with `.\.venv\Scripts\python.exe .\src\db.py --gc-test-tmp --gc-apply`
 - The collector only targets direct `.test_tmp/run-*` and `.test_tmp/debug-*` directories older than 24 hours by default. Use `--gc-min-age-hours 1` when you intentionally want a more aggressive cleanup window.
+
+Pytest workflow
+
+- Codex should start with focused tests for the changed submodule, plus selected one-level-up API/route tests when behavior crosses the Flask boundary.
+- The follow-up suite should stay inside the current working module, such as database/schema, item/workflow, recipe/scaling, menu/forecast, search/query, or route/API.
+- Full-project pytest is reserved for explicit release/regression requests, broad shared-contract edits, dependency/tooling changes, or direct user request.
+- Example module suites: database/schema uses `tests/test_db_init.py tests/test_db_seed.py`; menu builder uses `tests/test_menu_service.py` plus selected menu route node ids; forecasting uses `tests/test_menu_forecast_service.py` plus selected forecast/production route node ids; route/API work uses selected `tests/test_routes.py` node ids and broadens only when route-wide behavior changed.
+- Tests are auto-tagged during pytest collection with `module_*` and `relation_*` markers. Use `--module-scope menu --relation-scope service` for service-layer menu tests, `--module-scope menu --relation-scope api` for one-level-up route/API coverage, or comma-separated values such as `--module-scope menu,forecast --relation-scope service,api`.
+- Raw marker expressions also work, such as `.\.venv\Scripts\python.exe -m pytest -q -m "module_recipe and relation_api"`.
+
+Agent finish workflow
+
+- Each completed prompt should include a suggested cumulative commit message.
+- If the prompt builds directly on prior work, the message can build from the known cumulative change set plus a quick changed-file check.
+- If the prompt refines, rewrites, or refactors previous work, inspect the relevant diff hunks before writing the message because the final intent may have changed.
+- Prefer a short imperative subject with optional body bullets for multi-area changes.
 
 Schema Change Checklist
 
@@ -205,7 +222,7 @@ Schema Change Checklist
 3. Update `database/schema.sql` so the snapshot matches the latest DB shape
 4. Update app code, queries, services, templates, and tests as needed
 5. Run `.\.venv\Scripts\python.exe .\src\db.py`
-6. Run `.\.venv\Scripts\python.exe -m pytest -q`
+6. Run the database/schema module suite, then add only directly affected module/API tests
 7. Manually verify the affected workflow or UI behavior
 
 Patch Notes

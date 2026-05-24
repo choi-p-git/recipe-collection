@@ -16,3 +16,22 @@ dev = [
     "pytest>=9.0.3",
     "ruff>=0.15.10",
 ]
+
+[tool.pytest.ini_options]
+addopts = "-p no:cacheprovider"
+markers = [
+    "module_auth: mock auth, login, session, and user preference behavior",
+    "module_database: database initialization, migrations, schema, and seed data",
+    "module_forecast: menu forecasting and production-facing forecast behavior",
+    "module_item: item, base-food, notes, and live collection behavior",
+    "module_menu: menu builder, menu detail, slot, copy, paste, and clear behavior",
+    "module_production: production record routes and production-facing workflow",
+    "module_recipe: recipe authoring, instruction, scaling, flattening, and recipe detail behavior",
+    "module_routes: general Flask route behavior without a narrower module",
+    "module_search: item search, query, fuzzy matching, and search API behavior",
+    "module_workflow: review workflow, policy, notification, and transition behavior",
+    "relation_api: Flask route/API coverage, usually one level above service behavior",
+    "relation_persistence: database/schema/seed persistence coverage",
+    "relation_service: service/query/policy layer coverage",
+    "relation_unit: narrow pure-function or codec coverage",
+]

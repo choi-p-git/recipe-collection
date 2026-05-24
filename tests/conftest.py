@@ -16,6 +16,186 @@ if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
 
 
+FILE_MARKERS = {
+    "test_db_init.py": {"module_database", "relation_persistence"},
+    "test_db_seed.py": {"module_database", "relation_persistence"},
+    "test_item_notes.py": {"module_item", "module_workflow", "relation_service"},
+    "test_item_service.py": {"module_item", "relation_service"},
+    "test_menu_forecast_service.py": {"module_forecast", "relation_service"},
+    "test_menu_service.py": {"module_menu", "relation_service"},
+    "test_my_recipes.py": {"module_recipe", "module_item", "relation_service"},
+    "test_policy_service.py": {"module_workflow", "relation_service"},
+    "test_queries.py": {"module_search", "relation_service"},
+    "test_recipe_flattening_service.py": {"module_recipe", "relation_service"},
+    "test_recipe_instruction_codec.py": {"module_recipe", "relation_unit"},
+    "test_recipe_scaling_service.py": {"module_recipe", "relation_service"},
+    "test_recipe_service.py": {"module_recipe", "relation_service"},
+    "test_workflow.py": {"module_workflow", "relation_service"},
+}
+
+ROUTE_MARKER_PATTERNS = [
+    (("production_record",), {"module_production", "module_forecast"}),
+    (("menu_forecast", "forecast", "advanced_case"), {"module_forecast"}),
+    (
+        (
+            "menu_",
+            "my_menus",
+            "bulk",
+            "slot",
+            "copy",
+            "paste",
+            "clear_menu",
+            "delete_menu",
+            "edit_menu",
+            "new_menu",
+        ),
+        {"module_menu"},
+    ),
+    (("api_search", "live_collection", "search_items"), {"module_search"}),
+    (
+        (
+            "workflow",
+            "reviewer",
+            "dietitian",
+            "admin_",
+            "send_back",
+            "return_to_submitter",
+            "transition",
+            "portal",
+            "go_live",
+        ),
+        {"module_workflow"},
+    ),
+    (("notification", "note"), {"module_workflow", "module_item"}),
+    (
+        (
+            "recipe",
+            "flattened",
+            "scaling",
+            "scale_",
+            "yield",
+            "my_recipes",
+        ),
+        {"module_recipe"},
+    ),
+    (
+        (
+            "base_food",
+            "item_detail",
+            "edit_item",
+            "live_item",
+            "new_base_food",
+        ),
+        {"module_item"},
+    ),
+    (("login", "preferences"), {"module_auth"}),
+]
+
+
+def _normalize_scope_option(raw_value: str | None, prefix: str) -> set[str]:
+    if not raw_value:
+        return set()
+
+    selected = set()
+    for value in raw_value.split(","):
+        value = value.strip().replace("-", "_")
+        if not value:
+            continue
+
+        selected.add(value if value.startswith(prefix) else f"{prefix}{value}")
+    return selected
+
+
+def _marker_names_for_item(item) -> set[str]:
+    path = Path(str(item.fspath))
+    markers = set(FILE_MARKERS.get(path.name, set()))
+
+    if path.name == "test_routes.py":
+        markers.add("relation_api")
+        test_name = item.name.lower()
+        for patterns, pattern_markers in ROUTE_MARKER_PATTERNS:
+            if any(pattern in test_name for pattern in patterns):
+                markers.update(pattern_markers)
+                break
+
+        if not any(marker.startswith("module_") for marker in markers):
+            markers.add("module_routes")
+
+    return markers
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--module-scope",
+        action="store",
+        default="",
+        help="Comma-separated module selectors such as menu,recipe,forecast.",
+    )
+    parser.addoption(
+        "--relation-scope",
+        action="store",
+        default="",
+        help="Comma-separated relation selectors: unit,service,api,persistence.",
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    selected_modules = _normalize_scope_option(config.getoption("--module-scope"), "module_")
+    selected_relations = _normalize_scope_option(config.getoption("--relation-scope"), "relation_")
+    kept = []
+    deselected = []
+
+    for item in items:
+        marker_names = _marker_names_for_item(item)
+        for marker_name in marker_names:
+            item.add_marker(getattr(pytest.mark, marker_name))
+
+        module_match = not selected_modules or bool(marker_names & selected_modules)
+        relation_match = not selected_relations or bool(marker_names & selected_relations)
+        if module_match and relation_match:
+            kept.append(item)
+        else:
+            deselected.append(item)
+
+    if deselected:
+        config.hook.pytest_deselected(items=deselected)
+        items[:] = kept
+
+
+def _remove_pycache_dirs() -> None:
+    roots = [
+        PROJECT_ROOT / "__pycache__",
+        PROJECT_ROOT / "tests",
+        SRC_PATH,
+    ]
+    seen = set()
+    for root in roots:
+        if not root.exists():
+            continue
+
+        pycache_dirs = [root] if root.name == "__pycache__" else root.rglob("__pycache__")
+        for pycache_dir in pycache_dirs:
+            resolved = pycache_dir.resolve()
+            if resolved in seen:
+                continue
+
+            seen.add(resolved)
+            shutil.rmtree(resolved, ignore_errors=True)
+
+
+def _remove_generated_test_artifacts() -> None:
+    import db
+
+    db.garbage_collect_test_tmp(min_age_hours=0, dry_run=False)
+    shutil.rmtree(PROJECT_ROOT / ".pytest_cache", ignore_errors=True)
+    _remove_pycache_dirs()
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_unconfigure(config):
+    _remove_generated_test_artifacts()
+
+
 @pytest.fixture
 def isolated_db(monkeypatch):
     import db

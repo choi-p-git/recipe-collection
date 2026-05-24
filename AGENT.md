@@ -1171,10 +1171,63 @@ When extending this project:
 * avoid introducing frontend frameworks unless there is a strong need; current direction is intentionally lightweight
 * respect current MVP boundaries and defer grouped methods, prettify logic, fuzzy search, and advanced scaling unless explicitly pulled into scope
 
+## Finish Workflow for Codex / Agent Work
+
+Every completed prompt should end with a concise cumulative commit message suggestion.
+
+Commit message workflow:
+
+1. Track the user-visible work completed during the prompt and build on the previous suggestion when the prompt is a continuation of the same change set.
+2. Use a fresh line-diff review when the prompt refines, rewrites, or refactors earlier work, because the final intent may differ from the incremental history.
+3. For simple build-on prompts, do not perform a full line-by-line diff analysis unless needed; summarize from the known cumulative work plus a quick changed-file check.
+4. For mixed or risky prompts, inspect the relevant diff hunks before writing the suggestion.
+5. Provide the suggested message in the final response under `Suggested commit message`, using a short imperative subject and optional body bullets when helpful.
+
+Preferred shape:
+
+```text
+Subject line in imperative mood
+
+- Optional detail when more than one meaningful area changed
+- Optional testing/verification note when it clarifies scope
+```
+
+## Pytest Workflow for Codex / Agent Work
+
+Default test scope is module-local, not project-wide.
+
+1. Start with focused tests for the changed submodule.
+   - Run the directly affected domain test file or selected node ids.
+   - Include the nearest one-level-up API or route coverage when behavior crosses the Flask boundary. In this repo that usually means selected `tests/test_routes.py::<test_name>` API/route tests, not the whole `test_routes.py` file unless the route layer itself is the working module.
+2. Follow with a constrained module suite.
+   - Treat the current working module as the feature area touched by the change, such as database/schema, item/workflow, recipe/scaling, menu/forecast, production record, search/query, or route/API.
+   - Run only the test files that cover that feature area and its immediate public surface.
+   - Do not run `.\.venv\Scripts\python.exe -m pytest -q` as the default confirmation step for ordinary Codex changes.
+3. Reserve full-project pytest for explicit release/regression requests, broad shared-contract edits, dependency/tooling changes, or when the user asks for it.
+4. After each pytest sequence, generated artifacts must be removed automatically. The pytest session hook in `tests/conftest.py` deletes `.test_tmp/run-*`, `.pytest_cache`, and project-local `__pycache__` directories after every run.
+
+Current module-suite examples:
+
+* database/schema: `tests/test_db_init.py tests/test_db_seed.py`
+* item/workflow/notes: `tests/test_item_service.py tests/test_item_notes.py tests/test_policy_service.py tests/test_workflow.py` plus selected route tests for changed endpoints
+* recipe authoring/scaling/detail: `tests/test_recipe_service.py tests/test_recipe_scaling_service.py tests/test_recipe_flattening_service.py tests/test_recipe_instruction_codec.py` plus selected recipe route tests
+* menu builder: `tests/test_menu_service.py` plus selected menu route tests
+* menu forecasting/production-facing forecast behavior: `tests/test_menu_forecast_service.py` plus selected forecast/production route tests
+* search/query surfaces: `tests/test_queries.py` plus selected API search route tests
+* route/API module work: selected node ids in `tests/test_routes.py`, broadening to the whole file only when route-wide behavior changed
+
+Pytest module selectors:
+
+* Tests are auto-tagged from `tests/conftest.py` with `module_*` and `relation_*` markers.
+* Prefer readable selectors for suite runs: `.\.venv\Scripts\python.exe -m pytest -q --module-scope menu --relation-scope service`
+* Run one-level-up API checks with: `.\.venv\Scripts\python.exe -m pytest -q --module-scope menu --relation-scope api`
+* Multiple modules or relations are comma-separated, for example `--module-scope menu,forecast --relation-scope service,api`.
+* Raw pytest marker expressions also work, for example `-m "module_recipe and relation_api"`.
+
 ## MVP Validation Checklist
 
 1. run `.\.venv\Scripts\python.exe .\src\db.py`
-2. run `.\.venv\Scripts\python.exe -m pytest -q`
+2. run the constrained module-suite pytest command from the Pytest Workflow above
 3. verify base food create, detail view, and reviewer/dietitian/admin workflow movement
 4. verify recipe create, edit, return-to-submitter, resubmit, analyze, and live flow
 5. verify notes, automatic workflow notifications, and notification clearing on item view
@@ -1191,7 +1244,7 @@ When extending this project:
 3. update `database/schema.sql` so the snapshot matches the latest DB shape
 4. update app code, queries, services, templates, and tests as needed
 5. run `.\.venv\Scripts\python.exe .\src\db.py`
-6. run `.\.venv\Scripts\python.exe -m pytest -q`
+6. run the database/schema module suite, then add only directly affected module/API tests
 7. manually verify the affected workflow or UI behavior
 
 ## Current Next Logical Development Steps
