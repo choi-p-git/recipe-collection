@@ -151,6 +151,35 @@ def test_build_menu_forecast_production_summary_warns_for_unset_forecasts():
     assert "without a forecast yield" in summary["warnings"][0]
 
 
+def test_build_menu_forecast_production_summary_keeps_unforecasted_base_food_recordable():
+    summary = build_menu_forecast_production_summary(
+        [
+            {
+                "item_id": 12,
+                "recipe_name": "Unforecasted Apples",
+                "item_type": "base_food",
+                "meal_period_label": "Lunch",
+                "concept_label": "Hot Line",
+                "yield_quantity": None,
+                "yield_unit": "",
+                "mass_quantity": 1,
+                "mass_unit": "lb",
+                "volume_quantity": None,
+                "volume_unit": "",
+                "forecast_quantity": "0",
+                "forecast_unit": "each",
+                "desired_portions": "",
+            }
+        ]
+    )
+
+    assert len(summary["rows"]) == 1
+    assert summary["rows"][0]["recipe_name"] == "Unforecasted Apples"
+    assert summary["rows"][0]["total_forecast_quantity_display"] == "0"
+    assert summary["rows"][0]["total_forecast_unit"] == "lb"
+    assert "without a forecast yield" in summary["warnings"][0]
+
+
 def test_save_menu_forecast_batch_splits_persists_percentage_splits(isolated_db):
     base_food_id = create_base_food(item_name="Batch Split Base")
     recipe_id = create_recipe(

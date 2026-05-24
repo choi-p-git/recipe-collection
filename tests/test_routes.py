@@ -1304,8 +1304,12 @@ def test_production_record_post_requires_recorded_lines(app_client, isolated_db)
     assert "Status: Draft" in page
 
 
-def test_production_record_skips_unforecasted_base_food_lines(app_client, isolated_db):
-    base_food_id = create_base_food(item_name="Unforecasted Record Apple")
+def test_production_record_renders_unforecasted_base_food_lines(app_client, isolated_db):
+    base_food_id = create_base_food(
+        item_name="Unforecasted Record Apple",
+        mass_quantity=1,
+        mass_unit="lb",
+    )
     create_response = app_client.post(
         "/menus/new",
         data={
@@ -1365,8 +1369,9 @@ def test_production_record_skips_unforecasted_base_food_lines(app_client, isolat
     conn.close()
 
     assert response.status_code == 200
-    assert "No forecasted production lines are available for this day." in page
-    assert line_count == 0
+    assert "Unforecasted Record Apple" in page
+    assert "0 lb" in page
+    assert line_count == 1
 
 
 def test_api_update_menu_forecast_rejects_invalid_quantity(app_client, isolated_db):

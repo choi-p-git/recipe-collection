@@ -1104,6 +1104,13 @@ def build_menu_forecast_production_summary(rows: list[dict]) -> dict:
         if forecast_quantity is None:
             forecast_quantity = _coerce_optional_float(row.get("forecast_quantity"))
         forecast_unit = normalize_unit_symbol(row.get("effective_forecast_unit") or row.get("forecast_unit"))
+        item_default_unit = (
+            recipe_yield_unit
+            or normalize_unit_symbol(row.get("mass_unit"))
+            or normalize_unit_symbol(row.get("volume_unit"))
+            or forecast_unit
+            or "each"
+        )
 
         rollup = rollups.setdefault(
             item_id,
@@ -1127,7 +1134,7 @@ def build_menu_forecast_production_summary(rows: list[dict]) -> dict:
                 "volume_unit": row.get("volume_unit") or "",
                 "total_forecast_quantity": 0.0,
                 "total_forecast_quantity_display": "0",
-                "total_forecast_unit": recipe_yield_unit,
+                "total_forecast_unit": item_default_unit,
                 "batch_count": 0.0,
                 "batch_count_display": "0",
                 "desired_portions_total": 0.0,
@@ -1135,7 +1142,15 @@ def build_menu_forecast_production_summary(rows: list[dict]) -> dict:
                 "batch_totals": {},
                 "batch_summary": [],
                 "warnings": [],
-                "display_unit_options": [],
+                "display_unit_options": build_forecast_display_unit_options(
+                    base_unit=item_default_unit,
+                    row={
+                        "mass_quantity": row.get("mass_quantity"),
+                        "mass_unit": row.get("mass_unit"),
+                        "volume_quantity": row.get("volume_quantity"),
+                        "volume_unit": row.get("volume_unit"),
+                    },
+                ),
             },
         )
         rollup["assignment_count"] += 1
