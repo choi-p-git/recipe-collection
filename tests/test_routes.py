@@ -121,6 +121,24 @@ def test_new_menu_post_creates_menu_and_materializes_slots(app_client, isolated_
     assert menu_row[1:] == ("Spring Menu", "draft")
     assert slot_count == 16
 
+    delete_response = app_client.post(
+        f"/menus/{menu_row[0]}/delete",
+        follow_redirects=False,
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM menu WHERE menu_id = ?", (menu_row[0],))
+    menu_count = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM menu_slot WHERE menu_id = ?", (menu_row[0],))
+    slot_count = cursor.fetchone()[0]
+    conn.close()
+
+    assert delete_response.status_code == 302
+    assert delete_response.headers["Location"].endswith("/menus")
+    assert menu_count == 0
+    assert slot_count == 0
+
 
 def test_new_menu_post_requires_date_range(app_client):
     response = app_client.post(

@@ -169,7 +169,7 @@ def garbage_collect_test_tmp(
             continue
 
         age_hours = (time.time() - modified_at) / 60 / 60
-        if modified_at > cutoff:
+        if min_age_hours > 0 and modified_at > cutoff:
             result["skipped"].append(
                 {
                     "path": str(child),

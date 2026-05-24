@@ -192,6 +192,11 @@ def _remove_generated_test_artifacts() -> None:
 
 
 @pytest.hookimpl(trylast=True)
+def pytest_sessionfinish(session, exitstatus):
+    _remove_generated_test_artifacts()
+
+
+@pytest.hookimpl(trylast=True)
 def pytest_unconfigure(config):
     _remove_generated_test_artifacts()
 

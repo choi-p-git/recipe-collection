@@ -49,6 +49,19 @@ def test_create_menu_materializes_expected_slot_count(isolated_db):
     assert menu_row == ("Cycle Menu", "draft")
     assert slot_count == 16
 
+    delete_menu(menu_id=menu_id, actor_user_id="dev_user_001")
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM menu WHERE menu_id = ?", (menu_id,))
+    menu_count = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM menu_slot WHERE menu_id = ?", (menu_id,))
+    slot_count = cursor.fetchone()[0]
+    conn.close()
+
+    assert menu_count == 0
+    assert slot_count == 0
+
 
 def test_create_menu_requires_name_and_selections():
     with pytest.raises(InvalidMenuPayloadError):
