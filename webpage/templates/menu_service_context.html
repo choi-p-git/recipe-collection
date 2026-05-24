@@ -17,6 +17,7 @@
         <div class="production-record-review-actions">
             <a class="page-action-link secondary" href="{{ url_for('menu_forecast', menu_id=menu.menu_id, week=week_number, day=selected_day) }}">Forecasting</a>
             <a class="page-action-link secondary" href="{{ url_for('production_record', menu_id=menu.menu_id, week=week_number, day=selected_day) }}">Production Record</a>
+            <a class="page-action-link secondary" href="{{ url_for('production_record_history', menu_id=menu.menu_id) }}">History</a>
             <a class="page-action-link secondary" href="{{ url_for('menu_detail', menu_id=menu.menu_id, week=week_number) }}">Menu Overview</a>
         </div>
     </div>

@@ -52,7 +52,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function buildItemDetailUrl(item) {
-        const url = new URL(`/items/${item.item_id}`, window.location.origin);
+        const url = new URL(`/recipe-collection/items/${item.item_id}`, window.location.origin);
         if (item.item_type === "recipe" && item.forecast_updated_at) {
             const scaleQuantity = item.effective_forecast_quantity || item.forecast_quantity || "";
             const scaleUnit = item.effective_forecast_unit || item.forecast_unit || "";
@@ -403,7 +403,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 item_type: requestedItemType,
                 offset: String(offset),
             });
-            const response = await fetch(`/api/items/search?${params.toString()}`);
+            const response = await fetch(`/recipe-collection/api/items/search?${params.toString()}`);
             const payload = await response.json();
 
             if (

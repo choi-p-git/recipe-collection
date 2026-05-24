@@ -74,6 +74,7 @@ from services.production_record_service import (
     ensure_production_record,
     get_production_record_for_service_day,
     get_production_record_review,
+    list_production_records_for_menu,
     post_production_record,
     save_production_record_line,
 )
@@ -340,6 +341,13 @@ def apply_unit_system_to_recipe_item_snapshot(item: dict, unit_system: str) -> l
     return warnings
 
 
+def _redirect_with_query(endpoint: str, **values):
+    target = url_for(endpoint, **values)
+    if request.query_string:
+        target = f"{target}?{request.query_string.decode()}"
+    return redirect(target, code=301)
+
+
 @app.context_processor
 def inject_mock_auth_context():
     current_user = get_current_mock_user(session)
@@ -366,7 +374,7 @@ def inject_mock_auth_context():
     }
 
 
-@app.route("/new/base-food", methods=["GET", "POST"])
+@app.route("/recipe-collection/new/base-food", methods=["GET", "POST"])
 def new_base_food():
     form_data = {
         "item_name": "",
@@ -430,7 +438,15 @@ def new_base_food():
         can_manage_official_measurements_for_current_user=False,
     )
 
-@app.route("/new/recipe")
+
+@app.route("/new/base-food", methods=["GET", "POST"])
+def legacy_new_base_food():
+    if request.method == "POST":
+        return new_base_food()
+    return _redirect_with_query("new_base_food")
+
+
+@app.route("/recipe-collection/new/recipe")
 def new_recipe():
     current_user = get_current_mock_user(session)
     return render_template(
@@ -443,6 +459,11 @@ def new_recipe():
             current_user["role"]
         ),
     )
+
+
+@app.route("/new/recipe")
+def legacy_new_recipe():
+    return _redirect_with_query("new_recipe")
 
 
 @app.route("/menus/new", methods=["GET", "POST"])
@@ -789,6 +810,37 @@ def production_record(menu_id: int):
     )
 
 
+@app.route("/menus/<int:menu_id>/production-record/history")
+def production_record_history(menu_id: int):
+    menu = get_menu_detail(menu_id)
+    if menu is None:
+        return "Menu not found.", 404
+
+    current_user = get_current_mock_user(session)
+    try:
+        history = list_production_records_for_menu(
+            menu_id=menu_id,
+            actor_user_id=current_user["user_id"],
+        )
+    except InvalidProductionRecordError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("menus"))
+
+    for record in history["records"]:
+        service_date = menu.get("week_day_dates", {}).get(record["week_number"], {}).get(
+            record["day_of_week"],
+            {},
+        )
+        record["service_date"] = service_date
+        record["service_date_display"] = service_date.get("display", "")
+
+    return render_template(
+        "production_record_history.html",
+        menu=menu,
+        history=history,
+    )
+
+
 @app.route("/api/menus/<int:menu_id>/production-record/lines/<int:production_record_line_id>", methods=["PUT"])
 def api_update_production_record_line(menu_id: int, production_record_line_id: int):
     payload = request.get_json(silent=True)
@@ -1086,12 +1138,17 @@ def _build_recipe_print_context(item_id: int) -> dict | None:
     }
 
 
-@app.route("/items/<int:item_id>/print")
+@app.route("/recipe-collection/items/<int:item_id>/print")
 def recipe_print(item_id: int):
     context = _build_recipe_print_context(item_id)
     if context is None:
         return "Recipe not found.", 404
     return render_template("recipe_print.html", **context)
+
+
+@app.route("/items/<int:item_id>/print")
+def legacy_recipe_print(item_id: int):
+    return _redirect_with_query("recipe_print", item_id=item_id)
 
 
 @app.route("/menus/<int:menu_id>/forecast/recipes/<int:item_id>/advanced")
@@ -1568,7 +1625,7 @@ def login_debug_override():
     return redirect(url_for("login_shell"))
 
 
-@app.route("/my-recipes")
+@app.route("/recipe-collection/my-recipes")
 def my_recipes():
     current_user = get_current_recipe_author()
     selected_status = request.args.get("status", "").strip()
@@ -1588,7 +1645,12 @@ def my_recipes():
     )
 
 
-@app.route("/collection")
+@app.route("/my-recipes")
+def legacy_my_recipes():
+    return _redirect_with_query("my_recipes")
+
+
+@app.route("/recipe-collection")
 def live_collection():
     page_data = get_live_collection_page(
         search_term=request.args.get("q", ""),
@@ -1597,6 +1659,11 @@ def live_collection():
         offset=request.args.get("offset", 0),
     )
     return render_template("collection.html", page_data=page_data)
+
+
+@app.route("/collection")
+def legacy_live_collection():
+    return _redirect_with_query("live_collection")
 
 
 @app.route("/workflow/<portal_name>")
@@ -1678,7 +1745,7 @@ def workflow_transition(item_id: int):
     )
 
 
-@app.route("/items/<int:item_id>/edit", methods=["GET", "POST"])
+@app.route("/recipe-collection/items/<int:item_id>/edit", methods=["GET", "POST"])
 def edit_item(item_id: int):
     current_user = get_current_mock_user(session)
     item = get_item_edit_payload(item_id)
@@ -1805,7 +1872,15 @@ def edit_item(item_id: int):
         ),
     )
 
-@app.route("/api/items/search")
+
+@app.route("/items/<int:item_id>/edit", methods=["GET", "POST"])
+def legacy_edit_item(item_id: int):
+    if request.method == "POST":
+        return edit_item(item_id)
+    return _redirect_with_query("edit_item", item_id=item_id)
+
+
+@app.route("/recipe-collection/api/items/search")
 def api_search_items():
     query = request.args.get("q", "").strip()
     results = search_items_page(
@@ -1817,7 +1892,13 @@ def api_search_items():
     )
     return jsonify(results)
 
-@app.route("/api/recipes", methods=["POST"])
+
+@app.route("/api/items/search")
+def legacy_api_search_items():
+    return api_search_items()
+
+
+@app.route("/recipe-collection/api/recipes", methods=["POST"])
 def api_create_recipe():
     try:
         payload = request.get_json(silent=True)
@@ -1861,7 +1942,12 @@ def api_create_recipe():
         return jsonify({"ok": False, "error": f"Unexpected error: {exc}"}), 500
 
 
-@app.route("/api/recipes/<int:recipe_id>", methods=["PUT"])
+@app.route("/api/recipes", methods=["POST"])
+def legacy_api_create_recipe():
+    return api_create_recipe()
+
+
+@app.route("/recipe-collection/api/recipes/<int:recipe_id>", methods=["PUT"])
 def api_update_recipe(recipe_id: int):
     current_user = get_current_mock_user(session)
     item = get_item_detail(recipe_id)
@@ -1913,8 +1999,14 @@ def api_update_recipe(recipe_id: int):
 
     except Exception as exc:
         return jsonify({"ok": False, "error": f"Unexpected error: {exc}"}), 500
-    
-@app.route("/items/<int:item_id>")
+
+
+@app.route("/api/recipes/<int:recipe_id>", methods=["PUT"])
+def legacy_api_update_recipe(recipe_id: int):
+    return api_update_recipe(recipe_id)
+
+
+@app.route("/recipe-collection/items/<int:item_id>")
 def item_detail(item_id: int):
     item = get_item_detail(item_id)
 
@@ -2132,7 +2224,12 @@ def item_detail(item_id: int):
     )
 
 
-@app.route("/items/<int:item_id>/notes", methods=["POST"])
+@app.route("/items/<int:item_id>")
+def legacy_item_detail(item_id: int):
+    return _redirect_with_query("item_detail", item_id=item_id)
+
+
+@app.route("/recipe-collection/items/<int:item_id>/notes", methods=["POST"])
 def item_post_note(item_id: int):
     item = get_item_detail(item_id)
     if item is None:
@@ -2151,6 +2248,11 @@ def item_post_note(item_id: int):
         flash(str(exc), "error")
 
     return redirect(url_for("item_detail", item_id=item_id))
+
+
+@app.route("/items/<int:item_id>/notes", methods=["POST"])
+def legacy_item_post_note(item_id: int):
+    return item_post_note(item_id)
 
 
 @app.route("/recipes/<int:recipe_id>")

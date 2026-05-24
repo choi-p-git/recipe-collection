@@ -776,6 +776,122 @@ def get_production_record_for_service_day(
     )
 
 
+def list_production_records_for_menu(
+    *,
+    menu_id: int,
+    actor_user_id: str,
+) -> dict:
+    initialize_database()
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        _ensure_menu_can_update(cursor, menu_id=menu_id, actor_user_id=actor_user_id)
+        cursor.execute(
+            """
+            SELECT
+                production_record_id,
+                week_number,
+                day_of_week,
+                status,
+                created_at,
+                updated_at
+            FROM production_record
+            WHERE menu_id = ?
+            ORDER BY week_number ASC,
+                     CASE day_of_week
+                        WHEN 'sunday' THEN 0
+                        WHEN 'monday' THEN 1
+                        WHEN 'tuesday' THEN 2
+                        WHEN 'wednesday' THEN 3
+                        WHEN 'thursday' THEN 4
+                        WHEN 'friday' THEN 5
+                        WHEN 'saturday' THEN 6
+                        ELSE 7
+                     END ASC
+            """,
+            (menu_id,),
+        )
+        record_rows = cursor.fetchall()
+
+        records = []
+        totals = {
+            "total_records": len(record_rows),
+            "draft": 0,
+            "posted": 0,
+            "total_lines": 0,
+            "recorded": 0,
+            "unrecorded": 0,
+            "accurate": 0,
+            "review": 0,
+            "miss": 0,
+        }
+        for record_row in record_rows:
+            production_record_id = int(record_row[0])
+            cursor.execute(
+                """
+                SELECT
+                    production_record_line_id,
+                    production_record_id,
+                    item_id,
+                    recipe_name,
+                    assignment_count,
+                    slot_labels_json,
+                    forecast_quantity,
+                    forecast_unit,
+                    actual_quantity,
+                    actual_unit,
+                    variance_quantity,
+                    variance_unit,
+                    variance_percent,
+                    variance_level,
+                    end_service_variance_quantity,
+                    end_service_variance_unit,
+                    implied_demand_quantity,
+                    implied_demand_unit,
+                    forecast_error_quantity,
+                    forecast_error_unit,
+                    forecast_error_percent,
+                    forecast_accuracy_level,
+                    reason_code,
+                    reason_note,
+                    notes,
+                    actual_quantity_formula,
+                    end_service_variance_quantity_formula
+                FROM production_record_line
+                WHERE production_record_id = ?
+                ORDER BY production_record_line_id ASC
+                """,
+                (production_record_id,),
+            )
+            lines = [_build_line_payload(line_row) for line_row in cursor.fetchall()]
+            summary = _build_record_summary(lines)
+            status = record_row[3]
+            if status in {"draft", "posted"}:
+                totals[status] += 1
+            for key in ("total", "recorded", "unrecorded", "accurate", "review", "miss"):
+                totals["total_lines" if key == "total" else key] += summary[key]
+
+            records.append(
+                {
+                    "production_record_id": production_record_id,
+                    "week_number": int(record_row[1]),
+                    "day_of_week": record_row[2],
+                    "day_label": str(record_row[2]).title(),
+                    "status": status,
+                    "status_label": PRODUCTION_RECORD_STATUS_LABELS.get(status, str(status).title()),
+                    "is_posted": status == "posted",
+                    "created_at": record_row[4],
+                    "updated_at": record_row[5],
+                    "summary": summary,
+                },
+            )
+
+    return {
+        "records": records,
+        "totals": totals,
+    }
+
+
 def build_production_record_unit_options(summary_row: dict) -> list[str]:
     return build_forecast_display_unit_options(
         base_unit=summary_row["total_forecast_unit"],

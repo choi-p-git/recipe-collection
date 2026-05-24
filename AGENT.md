@@ -17,6 +17,26 @@ This project is being built as a staged MVP with deliberate business-analysis-fi
 * Core Python logic lives under `src/`
 * reusable seed catalog bootstrap lives in `src/seed_catalog.py`
 
+### Major Module / App Boundaries
+
+Treat each first URL segment as the major module/app boundary for future architecture.
+
+Current and planned examples:
+
+* `/recipe-collection` represents the Recipe Collection app: recipe creation, base-food submission, live collection browsing, item detail, and related collection workflows
+* `/menus` represents the Menu Builder app: menu cycles, slot assignment, Forecasting, Production Record, service context, and production history/reporting
+* future `/inventory` should represent the Inventory app: current counts, count freshness, pack/case definitions, availability, and purchasing suggestions
+* future `/analytics` should represent the Analytics app: trend, usage, menu, cost, portion-control, and forecast/purchasing recommendation analysis
+
+Architectural guidance:
+
+* Recipe Collection / recipe creation is its own app, not merely a setup screen for Menu Builder
+* Menu Builder is its own app, not merely a feature inside Recipe Collection
+* shared services such as item search, item detail, scaling, unit conversion, workflow policy, preferences, and auth may be reused across apps
+* app-specific screens, routes, navigation, and future tests should keep clear ownership under their top-level module route
+* app-owned APIs should use the same module prefix where practical, for example `/recipe-collection/api/...` for recipe/item APIs
+* when adding a major feature, choose the top-level URL segment first and let templates/services follow that ownership boundary where practical
+
 ## Current Folder Structure
 
 * `database/`
@@ -471,8 +491,8 @@ Implemented end-to-end:
 
 Implemented as a shared route and render page:
 
-* `/items/<item_id>`
-* legacy `/recipes/<recipe_id>` redirects to the shared item route
+* `/recipe-collection/items/<item_id>`
+* legacy `/items/<item_id>` and `/recipes/<recipe_id>` redirect to the shared Recipe Collection item route
 
 Current detail page renders:
 
@@ -659,18 +679,18 @@ Important current semantics:
 
 ### 2D. Production Record Refinement Roadmap
 
-Next recommended slice:
+Implemented refinement slices:
 
-* add a Forecasting occurrence history panel per forecast row / item
-* support both `recipe` and `base_food` items
-* group occurrences into:
+* Forecasting occurrence history panel per forecast row / item
+* support for both `recipe` and `base_food` items
+* grouped occurrences into:
 
   * current menu occurrences
   * other menu occurrences
 
-* include posted records and draft/current in-progress records when production fields have been filled
-* same-menu occurrence history should include only past service dates with filled Production Records
-* occurrence rows should show:
+* includes posted records and draft/current in-progress records when production fields have been filled
+* same-menu occurrence history includes only past service dates with filled Production Records
+* occurrence rows show:
 
   * service date
   * menu name
@@ -684,25 +704,25 @@ Next recommended slice:
   * reason code label
   * notes indicator
 
-* occurrence dates should be clickable links that open a future combined context view in a new tab
-* combined context view should show the selected service date's Forecasting context and Production Record context together
-* algorithmic suggested forecast should be deferred until the occurrence UI is stable
-* future suggested forecast should use historical implied demand as the primary early signal
-* future algorithm inputs may include menu mix, attendance, weather, field trips, sports/team away days, seasonality, and service-day patterns
-
-Follow-up operational slice:
-
-* add a Production Record index/history page scoped to a menu
-* list draft and posted records by service date, week, and day
-* expose quick actions:
+* occurrence dates link to the combined service context view for the selected date
+* combined context view shows the selected service date's Forecasting context and Production Record context together
+* Production Record index/history page scoped to a menu
+* history page lists draft and posted records by service date, week, and day
+* history page exposes quick actions:
 
   * continue draft entry
   * review posted record
-  * print floor sheet
-  * export CSV
+  * export CSV for posted record
+  * open combined service context
+
+Current operational/reporting slice:
 
 * default Production Record landing should still favor the current service day
 * history views should make past posted and draft records easy to retrieve without rebuilding a forecast context manually
+* add filtering and lightweight reporting on top of the existing Production Record history data
+* algorithmic suggested forecast should be deferred until the occurrence/history/reporting UI is stable
+* future suggested forecast should use historical implied demand as the primary early signal
+* future algorithm inputs may include menu mix, attendance, weather, field trips, sports/team away days, seasonality, and service-day patterns
 
 Next reporting slice:
 
@@ -736,9 +756,11 @@ Implementation guidance:
 
 Inventory should build on the current Menu Builder / Forecasting / Production data path:
 
+* Inventory app should become the source for current inventory count records and count freshness
 * Forecasting provides expected demand and order-planning quantities
 * Production Record provides actual usage, leftover, shortage, and forecast miss signals
 * posted Production Records should feed historical demand and variance analysis
+* Forecasting and Production Record should eventually have API access to inventory availability, item counts, case sizes, and purchasing status
 * inventory should attach to item IDs, especially base-food ingredient IDs
 * reusable pack/case definitions should attach to item IDs, not recipes
 * menu-cell-local case sizes may exist for forecast work, but saving a reusable pack size should explicitly write an item-level pack definition
@@ -750,6 +772,13 @@ Inventory should build on the current Menu Builder / Forecasting / Production da
   * suggested order quantity
   * case/pack order count
   * live price or estimated cost when pricing data exists
+
+Future analytics tie-in:
+
+* inventory estimated-vs-actual usage should feed portion-control and usage-accuracy analytics
+* analytics should consume usage, menu, purchasing, cost, variance, and inventory history
+* future algorithm work may estimate year-over-year trends and suggest production or purchasing adjustments to prevent over/under production and purchasing
+* keep analytics algorithms out of the inventory foundation until the underlying record contracts are stable
 
 Deferred inventory work:
 
@@ -1171,6 +1200,25 @@ When extending this project:
 * avoid introducing frontend frameworks unless there is a strong need; current direction is intentionally lightweight
 * respect current MVP boundaries and defer grouped methods, prettify logic, fuzzy search, and advanced scaling unless explicitly pulled into scope
 
+## Perpetual Context Workflow
+
+When a prompt mentions, proposes, plans, or defers a feature/function, update project documentation in the same turn so the idea is durable for future work.
+
+Apply this even when the prompt frames the idea as later, deferred, "not now", or a brief aside. Capture the intent without implementing it unless the user explicitly asks for implementation.
+
+Documentation placement:
+
+* update `README.md` for user-facing current behavior, roadmap items, release notes, operational workflow notes, and visible feature status
+* update `AGENT.md` for implementation guidance, constraints, testing rules, architecture expectations, deferred boundaries, and future agent context
+* update both when the idea has both user-facing and agent-facing value
+
+Documentation quality rules:
+
+* keep additions brief and place them near the most relevant existing section
+* distinguish implemented behavior from deferred or planned behavior
+* preserve existing wording and roadmap intent unless the prompt explicitly changes direction
+* do not let documentation updates expand the requested implementation scope
+
 ## Finish Workflow for Codex / Agent Work
 
 Every completed prompt should end with a concise cumulative commit message suggestion.
@@ -1256,9 +1304,9 @@ Test data cleanup boundaries:
 
 ## Current Next Logical Development Steps
 
-1. implement Forecasting occurrence history for recipe/base-food items
-2. add the combined forecast + production context view linked from occurrence dates
-3. implement Production Record index/history page per menu
-4. implement Production Record filters and lightweight reporting summaries
-5. refine posted-record data contracts for future analytics and inventory use
-6. begin Inventory Management foundation with item-linked inventory lines and item-linked pack/case definitions
+1. implement Production Record filters and lightweight reporting summaries
+2. refine posted-record data contracts for future analytics and inventory use
+3. begin Inventory Management foundation with item-linked inventory lines, current counts, count freshness, and item-linked pack/case definitions
+4. define Forecasting / Production Record / Inventory API contracts for availability, expected demand, actual usage, and purchasing suggestions
+5. defer analytics algorithms until usage, menu, inventory, purchasing, and cost record contracts are stable
+

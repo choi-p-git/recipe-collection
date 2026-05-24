@@ -18,6 +18,7 @@
         </div>
         <div class="production-record-review-actions">
             <a class="page-action-link secondary" href="{{ url_for('production_record', menu_id=menu.menu_id, week=production_record.week_number, day=production_record.day_of_week) }}">Entry View</a>
+            <a class="page-action-link secondary" href="{{ url_for('production_record_history', menu_id=menu.menu_id) }}">History</a>
             <a class="page-action-link secondary" href="{{ url_for('menu_detail', menu_id=menu.menu_id, week=production_record.week_number) }}">Menu Overview</a>
             <a class="page-action-link secondary" href="{{ url_for('production_record_export_csv', menu_id=menu.menu_id, production_record_id=production_record.production_record_id) }}">Export CSV</a>
             <button type="button" class="workflow-button workflow-button-secondary" onclick="window.print()">Print</button>

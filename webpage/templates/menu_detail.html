@@ -26,6 +26,7 @@
                     <option value="">Menu Actions</option>
                     <option value="{{ url_for('menu_forecast', menu_id=menu.menu_id, week=selected_week_number) }}">Forecasting</option>
                     <option value="{{ url_for('production_record', menu_id=menu.menu_id, week=selected_week_number) }}">Production Record</option>
+                    <option value="{{ url_for('production_record_history', menu_id=menu.menu_id) }}">Production History</option>
                     <option value="{{ url_for('menu_print', menu_id=menu.menu_id, week=selected_week_number) }}">Print</option>
                 </select>
             </form>

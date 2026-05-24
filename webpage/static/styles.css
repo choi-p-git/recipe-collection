@@ -1720,6 +1720,27 @@ button:disabled {
     background: #fff1f2;
 }
 
+.production-record-history-table td {
+    vertical-align: top;
+}
+
+.production-record-history-table tr[data-production-record-status="posted"] {
+    background: #f8fafc;
+}
+
+.production-record-history-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+    min-width: 10rem;
+}
+
+.production-record-history-accuracy {
+    display: inline-flex;
+    margin-right: 0.45rem;
+    font-weight: 700;
+}
+
 .production-record-entry {
     display: flex;
     gap: 0.4rem;

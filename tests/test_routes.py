@@ -6,10 +6,10 @@ from services.recipe_service import create_recipe
 
 def test_index_and_form_routes_render(app_client):
     assert app_client.get("/").status_code == 200
-    base_food_page = app_client.get("/new/base-food")
+    base_food_page = app_client.get("/recipe-collection/new/base-food")
     assert base_food_page.status_code == 200
     assert "Yield Quantity" not in base_food_page.get_data(as_text=True)
-    recipe_page = app_client.get("/new/recipe")
+    recipe_page = app_client.get("/recipe-collection/new/recipe")
     assert recipe_page.status_code == 200
     recipe_page_text = recipe_page.get_data(as_text=True)
     assert "Yield Mass Quantity" in recipe_page_text
@@ -28,7 +28,7 @@ def test_index_and_form_routes_render(app_client):
 
 def test_new_base_food_post_redirects_to_item_detail(app_client):
     response = app_client.post(
-        "/new/base-food",
+        "/recipe-collection/new/base-food",
         data={
             "item_name": "Honey Ham",
             "notes": "Thin sliced.",
@@ -37,13 +37,13 @@ def test_new_base_food_post_redirects_to_item_detail(app_client):
     )
 
     assert response.status_code == 302
-    assert "/items/" in response.headers["Location"]
+    assert "/recipe-collection/items/" in response.headers["Location"]
 
 
 def test_item_detail_route_renders_base_food(app_client):
     item_id = create_base_food(item_name="Shredded Carrots")
 
-    response = app_client.get(f"/items/{item_id}")
+    response = app_client.get(f"/recipe-collection/items/{item_id}")
 
     page = response.get_data(as_text=True)
     assert response.status_code == 200
@@ -62,7 +62,7 @@ def test_item_detail_route_renders_recipe(app_client):
     dressing_id = create_base_food(item_name="Salad Dressing")
 
     create_response = app_client.post(
-        "/api/recipes",
+        "/recipe-collection/api/recipes",
         json={
             "item_name": "Dressed Greens",
             "yield_quantity": 2,
@@ -80,7 +80,7 @@ def test_item_detail_route_renders_recipe(app_client):
     )
 
     payload = create_response.get_json()
-    response = app_client.get(f"/items/{payload['recipe_item_id']}")
+    response = app_client.get(f"/recipe-collection/items/{payload['recipe_item_id']}")
     page = response.get_data(as_text=True)
 
     assert create_response.status_code == 200
@@ -721,7 +721,7 @@ def test_api_update_menu_forecast_persists_scale_by_yield(app_client, isolated_d
     assert "Production Summary" in page
     assert "Forecast Save Recipe" in page
     assert "<th>Recipe Yield</th>" not in page
-    assert f"/items/{recipe_id}?scale_quantity=24" in page
+    assert f"/recipe-collection/items/{recipe_id}?scale_quantity=24" in page
     assert f"forecast_menu_slot_item_id={menu_slot_item_id}" in page
     assert "24 each" in page
     assert "Batch 1:" in page
@@ -1200,7 +1200,25 @@ def test_production_record_route_snapshots_forecast_and_saves_variance(app_clien
     assert "Use kettle B next time" in post_page
     assert "As Expected" in post_page
     assert "Entry View" in post_page
+    assert "History" in post_page
     assert "Export CSV" in post_page
+
+    history_response = app_client.get(f"/menus/{menu_id}/production-record/history")
+    history_page = history_response.get_data(as_text=True)
+
+    assert history_response.status_code == 200
+    assert "Production Record History" in history_page
+    assert "Production Record Menu" in history_page
+    assert "May 4" in history_page
+    assert "Posted" in history_page
+    assert "1 of 1" in history_page
+    assert "Accurate 1" in history_page
+    assert "Review 0" in history_page
+    assert "Miss 0" in history_page
+    assert f"/menus/{menu_id}/production-record?week=1&amp;day=monday" in history_page
+    assert f"/menus/{menu_id}/production-record/{production_record_id}/review" in history_page
+    assert f"/menus/{menu_id}/production-record/{production_record_id}/export.csv" in history_page
+    assert f"/menus/{menu_id}/service-context?week=1&amp;day=monday" in history_page
 
     csv_response = app_client.get(f"/menus/{menu_id}/production-record/{production_record_id}/export.csv")
     csv_body = csv_response.get_data(as_text=True)
@@ -1235,6 +1253,32 @@ def test_production_record_route_snapshots_forecast_and_saves_variance(app_clien
 
     assert locked_response.status_code == 400
     assert "cannot be edited" in locked_payload["error"]
+
+
+def test_production_record_history_route_renders_empty_state(app_client):
+    create_response = app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "Empty History Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
+            "service_days": ["monday"],
+            "meal_periods": ["lunch"],
+            "concepts": ["hot_line"],
+            "menu_length_weeks": "1",
+        },
+        follow_redirects=False,
+    )
+    menu_id = int(create_response.headers["Location"].rstrip("/").split("/")[-1])
+
+    response = app_client.get(f"/menus/{menu_id}/production-record/history")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Production Record History" in page
+    assert "Empty History Menu" in page
+    assert "No production records have been started for this menu." in page
+    assert "Current Production Record" in page
 
 
 def test_production_record_post_requires_recorded_lines(app_client, isolated_db):
@@ -1927,7 +1971,7 @@ def test_forecast_advanced_scaling_confirms_bottom_up_yield(app_client, isolated
     conn.close()
 
     response = app_client.get(
-        f"/items/{recipe_id}"
+        f"/recipe-collection/items/{recipe_id}"
         f"?scale_mode=ingredient"
         f"&advanced_scale_row_key={recipe_component_id}"
         f"&advanced_scale_quantity=16"
@@ -2023,7 +2067,7 @@ def test_forecast_yield_scaling_can_confirm_back_to_forecast(app_client, isolate
     conn.close()
 
     response = app_client.get(
-        f"/items/{recipe_id}"
+        f"/recipe-collection/items/{recipe_id}"
         f"?scale_quantity=3"
         f"&scale_unit=qt"
         f"&forecast_menu_id={menu_id}"
@@ -2082,7 +2126,7 @@ def test_advanced_edit_can_scale_yield_from_desired_portions(app_client, isolate
     conn.close()
 
     response = app_client.get(
-        f"/items/{recipe_id}"
+        f"/recipe-collection/items/{recipe_id}"
         f"?desired_portions=16"
         f"&user_serving_size_quantity=1"
         f"&user_serving_size_unit=cup"
@@ -2130,7 +2174,7 @@ def test_advanced_scaling_state_survives_display_and_unit_toggles(app_client, is
     conn.close()
 
     response = app_client.get(
-        f"/items/{recipe_id}"
+        f"/recipe-collection/items/{recipe_id}"
         f"?scale_mode=ingredient"
         f"&advanced_scale_row_key={recipe_component_id}"
         f"&advanced_scale_quantity=16"
@@ -2189,7 +2233,7 @@ def test_advanced_scaling_submit_switches_display_mode_to_target_unit_family(app
     conn.close()
 
     response = app_client.get(
-        f"/items/{recipe_id}"
+        f"/recipe-collection/items/{recipe_id}"
         f"?scale_mode=ingredient"
         f"&display_mode=default"
         f"&advanced_scale_submit=1"
@@ -2209,7 +2253,7 @@ def test_advanced_scaling_submit_switches_display_mode_to_target_unit_family(app
     assert "Official volume equivalent:" not in page
 
     mass_response = app_client.get(
-        f"/items/{recipe_id}"
+        f"/recipe-collection/items/{recipe_id}"
         f"?scale_mode=ingredient"
         f"&display_mode=volume"
         f"&advanced_scale_submit=1"
@@ -2263,7 +2307,7 @@ def test_flattened_advanced_scaling_preserves_selected_volume_unit(app_client, i
     conn.close()
 
     response = app_client.get(
-        f"/items/{recipe_id}"
+        f"/recipe-collection/items/{recipe_id}"
         f"?ingredient_view=flattened"
         f"&display_mode=mass"
         f"&unit_system=imperial"
@@ -2361,7 +2405,7 @@ def test_forecast_bottom_up_scaling_saves_scaled_recipe_mass_unit(app_client, is
     conn.close()
 
     response = app_client.get(
-        f"/items/{recipe_id}"
+        f"/recipe-collection/items/{recipe_id}"
         f"?scale_mode=ingredient"
         f"&advanced_scale_row_key={recipe_component_id}"
         f"&advanced_scale_quantity=20"
@@ -2672,7 +2716,7 @@ def test_menu_slot_assign_route_renders_search_results(app_client, isolated_db):
 
     assert response.status_code == 200
     assert "Assign Search Lettuce" in page
-    assert f'href="/items/{base_food_id}"' in page
+    assert f'href="/recipe-collection/items/{base_food_id}"' in page
     assert "Base Food | ID" in page
 
 
@@ -3697,7 +3741,7 @@ def test_item_detail_shows_edit_link_for_allowed_roles(app_client):
         follow_redirects=False,
     )
 
-    response = app_client.get(f"/items/{item_id}")
+    response = app_client.get(f"/recipe-collection/items/{item_id}")
 
     assert "Edit Item" in response.get_data(as_text=True)
 
@@ -3705,7 +3749,7 @@ def test_item_detail_shows_edit_link_for_allowed_roles(app_client):
 def test_item_detail_hides_edit_link_for_standard_user(app_client):
     item_id = create_base_food(item_name="Readonly Celery")
 
-    response = app_client.get(f"/items/{item_id}")
+    response = app_client.get(f"/recipe-collection/items/{item_id}")
 
     assert "Edit Item" not in response.get_data(as_text=True)
 
@@ -3716,7 +3760,27 @@ def test_recipe_legacy_route_redirects_to_item_detail(app_client):
     response = app_client.get(f"/recipes/{item_id}", follow_redirects=False)
 
     assert response.status_code == 302
-    assert response.headers["Location"].endswith(f"/items/{item_id}")
+    assert response.headers["Location"].endswith(f"/recipe-collection/items/{item_id}")
+
+
+def test_recipe_collection_legacy_browser_routes_redirect(app_client):
+    item_id = create_base_food(item_name="Legacy Route Pepper")
+
+    legacy_routes = [
+        ("/collection?q=pepper", "/recipe-collection?q=pepper"),
+        ("/my-recipes?sort=name_asc", "/recipe-collection/my-recipes?sort=name_asc"),
+        ("/new/recipe", "/recipe-collection/new/recipe"),
+        ("/new/base-food", "/recipe-collection/new/base-food"),
+        (f"/items/{item_id}?technical_view=advanced", f"/recipe-collection/items/{item_id}?technical_view=advanced"),
+        (f"/items/{item_id}/edit", f"/recipe-collection/items/{item_id}/edit"),
+        (f"/items/{item_id}/print", f"/recipe-collection/items/{item_id}/print"),
+    ]
+
+    for legacy_path, canonical_path in legacy_routes:
+        response = app_client.get(legacy_path, follow_redirects=False)
+
+        assert response.status_code == 301
+        assert response.headers["Location"].endswith(canonical_path)
 
 
 def test_api_search_items_returns_json_results(app_client, isolated_db):
@@ -3730,7 +3794,7 @@ def test_api_search_items_returns_json_results(app_client, isolated_db):
     conn.commit()
     conn.close()
 
-    response = app_client.get("/api/items/search?q=egg")
+    response = app_client.get("/recipe-collection/api/items/search?q=egg")
     payload = response.get_json()
 
     assert response.status_code == 200
@@ -3742,7 +3806,7 @@ def test_api_search_items_returns_json_results(app_client, isolated_db):
 def test_api_search_items_returns_empty_results_for_short_queries(app_client):
     create_base_food(item_name="Table Salt")
 
-    response = app_client.get("/api/items/search?q=s")
+    response = app_client.get("/recipe-collection/api/items/search?q=s")
 
     assert response.status_code == 200
     assert response.get_json()["items"] == []
@@ -3758,7 +3822,7 @@ def test_api_search_items_excludes_non_live_results(app_client, isolated_db):
     conn.commit()
     conn.close()
 
-    response = app_client.get("/api/items/search?q=pepper")
+    response = app_client.get("/recipe-collection/api/items/search?q=pepper")
     payload = response.get_json()
 
     assert response.status_code == 200
@@ -3782,7 +3846,7 @@ def test_api_search_items_supports_offset_pagination(app_client, isolated_db):
     conn.commit()
     conn.close()
 
-    response = app_client.get("/api/items/search?q=offset&limit=10&offset=10")
+    response = app_client.get("/recipe-collection/api/items/search?q=offset&limit=10&offset=10")
     payload = response.get_json()
 
     assert response.status_code == 200
@@ -3804,7 +3868,7 @@ def test_api_search_items_supports_fuzzy_typo_matches(app_client, isolated_db):
     conn.commit()
     conn.close()
 
-    response = app_client.get("/api/items/search?q=chikcen")
+    response = app_client.get("/recipe-collection/api/items/search?q=chikcen")
     payload = response.get_json()
 
     assert response.status_code == 200
@@ -3821,8 +3885,8 @@ def test_api_search_items_supports_relaxed_short_query_fallback(app_client, isol
     conn.commit()
     conn.close()
 
-    default_response = app_client.get("/api/items/search?q=nayo")
-    relaxed_response = app_client.get("/api/items/search?q=nayo&relax_short_query=1")
+    default_response = app_client.get("/recipe-collection/api/items/search?q=nayo")
+    relaxed_response = app_client.get("/recipe-collection/api/items/search?q=nayo&relax_short_query=1")
 
     assert default_response.status_code == 200
     assert default_response.get_json()["items"] == []
@@ -3832,7 +3896,7 @@ def test_api_search_items_supports_relaxed_short_query_fallback(app_client, isol
 
 
 def test_item_detail_returns_404_for_missing_item(app_client):
-    response = app_client.get("/items/9999")
+    response = app_client.get("/recipe-collection/items/9999")
 
     assert response.status_code == 404
     assert "Item not found." in response.get_data(as_text=True)
@@ -3842,7 +3906,7 @@ def test_my_recipes_route_renders_recipe_list_and_filters(app_client, isolated_d
     dressing_id = create_base_food(item_name="Dijon Dressing")
 
     app_client.post(
-        "/api/recipes",
+        "/recipe-collection/api/recipes",
         json={
             "item_name": "Lunch Salad",
             "yield_quantity": 2,
@@ -3859,7 +3923,7 @@ def test_my_recipes_route_renders_recipe_list_and_filters(app_client, isolated_d
         },
     )
     second_response = app_client.post(
-        "/api/recipes",
+        "/recipe-collection/api/recipes",
         json={
             "item_name": "Dinner Salad",
             "yield_quantity": 4,
@@ -3887,7 +3951,7 @@ def test_my_recipes_route_renders_recipe_list_and_filters(app_client, isolated_d
     conn.commit()
     conn.close()
 
-    response = app_client.get("/my-recipes?status=reviewed&sort=name_asc")
+    response = app_client.get("/recipe-collection/my-recipes?status=reviewed&sort=name_asc")
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200
@@ -3898,7 +3962,7 @@ def test_my_recipes_route_renders_recipe_list_and_filters(app_client, isolated_d
 
 
 def test_my_recipes_route_shows_empty_state(app_client):
-    response = app_client.get("/my-recipes")
+    response = app_client.get("/recipe-collection/my-recipes")
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200
@@ -3915,7 +3979,7 @@ def test_live_collection_route_lists_live_items_only(app_client, isolated_db):
     conn.commit()
     conn.close()
 
-    response = app_client.get("/collection")
+    response = app_client.get("/recipe-collection")
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200
@@ -3959,9 +4023,9 @@ def test_live_collection_route_supports_filters_and_pagination(app_client, isola
     conn.commit()
     conn.close()
 
-    filtered_response = app_client.get("/collection?q=Browse&item_type=base_food&sort=name_asc&offset=15")
+    filtered_response = app_client.get("/recipe-collection?q=Browse&item_type=base_food&sort=name_asc&offset=15")
     filtered_page = filtered_response.get_data(as_text=True)
-    recipe_only_response = app_client.get("/collection?item_type=recipe")
+    recipe_only_response = app_client.get("/recipe-collection?item_type=recipe")
     recipe_only_page = recipe_only_response.get_data(as_text=True)
 
     assert filtered_response.status_code == 200
@@ -3973,7 +4037,7 @@ def test_live_collection_route_supports_filters_and_pagination(app_client, isola
 
 
 def test_live_collection_route_shows_minimum_query_message(app_client):
-    response = app_client.get("/collection?q=c")
+    response = app_client.get("/recipe-collection?q=c")
 
     assert response.status_code == 200
     assert "Enter at least 2 characters" in response.get_data(as_text=True)
@@ -3992,7 +4056,7 @@ def test_live_collection_route_supports_fuzzy_query_matches(app_client, isolated
     conn.commit()
     conn.close()
 
-    response = app_client.get("/collection?q=chikcen")
+    response = app_client.get("/recipe-collection?q=chikcen")
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200
@@ -4002,7 +4066,7 @@ def test_live_collection_route_supports_fuzzy_query_matches(app_client, isolated
 def test_notifications_page_shows_note_notifications(app_client, isolated_db):
     base_food_id = create_base_food(item_name="Notification Base")
     recipe_response = app_client.post(
-        "/api/recipes",
+        "/recipe-collection/api/recipes",
         json={
             "item_name": "Notification Route Recipe",
             "yield_quantity": 1,
@@ -4031,7 +4095,7 @@ def test_notifications_page_shows_note_notifications(app_client, isolated_db):
         follow_redirects=False,
     )
     app_client.post(
-        f"/items/{recipe_id}/notes",
+        f"/recipe-collection/items/{recipe_id}/notes",
         data={"note_text": "Please review the revised version."},
         follow_redirects=False,
     )
@@ -4089,7 +4153,7 @@ def test_admin_send_back_to_review_notifies_reviewer(app_client, isolated_db):
 def test_reviewer_return_to_submitter_notifies_author(app_client):
     base_food_id = create_base_food(item_name="Workflow Notify Oil")
     recipe_response = app_client.post(
-        "/api/recipes",
+        "/recipe-collection/api/recipes",
         json={
             "item_name": "Workflow Notify Recipe",
             "yield_quantity": 1,
@@ -4139,7 +4203,7 @@ def test_reviewer_return_to_submitter_notifies_author(app_client):
 def test_go_live_requires_recipe_mass_and_volume_measurements(app_client, isolated_db):
     base_food_id = create_base_food(item_name="Go Live Measurement Oil")
     recipe_response = app_client.post(
-        "/api/recipes",
+        "/recipe-collection/api/recipes",
         json={
             "item_name": "Go Live Measurement Recipe",
             "yield_quantity": 1,
@@ -4186,7 +4250,7 @@ def test_go_live_requires_recipe_mass_and_volume_measurements(app_client, isolat
 def test_live_recipe_edit_notifies_author(app_client, isolated_db):
     base_food_id = create_base_food(item_name="Live Edit Notify Oil")
     recipe_response = app_client.post(
-        "/api/recipes",
+        "/recipe-collection/api/recipes",
         json={
             "item_name": "Live Edit Notify Recipe",
             "yield_quantity": 1,
@@ -4220,7 +4284,7 @@ def test_live_recipe_edit_notifies_author(app_client, isolated_db):
         follow_redirects=False,
     )
     update_response = app_client.put(
-        f"/api/recipes/{recipe_id}",
+        f"/recipe-collection/api/recipes/{recipe_id}",
         json={
             "item_name": "Live Edit Notify Recipe",
             "yield_quantity": 1,
@@ -4261,7 +4325,7 @@ def test_live_recipe_edit_notifies_author(app_client, isolated_db):
 def test_item_detail_view_acknowledges_open_notifications(app_client, isolated_db):
     base_food_id = create_base_food(item_name="Viewed Notification Base")
     recipe_response = app_client.post(
-        "/api/recipes",
+        "/recipe-collection/api/recipes",
         json={
             "item_name": "Viewed Notification Recipe",
             "yield_quantity": 1,
@@ -4285,7 +4349,7 @@ def test_item_detail_view_acknowledges_open_notifications(app_client, isolated_d
         follow_redirects=False,
     )
     app_client.post(
-        f"/items/{recipe_id}/notes",
+        f"/recipe-collection/items/{recipe_id}/notes",
         data={"note_text": "Please revise and resubmit."},
         follow_redirects=False,
     )
@@ -4296,7 +4360,7 @@ def test_item_detail_view_acknowledges_open_notifications(app_client, isolated_d
         follow_redirects=False,
     )
 
-    response = app_client.get(f"/items/{recipe_id}")
+    response = app_client.get(f"/recipe-collection/items/{recipe_id}")
     notifications_response = app_client.get("/notifications")
 
     assert response.status_code == 200
@@ -4307,7 +4371,7 @@ def test_item_detail_view_acknowledges_open_notifications(app_client, isolated_d
 def test_item_detail_view_acknowledges_workflow_action_notifications(app_client):
     base_food_id = create_base_food(item_name="Workflow Ack Oil")
     recipe_response = app_client.post(
-        "/api/recipes",
+        "/recipe-collection/api/recipes",
         json={
             "item_name": "Workflow Ack Recipe",
             "yield_quantity": 1,
@@ -4346,7 +4410,7 @@ def test_item_detail_view_acknowledges_workflow_action_notifications(app_client)
         data={"selected_user_id": "dev_user_001"},
         follow_redirects=False,
     )
-    response = app_client.get(f"/items/{recipe_id}")
+    response = app_client.get(f"/recipe-collection/items/{recipe_id}")
     notifications_response = app_client.get("/notifications")
 
     assert response.status_code == 200
@@ -4396,7 +4460,7 @@ def test_login_debug_override_affects_recipe_authorship(app_client, isolated_db)
 
     base_food_id = create_base_food(item_name="Debug Dressing")
     create_response = app_client.post(
-        "/api/recipes",
+        "/recipe-collection/api/recipes",
         json={
             "item_name": "Override Recipe",
             "yield_quantity": 1,
@@ -4433,7 +4497,7 @@ def test_my_recipes_uses_current_mock_user_scope(app_client):
         follow_redirects=False,
     )
 
-    response = app_client.get("/my-recipes")
+    response = app_client.get("/recipe-collection/my-recipes")
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200
@@ -4515,7 +4579,7 @@ def test_workflow_transition_route_updates_status(app_client, isolated_db):
 def test_workflow_transition_route_requires_reason_for_return_to_submitter(app_client, isolated_db):
     base_food_id = create_base_food(item_name="Reason Prompt Oil")
     recipe_response = app_client.post(
-        "/api/recipes",
+        "/recipe-collection/api/recipes",
         json={
             "item_name": "Reason Prompt Recipe",
             "yield_quantity": 1,
@@ -4638,7 +4702,7 @@ def test_admin_portal_can_view_rejected_items(app_client, isolated_db):
 def test_edit_item_route_requires_allowed_role(app_client):
     item_id = create_base_food(item_name="Protected Item")
 
-    response = app_client.get(f"/items/{item_id}/edit", follow_redirects=False)
+    response = app_client.get(f"/recipe-collection/items/{item_id}/edit", follow_redirects=False)
 
     assert response.status_code == 302
 
@@ -4646,7 +4710,7 @@ def test_edit_item_route_requires_allowed_role(app_client):
 def test_item_detail_page_shows_note_form_when_recipient_is_available(app_client, isolated_db):
     base_food_id = create_base_food(item_name="Detail Notes Base")
     recipe_response = app_client.post(
-        "/api/recipes",
+        "/recipe-collection/api/recipes",
         json={
             "item_name": "Detail Notes Recipe",
             "yield_quantity": 1,
@@ -4669,7 +4733,7 @@ def test_item_detail_page_shows_note_form_when_recipient_is_available(app_client
         follow_redirects=False,
     )
 
-    response = app_client.get(f"/items/{recipe_id}")
+    response = app_client.get(f"/recipe-collection/items/{recipe_id}")
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200
@@ -4681,7 +4745,7 @@ def test_item_detail_page_shows_note_form_when_recipient_is_available(app_client
 def test_live_item_detail_hides_workflow_notes(app_client, isolated_db):
     base_food_id = create_base_food(item_name="Live Notes Base")
     recipe_response = app_client.post(
-        "/api/recipes",
+        "/recipe-collection/api/recipes",
         json={
             "item_name": "Live Notes Recipe",
             "yield_quantity": 1,
@@ -4705,7 +4769,7 @@ def test_live_item_detail_hides_workflow_notes(app_client, isolated_db):
     conn.commit()
     conn.close()
 
-    response = app_client.get(f"/items/{recipe_id}")
+    response = app_client.get(f"/recipe-collection/items/{recipe_id}")
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200
@@ -4717,7 +4781,7 @@ def test_live_item_detail_hides_workflow_notes(app_client, isolated_db):
 def test_live_item_detail_shows_advanced_workflow_toggle_for_reviewer(app_client, isolated_db):
     base_food_id = create_base_food(item_name="Live Toggle Base")
     recipe_response = app_client.post(
-        "/api/recipes",
+        "/recipe-collection/api/recipes",
         json={
             "item_name": "Live Toggle Recipe",
             "yield_quantity": 1,
@@ -4747,7 +4811,7 @@ def test_live_item_detail_shows_advanced_workflow_toggle_for_reviewer(app_client
         follow_redirects=False,
     )
 
-    response = app_client.get(f"/items/{recipe_id}")
+    response = app_client.get(f"/recipe-collection/items/{recipe_id}")
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200
@@ -4814,8 +4878,8 @@ def test_live_recipe_detail_supports_flattened_ingredient_toggle(app_client, iso
     conn.commit()
     conn.close()
 
-    default_response = app_client.get(f"/items/{recipe_id}")
-    flattened_response = app_client.get(f"/items/{recipe_id}?ingredient_view=flattened")
+    default_response = app_client.get(f"/recipe-collection/items/{recipe_id}")
+    flattened_response = app_client.get(f"/recipe-collection/items/{recipe_id}?ingredient_view=flattened")
     default_page = default_response.get_data(as_text=True)
     flattened_page = flattened_response.get_data(as_text=True)
 
@@ -4874,7 +4938,7 @@ def test_live_recipe_flattened_view_applies_same_family_conversion(app_client, i
     conn.commit()
     conn.close()
 
-    response = app_client.get(f"/items/{recipe_id}?ingredient_view=flattened")
+    response = app_client.get(f"/recipe-collection/items/{recipe_id}?ingredient_view=flattened")
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200
@@ -4924,7 +4988,7 @@ def test_recipe_detail_shows_scaling_foundation_summary(app_client, isolated_db)
         data={"selected_user_id": "reviewer_001"},
         follow_redirects=False,
     )
-    response = app_client.get(f"/items/{recipe_id}?technical_view=advanced")
+    response = app_client.get(f"/recipe-collection/items/{recipe_id}?technical_view=advanced")
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200
@@ -4952,7 +5016,7 @@ def test_standard_user_does_not_see_technical_details_toggle(app_client):
         }
     )
 
-    response = app_client.get(f"/items/{recipe_id}")
+    response = app_client.get(f"/recipe-collection/items/{recipe_id}")
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200
@@ -5009,7 +5073,7 @@ def test_live_recipe_flattened_view_warns_on_cycle_detection(app_client, isolate
     conn.commit()
     conn.close()
 
-    response = app_client.get(f"/items/{recipe_a_id}?ingredient_view=flattened")
+    response = app_client.get(f"/recipe-collection/items/{recipe_a_id}?ingredient_view=flattened")
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200
@@ -5043,7 +5107,7 @@ def test_live_recipe_detail_supports_scaled_hierarchical_view(app_client, isolat
     conn.close()
 
     response = app_client.get(
-        f"/items/{recipe_id}?scale_quantity=1&scale_unit=qt"
+        f"/recipe-collection/items/{recipe_id}?scale_quantity=1&scale_unit=qt"
         f"&user_serving_size_quantity=1&user_serving_size_unit=cup"
     )
     page = response.get_data(as_text=True)
@@ -5092,7 +5156,7 @@ def test_live_recipe_detail_snapshot_reflects_scaled_recipe_values(app_client, i
     conn.close()
 
     response = app_client.get(
-        f"/items/{recipe_id}?scale_quantity=1&scale_unit=qt"
+        f"/recipe-collection/items/{recipe_id}?scale_quantity=1&scale_unit=qt"
         f"&user_serving_size_quantity=1&user_serving_size_unit=cup"
     )
     page = response.get_data(as_text=True)
@@ -5134,7 +5198,7 @@ def test_live_recipe_detail_snapshot_uses_unit_system_without_scaling(app_client
     conn.commit()
     conn.close()
 
-    response = app_client.get(f"/items/{recipe_id}?unit_system=imperial")
+    response = app_client.get(f"/recipe-collection/items/{recipe_id}?unit_system=imperial")
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200
@@ -5186,7 +5250,7 @@ def test_live_recipe_detail_supports_scaled_flattened_view(app_client, isolated_
     conn.commit()
     conn.close()
 
-    response = app_client.get(f"/items/{recipe_id}?ingredient_view=flattened&scale_quantity=2&scale_unit=each")
+    response = app_client.get(f"/recipe-collection/items/{recipe_id}?ingredient_view=flattened&scale_quantity=2&scale_unit=each")
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200
@@ -5196,7 +5260,7 @@ def test_live_recipe_detail_supports_scaled_flattened_view(app_client, isolated_
     assert "Route Flat Sauce" in page
     assert "Print Recipe" in page
 
-    print_response = app_client.get(f"/items/{recipe_id}/print?scale_quantity=2&scale_unit=each&display_mode=mass")
+    print_response = app_client.get(f"/recipe-collection/items/{recipe_id}/print?scale_quantity=2&scale_unit=each&display_mode=mass")
     print_page = print_response.get_data(as_text=True)
 
     assert print_response.status_code == 200
@@ -5242,7 +5306,7 @@ def test_live_recipe_detail_shows_scaling_warning_for_incompatible_target_unit(a
     conn.commit()
     conn.close()
 
-    response = app_client.get(f"/items/{recipe_id}?scale_quantity=1&scale_unit=each")
+    response = app_client.get(f"/recipe-collection/items/{recipe_id}?scale_quantity=1&scale_unit=each")
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200
@@ -5274,7 +5338,7 @@ def test_live_recipe_detail_supports_recipe_bridge_scaling(app_client, isolated_
     conn.commit()
     conn.close()
 
-    response = app_client.get(f"/items/{recipe_id}?scale_quantity=1&scale_unit=kg")
+    response = app_client.get(f"/recipe-collection/items/{recipe_id}?scale_quantity=1&scale_unit=kg")
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200
@@ -5308,7 +5372,7 @@ def test_live_each_recipe_detail_supports_mass_scaling_via_official_batch_basis(
     conn.commit()
     conn.close()
 
-    response = app_client.get(f"/items/{recipe_id}?scale_quantity=500&scale_unit=g")
+    response = app_client.get(f"/recipe-collection/items/{recipe_id}?scale_quantity=500&scale_unit=g")
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200
@@ -5357,7 +5421,7 @@ def test_live_recipe_detail_shows_measurement_equivalent_for_scaled_base_food(ap
     conn.commit()
     conn.close()
 
-    response = app_client.get(f"/items/{recipe_id}?scale_quantity=1&scale_unit=kg")
+    response = app_client.get(f"/recipe-collection/items/{recipe_id}?scale_quantity=1&scale_unit=kg")
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200
@@ -5402,7 +5466,7 @@ def test_live_recipe_detail_volume_mode_cascades_to_smaller_unit(app_client, iso
     conn.commit()
     conn.close()
 
-    response = app_client.get(f"/items/{recipe_id}?display_mode=volume&unit_system=imperial")
+    response = app_client.get(f"/recipe-collection/items/{recipe_id}?display_mode=volume&unit_system=imperial")
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200
@@ -5448,7 +5512,7 @@ def test_live_recipe_detail_mass_mode_keeps_each_components_as_each(app_client, 
     conn.commit()
     conn.close()
 
-    response = app_client.get(f"/items/{recipe_id}?display_mode=mass&unit_system=metric")
+    response = app_client.get(f"/recipe-collection/items/{recipe_id}?display_mode=mass&unit_system=metric")
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200
@@ -5502,7 +5566,7 @@ def test_live_recipe_detail_uses_saved_user_display_preferences_by_default(app_c
         follow_redirects=False,
     )
 
-    response = app_client.get(f"/items/{recipe_id}")
+    response = app_client.get(f"/recipe-collection/items/{recipe_id}")
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200
@@ -5549,7 +5613,7 @@ def test_live_recipe_detail_shows_measurement_equivalent_for_scaled_flattened_ba
     conn.close()
 
     response = app_client.get(
-        f"/items/{recipe_id}?ingredient_view=flattened&scale_quantity=1&scale_unit=qt"
+        f"/recipe-collection/items/{recipe_id}?ingredient_view=flattened&scale_quantity=1&scale_unit=qt"
     )
     page = response.get_data(as_text=True)
 
@@ -5563,7 +5627,7 @@ def test_live_recipe_detail_shows_measurement_equivalent_for_scaled_flattened_ba
 def test_live_item_detail_advanced_view_reveals_workflow_history_and_notes_for_reviewer(app_client, isolated_db):
     base_food_id = create_base_food(item_name="Live Advanced Base")
     recipe_response = app_client.post(
-        "/api/recipes",
+        "/recipe-collection/api/recipes",
         json={
             "item_name": "Live Advanced Recipe",
             "yield_quantity": 1,
@@ -5593,7 +5657,7 @@ def test_live_item_detail_advanced_view_reveals_workflow_history_and_notes_for_r
         follow_redirects=False,
     )
 
-    response = app_client.get(f"/items/{recipe_id}?workflow_view=advanced")
+    response = app_client.get(f"/recipe-collection/items/{recipe_id}?workflow_view=advanced")
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200
@@ -5605,7 +5669,7 @@ def test_live_item_detail_advanced_view_reveals_workflow_history_and_notes_for_r
 def test_live_item_detail_standard_user_cannot_enable_advanced_workflow(app_client, isolated_db):
     base_food_id = create_base_food(item_name="Live Standard Base")
     recipe_response = app_client.post(
-        "/api/recipes",
+        "/recipe-collection/api/recipes",
         json={
             "item_name": "Live Standard Recipe",
             "yield_quantity": 1,
@@ -5629,7 +5693,7 @@ def test_live_item_detail_standard_user_cannot_enable_advanced_workflow(app_clie
     conn.commit()
     conn.close()
 
-    response = app_client.get(f"/items/{recipe_id}?workflow_view=advanced")
+    response = app_client.get(f"/recipe-collection/items/{recipe_id}?workflow_view=advanced")
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200
@@ -5647,7 +5711,7 @@ def test_edit_base_food_route_updates_item(app_client, isolated_db):
     )
 
     response = app_client.post(
-        f"/items/{item_id}/edit",
+        f"/recipe-collection/items/{item_id}/edit",
         data={
             "item_name": "New Celery",
             "notes": "Updated note",
@@ -5674,7 +5738,7 @@ def test_edit_base_food_route_allows_dietitian_nutrition_authority_updates(app_c
     )
 
     response = app_client.post(
-        f"/items/{item_id}/edit",
+        f"/recipe-collection/items/{item_id}/edit",
         data={
             "item_name": "Dietitian Celery",
             "notes": "Nutrition entered",
@@ -5724,7 +5788,7 @@ def test_base_food_detail_shows_nutrition_authority_only_for_privileged_technica
     conn.commit()
     conn.close()
 
-    standard_response = app_client.get(f"/items/{item_id}")
+    standard_response = app_client.get(f"/recipe-collection/items/{item_id}")
     standard_page = standard_response.get_data(as_text=True)
 
     app_client.post(
@@ -5732,7 +5796,7 @@ def test_base_food_detail_shows_nutrition_authority_only_for_privileged_technica
         data={"selected_user_id": "dietitian_001"},
         follow_redirects=False,
     )
-    privileged_response = app_client.get(f"/items/{item_id}?technical_view=advanced")
+    privileged_response = app_client.get(f"/recipe-collection/items/{item_id}?technical_view=advanced")
     privileged_page = privileged_response.get_data(as_text=True)
 
     assert standard_response.status_code == 200
@@ -5766,7 +5830,7 @@ def test_base_food_detail_supports_privileged_conversion_preview(app_client, iso
         data={"selected_user_id": "dietitian_001"},
         follow_redirects=False,
     )
-    response = app_client.get(f"/items/{item_id}?technical_view=advanced&convert_quantity=1&convert_unit=tbs")
+    response = app_client.get(f"/recipe-collection/items/{item_id}?technical_view=advanced&convert_quantity=1&convert_unit=tbs")
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200
@@ -5800,7 +5864,7 @@ def test_base_food_detail_conversion_preview_shows_warning_for_incompatible_unit
         data={"selected_user_id": "dietitian_001"},
         follow_redirects=False,
     )
-    response = app_client.get(f"/items/{item_id}?technical_view=advanced&convert_quantity=1&convert_unit=each")
+    response = app_client.get(f"/recipe-collection/items/{item_id}?technical_view=advanced&convert_quantity=1&convert_unit=each")
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200
@@ -5811,7 +5875,7 @@ def test_base_food_detail_conversion_preview_shows_warning_for_incompatible_unit
 def test_edit_recipe_route_renders_for_allowed_role(app_client):
     base_food_id = create_base_food(item_name="Edit Dressing")
     recipe_response = app_client.post(
-        "/api/recipes",
+        "/recipe-collection/api/recipes",
         json={
             "item_name": "Edit Recipe",
             "yield_quantity": 1,
@@ -5835,7 +5899,7 @@ def test_edit_recipe_route_renders_for_allowed_role(app_client):
         follow_redirects=False,
     )
 
-    response = app_client.get(f"/items/{recipe_id}/edit")
+    response = app_client.get(f"/recipe-collection/items/{recipe_id}/edit")
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200
@@ -5846,7 +5910,7 @@ def test_edit_recipe_route_renders_for_allowed_role(app_client):
 def test_api_update_recipe_updates_existing_recipe(app_client, isolated_db):
     base_food_id = create_base_food(item_name="Edit Oil")
     create_response = app_client.post(
-        "/api/recipes",
+        "/recipe-collection/api/recipes",
         json={
             "item_name": "Editable Recipe",
             "yield_quantity": 1,
@@ -5871,7 +5935,7 @@ def test_api_update_recipe_updates_existing_recipe(app_client, isolated_db):
     )
 
     response = app_client.put(
-        f"/api/recipes/{recipe_id}",
+        f"/recipe-collection/api/recipes/{recipe_id}",
         json={
             "item_name": "Updated Editable Recipe",
             "yield_quantity": 2,
@@ -5911,7 +5975,7 @@ def test_api_update_recipe_updates_existing_recipe(app_client, isolated_db):
 def test_returned_recipe_can_be_edited_by_author_and_clears_resubmission_flag(app_client, isolated_db):
     base_food_id = create_base_food(item_name="Resubmit Detail Oil")
     create_response = app_client.post(
-        "/api/recipes",
+        "/recipe-collection/api/recipes",
         json={
             "item_name": "Returned Recipe",
             "yield_quantity": 1,
@@ -5951,9 +6015,9 @@ def test_returned_recipe_can_be_edited_by_author_and_clears_resubmission_flag(ap
         follow_redirects=False,
     )
 
-    edit_page = app_client.get(f"/items/{recipe_id}/edit")
+    edit_page = app_client.get(f"/recipe-collection/items/{recipe_id}/edit")
     update_response = app_client.put(
-        f"/api/recipes/{recipe_id}",
+        f"/recipe-collection/api/recipes/{recipe_id}",
         json={
             "item_name": "Returned Recipe Revised",
             "yield_quantity": 1,
@@ -5987,7 +6051,7 @@ def test_returned_recipe_can_be_edited_by_author_and_clears_resubmission_flag(ap
 def test_item_detail_history_shows_transition_reason_and_note_event(app_client, isolated_db):
     base_food_id = create_base_food(item_name="History Detail Oil")
     recipe_response = app_client.post(
-        "/api/recipes",
+        "/recipe-collection/api/recipes",
         json={
             "item_name": "History Detail Recipe",
             "yield_quantity": 1,
@@ -6011,7 +6075,7 @@ def test_item_detail_history_shows_transition_reason_and_note_event(app_client, 
         follow_redirects=False,
     )
     app_client.post(
-        f"/items/{recipe_id}/notes",
+        f"/recipe-collection/items/{recipe_id}/notes",
         data={"note_text": "Please check the seasoning wording."},
         follow_redirects=False,
     )
@@ -6031,7 +6095,7 @@ def test_item_detail_history_shows_transition_reason_and_note_event(app_client, 
         data={"selected_user_id": "dev_user_001"},
         follow_redirects=False,
     )
-    response = app_client.get(f"/items/{recipe_id}")
+    response = app_client.get(f"/recipe-collection/items/{recipe_id}")
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200

@@ -15,6 +15,7 @@
         </div>
         <div>
             <a class="page-action-link secondary" href="{{ url_for('menu_forecast', menu_id=page_data.menu.menu_id, week=page_data.selected_week_number, day=page_data.selected_day) }}">Forecasting</a>
+            <a class="page-action-link secondary" href="{{ url_for('production_record_history', menu_id=page_data.menu.menu_id) }}">History</a>
             <a class="page-action-link secondary" href="{{ url_for('menu_detail', menu_id=page_data.menu.menu_id, week=page_data.selected_week_number) }}">Menu Overview</a>
             <button type="button" class="workflow-button workflow-button-secondary" onclick="window.print()">Print Floor Sheet</button>
             {% if production_record.is_posted %}

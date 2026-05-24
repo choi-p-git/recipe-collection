@@ -10,7 +10,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const recipeForm = document.getElementById("recipe-editor-form");
     const submitRecipeButton = document.getElementById("submit-recipe-button");
     const editorMode = recipeForm?.dataset.editorMode || "create";
-    const submitUrl = recipeForm?.dataset.submitUrl || "/api/recipes";
+    const submitUrl = recipeForm?.dataset.submitUrl || "/recipe-collection/api/recipes";
 
     const recipeItemName = document.getElementById("recipe_item_name");
     const recipeYieldQuantity = document.getElementById("recipe_yield_quantity");
@@ -326,7 +326,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 params.set("relax_short_query", "1");
             }
             const response = await fetch(
-                `/api/items/search?${params.toString()}`,
+                `/recipe-collection/api/items/search?${params.toString()}`,
             );
             const payload = await response.json();
 
@@ -660,7 +660,7 @@ async function submitRecipe() {
             return;
         }
 
-        window.location.href = `/items/${result.recipe_item_id}`;
+        window.location.href = `/recipe-collection/items/${result.recipe_item_id}`;
     } catch (error) {
         console.error("Recipe submit failed:", error);
         alert("Unexpected error while submitting recipe.");

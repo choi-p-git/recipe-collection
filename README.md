@@ -3,6 +3,14 @@ Project Summary
 
 The Recipe Collection System is a modular, database-driven application for managing recipes and base food submissions in a structured environment. It is designed as an MVP foundation for future menu planning, production, scaling, and nutrition-analysis workflows.
 
+Major module / app hierarchy
+
+- Treat Recipe Collection / recipe creation as its own major app, separate from Menu Builder.
+- Treat Menu Builder as its own major app, with Forecasting and Production Record currently living under the Menu Builder operational path.
+- Use the first URL segment as the major module/app boundary when designing future routes. Examples: `/recipe-collection` for Recipe Collection surfaces, `/menus` for Menu Builder, and future top-level segments such as `/inventory` or `/analytics` for later apps.
+- Recipe Collection browser routes and collection-owned APIs should use the `/recipe-collection` prefix, including `/recipe-collection/api/...` for recipe/item APIs.
+- Shared services such as item search, scaling, unit conversion, workflow policy, and preferences may be reused across apps, but app-specific screens and workflows should keep clear ownership under their top-level route.
+
 Current MVP behavior
 
 - Recipes are structured records with batch yield, measurement data, ingredients, methods, and a primary cooking method.
@@ -63,13 +71,13 @@ When recipe yield unit is not `each`, the generic yield quantity is derived from
 Recipe authoring unit fields deliberately exclude advanced hotel-pan units; backend validation rejects pan units for recipe yield, official recipe measurements, serving fields, and ingredient component rows
 
 5. Item viewing
-Shared item detail route at `/items/<item_id>`
+Shared item detail route at `/recipe-collection/items/<item_id>`
 Legacy recipe route redirects to the shared item detail route
 Recipe pages render yield, ingredients, methods, cooking method, and classifications
 Base food pages render only relevant information
 
 6. My Recipes and testing
-`/my-recipes` is scoped to the active mock session user and supports filtering/sorting
+`/recipe-collection/my-recipes` is scoped to the active mock session user and supports filtering/sorting
 Automated tests cover schema initialization, services, policies, queries, routes, workflow, notifications, and instruction codec behavior
 
 7. Workflow tooling
@@ -133,6 +141,7 @@ Menu Builder foundation note
 - Production Record is implemented as the first operational floor workflow after Forecasting. It snapshots the forecast for the selected menu week/day, supports actual production and end-of-service leftover/shortage entry, calculates implied demand and forecast accuracy, and captures reason codes plus notes.
 - Production Record quantity fields support simple formula entry for floor-count math. Complete formulas save the calculated result while preserving the original formula for refocus/editing; incomplete but allowed formulas save as draft text until the user finishes the expression.
 - Production Record can be posted and locked, reviewed from a posted record view, exported to CSV, and printed as a kitchen floor sheet.
+- Production Record history is available per menu, listing draft and posted service-day records with quick links back to entry, posted review, CSV export, and combined service context.
 - Recipe print is implemented as a single kitchen production sheet. It respects the active scaled target when present, always prints flattened ingredients, follows the selected display mode/unit system, and visually groups sub-recipe ingredients under their parent sub-recipes.
 - Drag-and-drop, rules checks, richer batch timing workflows, production-record analytics, and inventory-facing rollups remain deferred until the current operational loop is refined.
 
@@ -140,16 +149,18 @@ Production Record refinement roadmap
 
 - Current data flow: Menu Builder assignment -> Forecasting scale/display/case planning -> Production Summary rollup -> Production Record snapshot -> line-level actual production and end-of-service variance -> implied demand and forecast accuracy -> posted review, print, and CSV export.
 - Current operational workflow: menu owner opens the current service day, optionally prints a kitchen floor sheet, cooks/managers record actual production and leftover/shortage, reason/notes capture operating context, then the manager posts the record to lock it for future review.
-- Next refinement slice should add a Forecasting occurrence history panel for each recipe/base-food item. It should show previous filled Production Record occurrences for the same item, grouped into current-menu history and other-menu history.
-- Forecasting occurrence history should include both posted records and draft/current in-progress records when production fields have been filled. Same-menu history should include only past service dates with filled Production Records.
+- Forecasting occurrence history is implemented for each recipe/base-food item. It shows previous filled Production Record occurrences for the same item, grouped into current-menu history and other-menu history.
+- Forecasting occurrence history includes both posted records and draft/current in-progress records when production fields have been filled. Same-menu history includes only past service dates with filled Production Records.
 - Each occurrence should show service date, menu name, day, meal/concept context, forecast, actual production, end-of-service variance, implied demand, forecast accuracy, reason, and notes indicator when present.
-- Occurrence dates should link to a future combined context view for that menu service day. That combined context view should open in a new tab and show the forecast and production-record context together for the selected date.
+- Occurrence dates link to a combined context view for that menu service day. That combined context view shows the forecast and production-record context together for the selected date.
+- Production Record history/index is implemented per menu. It shows draft and posted records by service date, week, and day, with quick links back to entry/review, service context, and CSV export for posted records.
 - Algorithmic suggested forecast should be deferred until the occurrence UI is stable. The later algorithm should use historical implied demand as the primary demand signal, with room to add menu mix, attendance, weather, field trips, sports/team schedule, seasonality, and other context.
-- A Production Record history/index page per menu should follow the occurrence UI. It should show draft and posted records by date, week, and day, with quick links back to entry/review.
 - Next reporting slice should add simple filters and summaries for date range, accuracy level, reason code, item, and posted/draft status. The first aggregate view should focus on count of accurate/review/miss records, top reason codes, and leftover/shortage trends.
 - Future inventory tie-in should consume posted Production Record and Forecasting data rather than draft records. Forecasting should drive expected demand/order needs; posted Production Records should feed actual usage, leftover/shortage, and variance signals.
+- Future inventory app should hold current inventory counts, expose API access to/from Forecasting and Production Record, compare estimated versus actual usage, and support purchasing suggestions.
 - Inventory pack/case definitions should be item-linked, not recipe-linked, and should reuse saved pack sizes where possible. Forecast-linked case sizes can remain local to a menu cell until explicitly saved to the item-level pack library.
 - Future inventory availability should attach to ingredient/base-food item IDs and later offer live system matches, available quantity, case size, and ordering status back into Forecasting and Production Record views.
+- Future analytics should consume menu, usage, inventory, purchasing, cost, and production variance data. Algorithmic analytics can later estimate year-over-year trends and suggest production or purchasing adjustments to prevent over/under production and purchasing.
 
 Scaling foundation note
 
@@ -209,6 +220,14 @@ Pytest workflow
 - Raw marker expressions also work, such as `.\.venv\Scripts\python.exe -m pytest -q -m "module_recipe and relation_api"`.
 - Test data cleanup should use real domain behavior when it exists. Menu tests can delete created menus because menu deletion is supported. Recipe/base-food item tests should not direct-delete or fake-void items unless the app gains an explicit item delete/archive workflow; isolated test databases handle cleanup, and item id gaps in test databases are acceptable.
 
+Perpetual context workflow
+
+- When a prompt mentions, proposes, plans, or defers a feature/function, Codex should update `README.md` and/or `AGENT.md` in the same turn so the idea remains part of project context.
+- This applies even when the prompt says the work is for later, not now; capture the intent as a roadmap, constraint, open decision, or implementation note without building the feature unless requested.
+- Prefer `README.md` for user-facing current behavior, roadmap, release notes, and operating workflow notes.
+- Prefer `AGENT.md` for agent-facing implementation guidance, constraints, testing rules, architecture expectations, and future-work boundaries.
+- Keep entries brief, place them near the relevant existing section, and avoid duplicating the same detail in both files unless both project-facing and agent-facing context are needed.
+
 Agent finish workflow
 
 - Each completed prompt should include a suggested cumulative commit message.
@@ -258,4 +277,4 @@ The current proof-of-concept has a complete operational vertical stack:
 - Production Record captures floor actuals, leftover/shortage, formula-based quantity entry, reason codes, notes, implied demand, forecast accuracy, post/lock, review, CSV export, and floor-sheet print.
 - Recipe Detail supports scaled and flattened production views, display-mode/unit-system toggles, and a kitchen production-sheet print with sub-recipe grouping.
 
-The next recommended development focus is Production Record history/reporting, followed by the first Inventory Management foundation.
+The next recommended development focus is Production Record reporting, followed by the first Inventory Management foundation.
