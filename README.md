@@ -207,6 +207,7 @@ Pytest workflow
 - Example module suites: database/schema uses `tests/test_db_init.py tests/test_db_seed.py`; menu builder uses `tests/test_menu_service.py` plus selected menu route node ids; forecasting uses `tests/test_menu_forecast_service.py` plus selected forecast/production route node ids; route/API work uses selected `tests/test_routes.py` node ids and broadens only when route-wide behavior changed.
 - Tests are auto-tagged during pytest collection with `module_*` and `relation_*` markers. Use `--module-scope menu --relation-scope service` for service-layer menu tests, `--module-scope menu --relation-scope api` for one-level-up route/API coverage, or comma-separated values such as `--module-scope menu,forecast --relation-scope service,api`.
 - Raw marker expressions also work, such as `.\.venv\Scripts\python.exe -m pytest -q -m "module_recipe and relation_api"`.
+- Test data cleanup should use real domain behavior when it exists. Menu tests can delete created menus because menu deletion is supported. Recipe/base-food item tests should not direct-delete or fake-void items unless the app gains an explicit item delete/archive workflow; isolated test databases handle cleanup, and item id gaps in test databases are acceptable.
 
 Agent finish workflow
 

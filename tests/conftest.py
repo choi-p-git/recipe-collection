@@ -1,6 +1,8 @@
 from pathlib import Path
+import gc
 import shutil
 import sys
+import time
 import uuid
 
 import pytest
@@ -162,6 +164,30 @@ def pytest_collection_modifyitems(config, items):
         items[:] = kept
 
 
+def _remove_tree(path: Path, *, attempts: int = 8, delay_seconds: float = 0.1) -> None:
+    last_error = None
+    for attempt in range(attempts):
+        if not path.exists():
+            return
+
+        gc.collect()
+        try:
+            shutil.rmtree(path, ignore_errors=False)
+        except OSError as exc:
+            last_error = exc
+
+        if not path.exists():
+            return
+
+        if attempt < attempts - 1:
+            time.sleep(delay_seconds)
+
+    if path.exists():
+        if last_error:
+            raise last_error
+        shutil.rmtree(path, ignore_errors=False)
+
+
 def _remove_pycache_dirs() -> None:
     roots = [
         PROJECT_ROOT / "__pycache__",
@@ -180,14 +206,20 @@ def _remove_pycache_dirs() -> None:
                 continue
 
             seen.add(resolved)
-            shutil.rmtree(resolved, ignore_errors=True)
+            try:
+                _remove_tree(resolved)
+            except OSError:
+                pass
 
 
 def _remove_generated_test_artifacts() -> None:
     import db
 
     db.garbage_collect_test_tmp(min_age_hours=0, dry_run=False)
-    shutil.rmtree(PROJECT_ROOT / ".pytest_cache", ignore_errors=True)
+    try:
+        _remove_tree(PROJECT_ROOT / ".pytest_cache")
+    except OSError:
+        pass
     _remove_pycache_dirs()
 
 
@@ -219,7 +251,7 @@ def isolated_db(monkeypatch):
     try:
         yield db_path
     finally:
-        shutil.rmtree(temp_dir, ignore_errors=True)
+        _remove_tree(temp_dir)
 
 
 @pytest.fixture
@@ -228,5 +260,8 @@ def app_client(isolated_db):
 
     app.config["TESTING"] = True
 
-    with app.test_client() as client:
-        yield client
+    try:
+        with app.test_client() as client:
+            yield client
+    finally:
+        gc.collect()

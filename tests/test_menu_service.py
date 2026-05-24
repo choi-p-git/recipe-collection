@@ -63,7 +63,7 @@ def test_create_menu_materializes_expected_slot_count(isolated_db):
     assert slot_count == 0
 
 
-def test_create_menu_requires_name_and_selections():
+def test_create_menu_requires_name_and_selections(isolated_db):
     with pytest.raises(InvalidMenuPayloadError):
         create_menu(
             menu_name="",
@@ -318,7 +318,7 @@ def test_delete_menu_removes_menu_slots_and_assignments(isolated_db):
     assert item_count == 0
 
 
-def test_delete_menu_rejects_non_owner():
+def test_delete_menu_rejects_non_owner(isolated_db):
     menu_id = create_menu(
         menu_name="Protected Menu",
         author_user_id="dev_user_001",

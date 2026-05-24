@@ -1224,6 +1224,13 @@ Pytest module selectors:
 * Multiple modules or relations are comma-separated, for example `--module-scope menu,forecast --relation-scope service,api`.
 * Raw pytest marker expressions also work, for example `-m "module_recipe and relation_api"`.
 
+Test data cleanup boundaries:
+
+* Prefer real domain cleanup paths when they exist. Menu creation tests may delete the created menu because menu deletion is supported application behavior and cascades through menu slots.
+* Do not add direct SQL deletion, voiding, or synthetic cleanup behavior for recipe/base-food item route tests unless the application gains an explicit item delete/archive workflow.
+* Recipe and base-food tests should rely on isolated test databases and fixture teardown for cleanup. Directly deleting `item` rows can bypass workflow/event semantics, collide with component references, and create misleading coverage.
+* SQLite `AUTOINCREMENT` gaps inside isolated test databases are acceptable and should not be optimized away. In the real app, item ids are durable identifiers, not sequence counters that need to stay gap-free.
+
 ## MVP Validation Checklist
 
 1. run `.\.venv\Scripts\python.exe .\src\db.py`
