@@ -1250,6 +1250,41 @@ def test_production_record_route_snapshots_forecast_and_saves_variance(app_clien
     assert empty_filtered_history_response.status_code == 200
     assert "No production records have been started for this menu." in empty_filtered_history_page
 
+    facts_response = app_client.get(f"/api/menus/{menu_id}/production-record/posted-facts")
+    facts_payload = facts_response.get_json()
+    facts_contract = facts_payload["contract"]
+    fact = facts_contract["facts"][0]
+
+    assert facts_response.status_code == 200
+    assert facts_payload["ok"] is True
+    assert facts_contract["contract_version"] == "production_record.posted_facts.v1"
+    assert facts_contract["source"] == "posted_production_records"
+    assert facts_contract["summary"]["record_count"] == 1
+    assert facts_contract["summary"]["line_count"] == 1
+    assert facts_contract["summary"]["accurate"] == 1
+    assert fact["source"] == "production_record_line"
+    assert fact["source_status"] == "posted"
+    assert fact["production_record_id"] == production_record_id
+    assert fact["production_record_line_id"] == production_record_line_id
+    assert fact["menu_id"] == menu_id
+    assert fact["service_date"] == "2026-05-04"
+    assert fact["week_number"] == 1
+    assert fact["day_of_week"] == "monday"
+    assert fact["item_id"] == recipe_id
+    assert fact["item_name"] == "Production Record Soup"
+    assert fact["forecast_quantity"] is not None
+    assert fact["forecast_unit"]
+    assert fact["actual_production_quantity"] == 1
+    assert fact["actual_production_unit"] == "pan_half_4"
+    assert fact["end_service_variance_quantity"] == 0
+    assert fact["leftover_quantity"] == 0
+    assert fact["shortage_quantity"] == 0
+    assert fact["implied_demand_quantity"] == 1
+    assert fact["forecast_error_quantity"] == 0
+    assert fact["forecast_accuracy_level"] == "accurate"
+    assert fact["reason_code"] == "as_expected"
+    assert fact["has_line_notes"] is True
+
     csv_response = app_client.get(f"/menus/{menu_id}/production-record/{production_record_id}/export.csv")
     csv_body = csv_response.get_data(as_text=True)
 
@@ -1283,6 +1318,62 @@ def test_production_record_route_snapshots_forecast_and_saves_variance(app_clien
 
     assert locked_response.status_code == 400
     assert "cannot be edited" in locked_payload["error"]
+
+
+def test_posted_production_facts_exclude_drafts(app_client, isolated_db):
+    base_food_id = create_base_food(item_name="Draft Contract Base")
+    recipe_id = create_recipe(
+        {
+            "item_name": "Draft Contract Soup",
+            "yield_quantity": 8,
+            "yield_unit": "each",
+            "primary_cooking_method_code": "simmer",
+            "instruction_steps": ["Cook"],
+            "ingredients": [
+                {
+                    "component_item_id": base_food_id,
+                    "component_quantity": 1,
+                    "component_unit": "cup",
+                }
+            ],
+        }
+    )
+    create_response = app_client.post(
+        "/menus/new",
+        data={
+            "menu_name": "Draft Contract Menu",
+            "menu_start_date": "2026-05-04",
+            "menu_end_date": "2026-05-10",
+            "service_days": ["monday"],
+            "meal_periods": ["lunch"],
+            "concepts": ["hot_line"],
+            "menu_length_weeks": "1",
+        },
+        follow_redirects=False,
+    )
+    menu_id = int(create_response.headers["Location"].rstrip("/").split("/")[-1])
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id IN (?, ?)", (base_food_id, recipe_id))
+    cursor.execute("SELECT menu_slot_id FROM menu_slot WHERE menu_id = ?", (menu_id,))
+    menu_slot_id = cursor.fetchone()[0]
+    conn.commit()
+    conn.close()
+
+    app_client.post(
+        f"/menus/{menu_id}/slots/{menu_slot_id}/assign",
+        data={"week": "1", "selected_item_ids": [str(recipe_id)]},
+        follow_redirects=False,
+    )
+    app_client.get(f"/menus/{menu_id}/production-record?week=1&day=monday")
+
+    response = app_client.get(f"/api/menus/{menu_id}/production-record/posted-facts")
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert payload["contract"]["summary"]["record_count"] == 0
+    assert payload["contract"]["facts"] == []
 
 
 def test_production_record_history_route_renders_empty_state(app_client):

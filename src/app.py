@@ -74,6 +74,7 @@ from services.production_record_service import (
     ensure_production_record,
     get_production_record_for_service_day,
     get_production_record_review,
+    get_posted_production_facts_for_menu,
     list_production_records_for_menu,
     post_production_record,
     save_production_record_line,
@@ -867,6 +868,26 @@ def api_update_production_record_line(menu_id: int, production_record_line_id: i
             notes=payload.get("notes"),
         )
         return jsonify({"ok": True, "line": line})
+    except InvalidProductionRecordError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"ok": False, "error": f"Unexpected error: {exc}"}), 500
+
+
+@app.route("/api/menus/<int:menu_id>/production-record/posted-facts")
+def api_posted_production_facts(menu_id: int):
+    menu = get_menu_detail(menu_id)
+    if menu is None:
+        return jsonify({"ok": False, "error": "Menu not found."}), 404
+
+    current_user = get_current_mock_user(session)
+    try:
+        contract = get_posted_production_facts_for_menu(
+            menu_id=menu_id,
+            actor_user_id=current_user["user_id"],
+            service_date_lookup=menu.get("week_day_dates", {}),
+        )
+        return jsonify({"ok": True, "contract": contract})
     except InvalidProductionRecordError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     except Exception as exc:

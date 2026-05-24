@@ -676,6 +676,15 @@ Important current semantics:
 * implied demand is calculated as `actual production - end service variance`
 * forecast accuracy is calculated against implied demand, not raw actual production
 * reason codes are available even when the record is within the accurate range
+* posted records expose `production_record.posted_facts.v1` at `/api/menus/<menu_id>/production-record/posted-facts`
+* posted facts are the current source-of-truth contract for Inventory and Analytics; drafts are intentionally excluded
+* posted fact split fields keep downstream consumers simple:
+
+  * `actual_production_quantity` / `actual_production_unit` = floor-entered production amount
+  * signed `end_service_variance_quantity` / `end_service_variance_unit` = leftover if positive, shortage if negative
+  * `leftover_quantity` and `shortage_quantity` = non-negative split of end-service variance
+  * `implied_demand_quantity` / `implied_demand_unit` = actual production minus signed variance
+  * `forecast_error_quantity`, `forecast_error_percent`, and `forecast_accuracy_level` = forecast performance against implied demand
 
 ### 2D. Production Record Refinement Roadmap
 
@@ -751,6 +760,7 @@ Implementation guidance:
 
 * Forecasting occurrence history may show posted and draft/current filled records because managers need operational memory while forecasting
 * reporting and corporate analytics should prefer posted Production Records by default, with explicit filters if draft records are included
+* Inventory and Analytics integrations should consume `production_record.posted_facts.v1` before reading production tables directly
 * keep report calculations in a service/query layer instead of templates
 * preserve formula text separately from calculated numeric values
 * keep reason-code values stable because future analytics and inventory/waste workflows will depend on them
@@ -1308,9 +1318,9 @@ Test data cleanup boundaries:
 
 ## Current Next Logical Development Steps
 
-1. refine posted-record data contracts for future analytics and inventory use
-2. begin Inventory Management foundation with item-linked inventory lines, current counts, count freshness, and item-linked pack/case definitions
-3. define Forecasting / Production Record / Inventory API contracts for availability, expected demand, actual usage, and purchasing suggestions
-4. add forecast error trend reporting by item over time
+1. begin Inventory Management foundation with item-linked inventory lines, current counts, count freshness, and item-linked pack/case definitions
+2. define Forecasting / Production Record / Inventory API contracts for availability, expected demand, actual usage, and purchasing suggestions
+3. add forecast error trend reporting by item over time using posted facts
+4. refine posted facts only through versioned contract changes
 5. defer analytics algorithms until usage, menu, inventory, purchasing, and cost record contracts are stable
 

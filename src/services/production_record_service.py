@@ -381,6 +381,89 @@ def _build_history_report(records: list[dict]) -> dict:
     }
 
 
+def _build_posted_production_fact(*, record: dict, line: dict) -> dict:
+    variance_quantity = line.get("end_service_variance_quantity")
+    leftover_quantity = None
+    shortage_quantity = None
+    if variance_quantity is not None:
+        if float(variance_quantity) >= 0:
+            leftover_quantity = float(variance_quantity)
+            shortage_quantity = 0.0
+        else:
+            leftover_quantity = 0.0
+            shortage_quantity = abs(float(variance_quantity))
+
+    return {
+        "source": "production_record_line",
+        "source_status": "posted",
+        "production_record_id": record["production_record_id"],
+        "production_record_line_id": line["production_record_line_id"],
+        "menu_id": record["menu_id"],
+        "service_date": record.get("service_date", {}).get("date", ""),
+        "service_date_display": record.get("service_date", {}).get("display", ""),
+        "week_number": record["week_number"],
+        "day_of_week": record["day_of_week"],
+        "item_id": line["item_id"],
+        "item_name": line["recipe_name"],
+        "assignment_count": line["assignment_count"],
+        "slot_labels": line["slot_labels"],
+        "forecast_quantity": line["forecast_quantity"],
+        "forecast_unit": line["forecast_unit"],
+        "actual_production_quantity": line["actual_quantity"],
+        "actual_production_unit": line["actual_unit"],
+        "end_service_variance_quantity": variance_quantity,
+        "end_service_variance_unit": line["end_service_variance_unit"],
+        "leftover_quantity": leftover_quantity,
+        "leftover_unit": line["end_service_variance_unit"],
+        "shortage_quantity": shortage_quantity,
+        "shortage_unit": line["end_service_variance_unit"],
+        "implied_demand_quantity": line["implied_demand_quantity"],
+        "implied_demand_unit": line["implied_demand_unit"],
+        "forecast_error_quantity": line["forecast_error_quantity"],
+        "forecast_error_unit": line["forecast_error_unit"],
+        "forecast_error_percent": line["forecast_error_percent"],
+        "forecast_accuracy_level": line["forecast_accuracy_level"],
+        "reason_code": line["reason_code"],
+        "reason_label": line["reason_label"],
+        "has_reason_note": bool(line["reason_note"]),
+        "has_line_notes": bool(line["notes"]),
+        "record_updated_at": record["updated_at"],
+    }
+
+
+def get_posted_production_facts_for_menu(
+    *,
+    menu_id: int,
+    actor_user_id: str,
+    service_date_lookup: dict | None = None,
+) -> dict:
+    history = list_production_records_for_menu(
+        menu_id=menu_id,
+        actor_user_id=actor_user_id,
+        service_date_lookup=service_date_lookup,
+        filters={"status": "posted"},
+    )
+    facts = []
+    for record in history["records"]:
+        record_with_menu = {**record, "menu_id": menu_id}
+        for line in record["lines"]:
+            facts.append(_build_posted_production_fact(record=record_with_menu, line=line))
+
+    return {
+        "contract_version": "production_record.posted_facts.v1",
+        "source": "posted_production_records",
+        "menu_id": menu_id,
+        "facts": facts,
+        "summary": {
+            "record_count": history["totals"]["posted"],
+            "line_count": len(facts),
+            "accurate": history["totals"]["accurate"],
+            "review": history["totals"]["review"],
+            "miss": history["totals"]["miss"],
+        },
+    }
+
+
 def ensure_production_record(
     *,
     menu_id: int,
