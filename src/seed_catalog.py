@@ -20,9 +20,9 @@ SEED_DIETITIAN_DISPLAY_NAME = "Seed Dietitian"
 SEED_REVIEWER_USER_ID = "seed_reviewer_001"
 SEED_REVIEWER_DISPLAY_NAME = "Seed Reviewer"
 
-SEED_TARGET_BASE_FOOD_COUNT = 1000
-SEED_TARGET_SIMPLE_RECIPE_COUNT = 500
-SEED_TARGET_COMPLEX_RECIPE_COUNT = 500
+SEED_TARGET_BASE_FOOD_COUNT = 500
+SEED_TARGET_SIMPLE_RECIPE_COUNT = 100
+SEED_TARGET_COMPLEX_RECIPE_COUNT = 100
 
 VOLUME_UNIT_TO_ML = {
     "tsp": 4.92892,
@@ -71,6 +71,161 @@ HACCP_CLASSIFICATIONS = [
     "cold_holding",
     "cook_serve",
     "cook_chill",
+]
+COMMERCIAL_KITCHEN_VARIANTS = {
+    "Produce": ["", "Diced", "Sliced", "Chopped", "Shredded", "Roasted", "Frozen"],
+    "Protein": ["", "Raw", "Cooked", "Diced", "Sliced", "Roasted", "Grilled", "Frozen"],
+    "Prepared Protein": ["", "Cooked", "Diced", "Sliced", "Breaded", "Grilled", "Roasted", "Frozen"],
+    "Seafood": ["", "Raw", "Cooked", "Frozen", "Diced"],
+    "Dairy": ["", "Shredded", "Sliced", "Crumbled"],
+    "Dry Goods": ["", "Cooked", "Toasted", "Crushed"],
+    "Frozen": ["", "Frozen", "Seasoned", "Crispy"],
+    "Sauce": ["", "Prepared", "Reduced"],
+    "Oil": ["", "Infused"],
+    "Spice": ["", "Ground", "Crushed"],
+}
+COMMERCIAL_KITCHEN_SEED_GROUPS = [
+    {
+        "group": "Produce",
+        "nutrition_group": "Commercial Kitchen Produce",
+        "mass_quantity": 120.0,
+        "volume_quantity": 1.0,
+        "volume_unit": "cup",
+        "kcal_per_serving": 35.0,
+        "names": [
+            "Apple", "Arugula", "Asparagus", "Avocado", "Baby Spinach", "Banana Pepper", "Basil",
+            "Bean Sprouts", "Beet", "Bell Pepper", "Bok Choy", "Broccoli", "Brussels Sprouts",
+            "Butternut Squash", "Cabbage", "Caramelized Onion", "Cauliflower", "Cherry Tomato",
+            "Cilantro", "Collard Greens", "Corn Kernel", "Eggplant", "Fennel", "Green Bean",
+            "Green Onion", "Jalapeno", "Kale", "Leek", "Mushroom", "Poblano Pepper", "Portobello Mushroom",
+            "Red Cabbage", "Roasted Red Pepper", "Snow Pea", "Sweet Potato", "Tomatillo", "Zucchini",
+        ],
+    },
+    {
+        "group": "Protein",
+        "nutrition_group": "Commercial Kitchen Proteins",
+        "mass_quantity": 140.0,
+        "volume_quantity": 1.0,
+        "volume_unit": "cup",
+        "kcal_per_serving": 220.0,
+        "names": [
+            "Ground Beef", "Beef Chuck", "Beef Brisket", "Beef Short Rib", "Beef Tenderloin",
+            "Pork Shoulder", "Pork Loin", "Pork Belly", "Breakfast Sausage", "Italian Sausage",
+            "Turkey Breast", "Ground Turkey", "Ham", "Bacon", "Lamb Shoulder", "Lamb Leg",
+            "Tofu", "Tempeh", "Black Bean Patty", "Falafel",
+        ],
+    },
+    {
+        "group": "Prepared Protein",
+        "nutrition_group": "Commercial Kitchen Prepared Proteins",
+        "mass_quantity": 140.0,
+        "volume_quantity": 1.0,
+        "volume_unit": "cup",
+        "kcal_per_serving": 240.0,
+        "names": [
+            "Chicken Breast", "Chicken Thigh", "Chicken Tender", "Breaded Chicken Patty",
+            "Breaded Chicken Tender", "Grilled Chicken Strip", "Roasted Chicken", "Pulled Chicken",
+            "Chicken Wing", "Chicken Drumstick", "Turkey Meatball", "Beef Meatball", "Pulled Pork",
+            "Carnitas", "Barbacoa", "Roast Beef", "Corned Beef", "Pepperoni", "Salami",
+        ],
+    },
+    {
+        "group": "Seafood",
+        "nutrition_group": "Commercial Kitchen Seafood",
+        "mass_quantity": 120.0,
+        "volume_quantity": 1.0,
+        "volume_unit": "cup",
+        "kcal_per_serving": 160.0,
+        "names": [
+            "Lobster Meat", "Shrimp", "Crab Meat", "Salmon Fillet", "Cod Fillet", "Tuna",
+            "Tilapia Fillet", "Clam", "Mussel", "Scallop", "Smoked Salmon", "Whitefish",
+        ],
+    },
+    {
+        "group": "Dairy",
+        "nutrition_group": "Commercial Kitchen Dairy",
+        "mass_quantity": 110.0,
+        "volume_quantity": 1.0,
+        "volume_unit": "cup",
+        "kcal_per_serving": 180.0,
+        "names": [
+            "Cheddar Cheese", "Mozzarella Cheese", "Swiss Cheese", "Feta Cheese", "Goat Cheese",
+            "Cream Cheese", "Sour Cream", "Greek Yogurt", "Heavy Cream", "Whole Milk",
+            "Liquid Egg", "Hard Boiled Egg",
+        ],
+    },
+    {
+        "group": "Dry Goods",
+        "nutrition_group": "Commercial Kitchen Dry Goods",
+        "mass_quantity": 160.0,
+        "volume_quantity": 1.0,
+        "volume_unit": "cup",
+        "kcal_per_serving": 210.0,
+        "names": [
+            "Long Grain Rice", "Brown Rice", "Jasmine Rice", "Quinoa", "Couscous", "Orzo",
+            "Penne Pasta", "Elbow Macaroni", "Spaghetti", "Flour Tortilla", "Corn Tortilla",
+            "Breadcrumb", "Panko", "All Purpose Flour", "Cornmeal", "Rolled Oats", "Granola",
+            "Black Bean", "Pinto Bean", "Chickpea", "Lentil", "Canned Tomato", "Crushed Tomato",
+        ],
+    },
+    {
+        "group": "Frozen",
+        "nutrition_group": "Commercial Kitchen Frozen",
+        "mass_quantity": 150.0,
+        "volume_quantity": 1.0,
+        "volume_unit": "cup",
+        "kcal_per_serving": 230.0,
+        "names": [
+            "French Fries", "Sweet Potato Fries", "Tater Tots", "Onion Rings", "Hash Brown Patty",
+            "Waffle Fries", "Potato Wedge", "Vegetable Medley", "Peas", "Corn", "Edamame",
+            "Berry Blend", "Mango Chunk",
+        ],
+    },
+    {
+        "group": "Sauce",
+        "nutrition_group": "Commercial Kitchen Sauces",
+        "mass_quantity": 245.0,
+        "volume_quantity": 1.0,
+        "volume_unit": "cup",
+        "kcal_per_serving": 120.0,
+        "names": [
+            "Marinara Sauce", "Alfredo Sauce", "Buffalo Sauce", "Barbecue Sauce", "Teriyaki Sauce",
+            "Soy Sauce", "Hoisin Sauce", "Sweet Chili Sauce", "Ranch Dressing", "Caesar Dressing",
+            "Balsamic Vinaigrette", "Salsa", "Pesto", "Tzatziki", "Hummus", "Guacamole",
+        ],
+    },
+    {
+        "group": "Oil",
+        "nutrition_group": "Commercial Kitchen Oils",
+        "mass_quantity": 216.0,
+        "volume_quantity": 1.0,
+        "volume_unit": "cup",
+        "kcal_per_serving": 120.0,
+        "names": [
+            "Canola Oil", "Vegetable Oil", "Truffle Oil", "Sesame Oil", "Avocado Oil",
+            "Chili Oil", "Garlic Oil", "Clarified Butter",
+        ],
+    },
+    {
+        "group": "Spice",
+        "nutrition_group": "Commercial Kitchen Spices",
+        "mass_quantity": 96.0,
+        "volume_quantity": 1.0,
+        "volume_unit": "cup",
+        "kcal_per_serving": 8.0,
+        "names": [
+            "Kosher Salt", "White Pepper", "Paprika", "Smoked Paprika", "Cumin", "Coriander",
+            "Chili Powder", "Curry Powder", "Garlic Powder", "Onion Powder", "Italian Seasoning",
+            "Oregano", "Thyme", "Rosemary", "Bay Leaf", "Cinnamon", "Nutmeg", "Red Pepper Flake",
+        ],
+    },
+]
+COMMERCIAL_KITCHEN_PRIORITY_ITEMS = [
+    ("Frozen French Fries", "Commercial Kitchen Frozen", 150.0, 1.0, "cup", 230.0),
+    ("Ground Beef", "Commercial Kitchen Proteins", 140.0, 1.0, "cup", 220.0),
+    ("Breaded Chicken Tender", "Commercial Kitchen Prepared Proteins", 140.0, 1.0, "cup", 240.0),
+    ("Truffle Oil", "Commercial Kitchen Oils", 216.0, 1.0, "cup", 120.0),
+    ("Lobster Meat", "Commercial Kitchen Seafood", 120.0, 1.0, "cup", 160.0),
 ]
 
 MANUAL_BASE_FOOD_ITEMS: list[dict] = [
@@ -759,6 +914,12 @@ def _build_seed_base_food_catalog() -> list[dict]:
     used_names = {item["item_name"] for item in MANUAL_BASE_FOOD_ITEMS}
     base_foods = [_enrich_base_food_record(dict(item)) for item in MANUAL_BASE_FOOD_ITEMS]
 
+    for candidate in _generate_commercial_kitchen_base_foods(used_names):
+        base_foods.append(candidate)
+        used_names.add(candidate["item_name"])
+        if len(base_foods) >= SEED_TARGET_BASE_FOOD_COUNT:
+            break
+
     if USDA_ZIP_PATH.exists():
         for candidate in _load_usda_base_food_candidates(used_names):
             base_foods.append(candidate)
@@ -776,6 +937,67 @@ def _build_seed_base_food_catalog() -> list[dict]:
         )
 
     return base_foods[:SEED_TARGET_BASE_FOOD_COUNT]
+
+
+def _generate_commercial_kitchen_base_foods(used_names: set[str]) -> list[dict]:
+    candidates: list[dict] = []
+    local_used_names = set(used_names)
+    for item_name, nutrition_group, mass_quantity, volume_quantity, volume_unit, kcal_per_serving in COMMERCIAL_KITCHEN_PRIORITY_ITEMS:
+        if item_name in local_used_names:
+            continue
+        local_used_names.add(item_name)
+        candidates.append(
+            _enrich_base_food_record(
+                {
+                    "item_name": item_name,
+                    "mass_quantity": mass_quantity,
+                    "mass_unit": "g",
+                    "volume_quantity": volume_quantity,
+                    "volume_unit": volume_unit,
+                    "nutrition_group": nutrition_group,
+                    "kcal_per_serving": kcal_per_serving,
+                    "nutrition_serving_mass_quantity": mass_quantity,
+                    "nutrition_serving_mass_unit": "g",
+                    "nutrition_serving_volume_quantity": volume_quantity,
+                    "nutrition_serving_volume_unit": volume_unit,
+                    "notes": "Priority commercial kitchen seed ingredient for development and demo data.",
+                }
+            )
+        )
+
+    for group in COMMERCIAL_KITCHEN_SEED_GROUPS:
+        variants = COMMERCIAL_KITCHEN_VARIANTS[group["group"]]
+        for base_name in group["names"]:
+            for variant in variants:
+                if variant and base_name.startswith(variant):
+                    item_name = base_name
+                elif variant:
+                    item_name = f"{variant} {base_name}"
+                else:
+                    item_name = base_name
+                item_name = _normalize_common_kitchen_name(item_name)
+                if item_name in local_used_names:
+                    continue
+                local_used_names.add(item_name)
+                candidates.append(
+                    _enrich_base_food_record(
+                        {
+                            "item_name": item_name,
+                            "mass_quantity": group["mass_quantity"],
+                            "mass_unit": "g",
+                            "volume_quantity": group["volume_quantity"],
+                            "volume_unit": group["volume_unit"],
+                            "nutrition_group": group["nutrition_group"],
+                            "kcal_per_serving": group["kcal_per_serving"],
+                            "nutrition_serving_mass_quantity": group["mass_quantity"],
+                            "nutrition_serving_mass_unit": "g",
+                            "nutrition_serving_volume_quantity": group["volume_quantity"],
+                            "nutrition_serving_volume_unit": group["volume_unit"],
+                            "notes": "Commercial kitchen seed ingredient for development and demo data.",
+                        }
+                    )
+                )
+    return candidates
 
 
 def _load_usda_base_food_candidates(used_names: set[str]) -> list[dict]:
@@ -818,7 +1040,11 @@ def _load_usda_base_food_candidates(used_names: set[str]) -> list[dict]:
             continue
 
         amount, unit, gram_weight = portion_lookup[fdc_id]
-        item_name = _unique_seed_name(food["description"].strip(), local_used_names, fdc_id=fdc_id)
+        normalized_description = _normalize_usda_kitchen_name(food["description"].strip())
+        if not normalized_description or _is_disallowed_seed_food(normalized_description):
+            continue
+
+        item_name = _unique_seed_name(normalized_description, local_used_names, fdc_id=fdc_id)
         local_used_names.add(item_name)
         kcal_per_serving = round(kcal_lookup[fdc_id] * gram_weight / 100.0, 1)
 
@@ -1136,6 +1362,87 @@ def _parse_volume_portion(text: str) -> tuple[float, str] | None:
         if match:
             return float(match.group(1) or 1.0), unit
     return None
+
+
+def _normalize_common_kitchen_name(value: str) -> str:
+    cleaned = " ".join(str(value or "").replace(",", " ").split())
+    replacements = {
+        "Breadcrumb": "Breadcrumbs",
+        "Canned Tomato": "Canned Tomatoes",
+        "Crushed Tomato": "Crushed Tomatoes",
+        "Corn Kernel": "Corn Kernels",
+        "Mango Chunk": "Mango Chunks",
+        "Potato Wedge": "Potato Wedges",
+    }
+    return replacements.get(cleaned, cleaned)
+
+
+def _normalize_usda_kitchen_name(value: str) -> str:
+    cleaned = " ".join(str(value or "").replace('"', "").split())
+    lowered = cleaned.lower()
+    phrase_replacements = {
+        "oil, olive, salad or cooking": "Olive Oil",
+        "tomatoes, crushed, canned": "Crushed Tomatoes",
+        "chicken, broilers or fryers, breast, meat only, raw": "Chicken Breast",
+        "beef, ground, raw": "Ground Beef",
+        "rice, white, long-grain, regular, cooked": "Cooked White Rice",
+    }
+    if lowered in phrase_replacements:
+        return phrase_replacements[lowered]
+
+    parts = [
+        part.strip()
+        for part in re.split(r",| with | without ", cleaned)
+        if part.strip()
+    ]
+    rejected_parts = {
+        "raw",
+        "cooked",
+        "fresh",
+        "frozen",
+        "drained solids",
+        "solids and liquids",
+        "not further specified",
+        "ns as to form",
+    }
+    kept_parts = [
+        part
+        for part in parts[:4]
+        if part.lower() not in rejected_parts
+        and "babyfood" not in part.lower()
+        and "infant" not in part.lower()
+    ]
+    if not kept_parts:
+        return ""
+
+    normalized = " ".join(reversed(kept_parts[:3]))
+    normalized = re.sub(r"\bNFS\b", "", normalized, flags=re.IGNORECASE)
+    normalized = " ".join(normalized.split())
+    return normalized.title()
+
+
+def _is_disallowed_seed_food(value: str) -> bool:
+    lowered = value.lower()
+    disallowed_terms = [
+        "baby",
+        "infant",
+        "formula",
+        "toddler",
+        "cereal for babies",
+        "medical food",
+        "supplement",
+        "protein powder",
+        "meal replacement",
+        "alcoholic",
+        "beer",
+        "wine",
+        "cocktail",
+        "fast food",
+        "restaurant",
+        "school lunch",
+        "frozen meal",
+    ]
+    return any(term in lowered for term in disallowed_terms)
 
 
 def _volume_unit_priority(unit: str) -> int:

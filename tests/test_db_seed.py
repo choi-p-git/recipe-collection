@@ -32,21 +32,44 @@ def test_initialize_database_seeds_catalog_when_enabled(isolated_db):
 
     cursor.execute(
         """
-        SELECT nutrition_group, kcal_per_serving, nutrition_serving_mass_quantity, nutrition_serving_volume_quantity
+        SELECT item_name
         FROM item
-        WHERE item_name = 'Chicken Breast'
+        WHERE item_name IN (
+            'Frozen French Fries',
+            'Ground Beef',
+            'Breaded Chicken Tender',
+            'Truffle Oil',
+            'Lobster Meat'
+        )
         """
     )
-    chicken_breast_nutrition = cursor.fetchone()
+    commercial_kitchen_items = {row[0] for row in cursor.fetchall()}
+
+    cursor.execute(
+        """
+        SELECT COUNT(*)
+        FROM item
+        WHERE lower(item_name) LIKE '%infant%'
+           OR lower(item_name) LIKE '%formula%'
+        """
+    )
+    non_kitchen_item_count = cursor.fetchone()[0]
 
     conn.close()
 
     assert did_seed is True
-    assert base_food_count == 1000
-    assert recipe_count == 1000
-    assert live_count == 2000
+    assert base_food_count == 500
+    assert recipe_count == 200
+    assert live_count == 700
     assert nested_component_count == 1
-    assert chicken_breast_nutrition == ("Poultry Products", 231.0, 140.0, 1.0)
+    assert commercial_kitchen_items == {
+        "Frozen French Fries",
+        "Ground Beef",
+        "Breaded Chicken Tender",
+        "Truffle Oil",
+        "Lobster Meat",
+    }
+    assert non_kitchen_item_count == 0
 
 
 def test_initialize_database_does_not_duplicate_seed_catalog(isolated_db):
@@ -63,4 +86,4 @@ def test_initialize_database_does_not_duplicate_seed_catalog(isolated_db):
 
     assert first_seed is True
     assert second_seed is False
-    assert item_count == 2000
+    assert item_count == 700

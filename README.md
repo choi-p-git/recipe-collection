@@ -39,9 +39,9 @@ Latest full schema snapshot stored in `database/schema.sql`
 Unified `item` table plus `recipe_component` table
 Database initialization and pending migration application handled by `src/db.py`
 Automatic seed catalog bootstrap on empty real databases:
-- 1000 base foods
-- 500 simple recipes
-- 500 complex recipes
+- 500 commercial-kitchen base foods
+- 100 simple recipes
+- 100 complex recipes
 
 2. Mock auth shell
 Session-backed mock login page
@@ -104,13 +104,23 @@ Seed catalog note
 
 - Empty real databases bootstrap with a reusable seed catalog stored in `src/seed_catalog.py`
 - The seed catalog includes:
-  - 1000 base foods, preserving the original named starter items and expanding with USDA-backed references when available
-  - 500 simple recipes that use only base foods
-  - 500 complex recipes that use both base foods and sub-recipes
+  - 500 commercial-kitchen base foods, preserving the original named starter items and expanding with common kitchen ingredients before USDA-backed fallback references
+  - 100 simple recipes that use only base foods
+  - 100 complex recipes that use both base foods and sub-recipes
+- Commercial seed names prefer common kitchen names such as `Ground Beef`, `Frozen French Fries`, `Breaded Chicken Tender`, `Truffle Oil`, and `Lobster Meat` instead of raw nutrition-database naming.
 - Seeded base foods now also include starter nutrition authority values for calories and serving reference mass/volume
 - The loader is idempotent and only runs when the `item` table is empty
 - Existing seed rows can be backfilled with newer seed nutrition metadata during init without touching non-seed records
 - Tests use `initialize_database(seed=False)` so isolated DB fixtures stay clean unless a test explicitly wants seeded data
+
+Dev automation note
+
+- `src/dev_automation.py` can create a randomized draft operating dataset for manual workflow testing.
+- Default run shape: 8 weeks, Monday-Friday, breakfast and dinner, hot line/cold line/grab go, 3-5 randomized live items per concept slot.
+- The automation seeds draft Forecasting rows for every assigned menu item, then creates draft Production Records for every service day with randomized accurate/review/miss scenarios.
+- Production Records remain draft by default so behavior can be manually tested without locking. Use `--post-records` only when a posted/locked dataset is needed.
+- Example: `uv run python src/dev_automation.py --menu-name "Dev Automation Draft Menu" --seed 42`
+- Useful knobs: `--weeks`, `--start-date`, `--service-days`, `--meal-periods`, `--concepts`, `--min-items`, `--max-items`, `--seed`, and `--post-records`.
 
 Search stack note
 

@@ -16,6 +16,7 @@ This project is being built as a staged MVP with deliberate business-analysis-fi
 * Frontend assets live under `webpage/`
 * Core Python logic lives under `src/`
 * reusable seed catalog bootstrap lives in `src/seed_catalog.py`
+* dev operating-data automation lives in `src/dev_automation.py`
 
 ### Major Module / App Boundaries
 
@@ -36,6 +37,22 @@ Architectural guidance:
 * app-specific screens, routes, navigation, and future tests should keep clear ownership under their top-level module route
 * app-owned APIs should use the same module prefix where practical, for example `/recipe-collection/api/...` for recipe/item APIs
 * when adding a major feature, choose the top-level URL segment first and let templates/services follow that ownership boundary where practical
+
+## Dev Automation Guidance
+
+`src/dev_automation.py` is back-of-house tooling for creating manual-test operating data after the commercial kitchen seed catalog is in place.
+
+Current default shape:
+
+* 8 weeks
+* Monday-Friday
+* breakfast and dinner
+* hot line, cold line, and grab go
+* 3-5 randomized live recipes/base foods per slot
+* draft Forecasting rows for every assignment
+* draft Production Records with randomized accurate/review/miss scenarios
+
+Keep generated records draft by default. Posting should stay opt-in through the `--post-records` flag so manual testing can exercise editable workflows before lock/post behavior. Future inventory/analytics automation should build on the same menu/forecast/production services instead of inserting downstream records directly.
 
 ## Current Folder Structure
 
@@ -357,11 +374,13 @@ Implemented:
 * empty real databases auto-load a reusable seed catalog
 * seed catalog currently includes:
 
-  * 1000 base foods
-  * 500 simple recipes using only base foods
-  * 500 complex recipes using both base foods and recipes
+  * 500 commercial-kitchen base foods
+  * 100 simple recipes using only base foods
+  * 100 complex recipes using both base foods and recipes
 
 * seed loading is idempotent and only runs when the `item` table is empty
+* seed base foods should favor common commercial-kitchen ingredient names over raw USDA/nutrition-database names
+* USDA-backed rows are allowed as fallback/reference inputs only after name normalization and exclusion of non-kitchen items such as infant formula, supplements, medical foods, alcohol, restaurant prepared meals, and similar noise
 * seeded base foods now include starter nutrition authority values for calories and serving reference mass/volume
 * init may backfill newer nutrition authority seed metadata onto older seed base foods without touching non-seed records
 * isolated test databases should continue using `initialize_database(seed=False)` unless a test explicitly needs seeded data
