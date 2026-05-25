@@ -10,7 +10,7 @@
     <main class="{% block main_class %}container{% endblock %}">
         <header class="site-header">
             <div>
-                <h1>Recipe Collection</h1>
+                <h1>{% block app_header_title %}Recipe Collection{% endblock %}</h1>
                 <p class="site-session">
                     Current Session:
                     <strong>{{ current_mock_user.display_name }}</strong>
@@ -23,6 +23,7 @@
                 <a href="{{ url_for('live_collection') }}">Live Collection</a>
                 <a href="{{ url_for('my_recipes') }}">My Recipes</a>
                 <a href="{{ url_for('my_menus') }}">My Menus</a>
+                <a href="{{ url_for('inventory_dashboard') }}">Inventory</a>
                 <a href="{{ url_for('new_menu') }}">New Menu</a>
                 <a href="{{ url_for('login_shell') }}">Mock Login</a>
                 <a href="{{ url_for('user_preferences') }}">Preferences</a>

@@ -79,6 +79,22 @@ from services.production_record_service import (
     post_production_record,
     save_production_record_line,
 )
+from services.inventory_service import (
+    InvalidInventoryError,
+    add_inventory_location_break,
+    create_inventory_location,
+    delete_inventory_location,
+    delete_inventory_location_break,
+    delete_inventory_location_item,
+    get_inventory_dashboard,
+    get_inventory_location_detail,
+    list_live_inventory_items,
+    move_inventory_count_row,
+    rename_inventory_location,
+    save_inventory_location_item,
+    transfer_inventory_location_item,
+    update_inventory_location_item,
+)
 from services.item_note_service import (
     ItemNoteError,
     acknowledge_item_notes_for_viewer,
@@ -200,6 +216,234 @@ def _build_service_day_navigation(page_data: dict) -> dict:
         "previous": entries[selected_index - 1] if selected_index > 0 else None,
         "next": entries[selected_index + 1] if selected_index + 1 < len(entries) else None,
     }
+
+
+@app.route("/inventory")
+def inventory_dashboard():
+    return render_template(
+        "inventory.html",
+        page_data=get_inventory_dashboard(),
+        current_user=get_current_mock_user(session),
+    )
+
+
+@app.post("/inventory/locations")
+def create_inventory_location_route():
+    current_user = get_current_mock_user(session)
+    try:
+        parent_id = request.form.get("parent_inventory_location_id", "")
+        create_inventory_location(
+            location_name=request.form.get("location_name", ""),
+            parent_inventory_location_id=parent_id,
+            actor_user_id=current_user["user_id"],
+            actor_display_name=current_user["display_name"],
+        )
+        flash("Inventory location created.", "success")
+    except InvalidInventoryError as exc:
+        flash(str(exc), "error")
+    if request.form.get("return_to") == "edit" and request.form.get("parent_inventory_location_id"):
+        return redirect(url_for("inventory_location_edit", inventory_location_id=request.form["parent_inventory_location_id"]))
+    return redirect(url_for("inventory_dashboard"))
+
+
+@app.route("/inventory/locations/<int:inventory_location_id>/edit")
+def inventory_location_edit(inventory_location_id: int):
+    location = get_inventory_location_detail(inventory_location_id)
+    if location is None:
+        return "Inventory location not found.", 404
+    return render_template(
+        "inventory_location_edit.html",
+        location=location,
+    )
+
+
+@app.post("/inventory/locations/<int:inventory_location_id>/rename")
+def rename_inventory_location_route(inventory_location_id: int):
+    try:
+        rename_inventory_location(
+            inventory_location_id=inventory_location_id,
+            location_name=request.form.get("location_name", ""),
+        )
+        flash("Inventory location renamed.", "success")
+    except InvalidInventoryError as exc:
+        flash(str(exc), "error")
+    return redirect(request.form.get("return_url") or url_for("inventory_location_edit", inventory_location_id=inventory_location_id))
+
+
+@app.post("/inventory/locations/<int:inventory_location_id>/delete")
+def delete_inventory_location_route(inventory_location_id: int):
+    return_location_id = request.form.get("return_inventory_location_id", "")
+    try:
+        delete_inventory_location(inventory_location_id=inventory_location_id)
+        flash("Inventory location deleted.", "success")
+    except InvalidInventoryError as exc:
+        flash(str(exc), "error")
+    if return_location_id:
+        return redirect(url_for("inventory_location_edit", inventory_location_id=return_location_id))
+    return redirect(url_for("inventory_dashboard"))
+
+
+@app.route("/inventory/locations/<int:inventory_location_id>/count")
+def inventory_location_count(inventory_location_id: int):
+    location = get_inventory_location_detail(inventory_location_id)
+    if location is None:
+        return "Inventory location not found.", 404
+    dashboard = get_inventory_dashboard()
+    return render_template(
+        "inventory_location_count.html",
+        location=location,
+        live_items=list_live_inventory_items(),
+        unit_options=dashboard["unit_options"],
+        unit_of_measurement_options=dashboard["unit_of_measurement_options"],
+        count_type_options=dashboard["count_type_options"],
+        transfer_locations=[
+            candidate
+            for candidate in dashboard["active_locations"]
+            if candidate["inventory_location_id"] != inventory_location_id
+            and candidate["parent_inventory_location_id"] is not None
+        ],
+        transfer_location_tree=dashboard["location_tree"],
+    )
+
+
+@app.post("/inventory/locations/<int:inventory_location_id>/items")
+def save_inventory_location_item_route(inventory_location_id: int):
+    try:
+        save_inventory_location_item(
+            inventory_location_id=inventory_location_id,
+            item_id=request.form.get("item_id", ""),
+            count_each_quantity=request.form.get("count_each_quantity", ""),
+            count_case_quantity=request.form.get("count_case_quantity", ""),
+            pack_quantity=request.form.get("pack_quantity", ""),
+            pack_size_text=request.form.get("pack_size_text", ""),
+            unit_of_measurement=request.form.get("unit_of_measurement", ""),
+            count_type=request.form.get("count_type", ""),
+        )
+        flash("Inventory item count saved.", "success")
+    except InvalidInventoryError as exc:
+        flash(str(exc), "error")
+    return redirect(url_for("inventory_location_count", inventory_location_id=inventory_location_id))
+
+
+@app.post("/inventory/location-items/<int:inventory_location_item_id>/update")
+def update_inventory_location_item_route(inventory_location_item_id: int):
+    return_location_id = request.form.get("inventory_location_id", "")
+    try:
+        update_inventory_location_item(
+            inventory_location_item_id=inventory_location_item_id,
+            count_each_quantity=request.form.get("count_each_quantity", ""),
+            count_case_quantity=request.form.get("count_case_quantity", ""),
+            pack_quantity=request.form.get("pack_quantity", ""),
+            pack_size_text=request.form.get("pack_size_text", ""),
+            unit_of_measurement=request.form.get("unit_of_measurement", ""),
+            count_type=request.form.get("count_type", ""),
+        )
+        flash("Inventory item count updated.", "success")
+    except InvalidInventoryError as exc:
+        flash(str(exc), "error")
+    return redirect(url_for("inventory_location_count", inventory_location_id=return_location_id))
+
+
+@app.put("/api/inventory/location-items/<int:inventory_location_item_id>")
+def api_update_inventory_location_item(inventory_location_item_id: int):
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"ok": False, "error": "Missing JSON payload."}), 400
+    try:
+        update_inventory_location_item(
+            inventory_location_item_id=inventory_location_item_id,
+            count_each_quantity=payload.get("count_each_quantity", ""),
+            count_case_quantity=payload.get("count_case_quantity", ""),
+            pack_quantity=payload.get("pack_quantity", ""),
+            pack_size_text=payload.get("pack_size_text", ""),
+            unit_of_measurement=payload.get("unit_of_measurement", ""),
+            count_type=payload.get("count_type", ""),
+        )
+        location = get_inventory_location_detail(payload.get("inventory_location_id", ""))
+        line = next(
+            (
+                row
+                for row in (location or {}).get("item_rows", [])
+                if row["inventory_location_item_id"] == inventory_location_item_id
+            ),
+            None,
+        )
+        return jsonify({"ok": True, "line": line})
+    except InvalidInventoryError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"ok": False, "error": f"Unexpected error: {exc}"}), 500
+
+
+@app.post("/inventory/location-items/<int:inventory_location_item_id>/delete")
+def delete_inventory_location_item_route(inventory_location_item_id: int):
+    return_location_id = request.form.get("inventory_location_id", "")
+    try:
+        delete_inventory_location_item(inventory_location_item_id=inventory_location_item_id)
+        flash("Inventory item removed.", "success")
+    except InvalidInventoryError as exc:
+        flash(str(exc), "error")
+    return redirect(url_for("inventory_location_count", inventory_location_id=return_location_id))
+
+
+@app.post("/inventory/locations/<int:inventory_location_id>/breaks")
+def add_inventory_location_break_route(inventory_location_id: int):
+    try:
+        add_inventory_location_break(
+            inventory_location_id=inventory_location_id,
+            break_label=request.form.get("break_label", ""),
+        )
+        flash("Inventory break line added.", "success")
+    except InvalidInventoryError as exc:
+        flash(str(exc), "error")
+    return redirect(url_for("inventory_location_count", inventory_location_id=inventory_location_id))
+
+
+@app.post("/inventory/location-breaks/<int:inventory_location_break_id>/delete")
+def delete_inventory_location_break_route(inventory_location_break_id: int):
+    return_location_id = request.form.get("inventory_location_id", "")
+    try:
+        delete_inventory_location_break(inventory_location_break_id=inventory_location_break_id)
+        flash("Inventory break line removed.", "success")
+    except InvalidInventoryError as exc:
+        flash(str(exc), "error")
+    return redirect(url_for("inventory_location_count", inventory_location_id=return_location_id))
+
+
+@app.post("/inventory/count-rows/move")
+def move_inventory_count_row_route():
+    return_location_id = request.form.get("inventory_location_id", "")
+    try:
+        move_inventory_count_row(
+            row_type=request.form.get("row_type", ""),
+            row_id=request.form.get("row_id", ""),
+            direction=request.form.get("direction", ""),
+        )
+    except InvalidInventoryError as exc:
+        flash(str(exc), "error")
+    return redirect(url_for("inventory_location_count", inventory_location_id=return_location_id))
+
+
+@app.post("/inventory/location-items/<int:inventory_location_item_id>/transfer")
+def transfer_inventory_location_item_route(inventory_location_item_id: int):
+    return_location_id = request.form.get("inventory_location_id", "")
+    try:
+        transfer_inventory_location_item(
+            inventory_location_item_id=inventory_location_item_id,
+            target_inventory_location_id=request.form.get("target_inventory_location_id", ""),
+        )
+        flash("Inventory item transferred.", "success")
+    except InvalidInventoryError as exc:
+        flash(str(exc), "error")
+    return redirect(url_for("inventory_location_count", inventory_location_id=return_location_id))
+
+
+@app.route("/inventory/locations/<int:inventory_location_id>/print")
+def inventory_location_print(inventory_location_id: int):
+    location = get_inventory_location_detail(inventory_location_id)
+    if location is None:
+        return "Inventory location not found.", 404
+    return render_template("inventory_location_print.html", location=location)
 
 
 @app.template_filter("unit_label")

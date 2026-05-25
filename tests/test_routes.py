@@ -1225,6 +1225,9 @@ def test_production_record_route_snapshots_forecast_and_saves_variance(app_clien
     assert "<td>1</td>" in history_page
     assert "Production Record Soup" in history_page
     assert "0 Half pan, 4&#34;" in history_page
+    assert "Leftover Occurrences" in history_page
+    assert "Shortage Occurrences" in history_page
+    assert "production_record_history.js" in history_page
     assert 'name="accuracy"' in history_page
     assert 'name="reason_code"' in history_page
     assert 'name="item"' in history_page
@@ -1403,6 +1406,120 @@ def test_production_record_history_route_renders_empty_state(app_client):
     assert "Empty History Menu" in page
     assert "No production records have been started for this menu." in page
     assert "Current Production Record" in page
+
+
+def test_inventory_foundation_routes_create_count_and_current_on_hand(app_client, isolated_db):
+    item_id = create_base_food(item_name="Route Inventory Onions", mass_quantity=1, mass_unit="lb")
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id = ?", (item_id,))
+    conn.commit()
+    conn.close()
+
+    location_response = app_client.post(
+        "/inventory/locations",
+        data={"location_name": "Walk-In Freezer"},
+        follow_redirects=True,
+    )
+    location_page = location_response.get_data(as_text=True)
+
+    assert location_response.status_code == 200
+    assert "Inventory location created." in location_page
+    assert "Walk-In Freezer" in location_page
+    assert "Add Location" in location_page
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT inventory_location_id FROM inventory_location WHERE location_name = 'Walk-In Freezer'")
+    location_id = cursor.fetchone()[0]
+    conn.close()
+
+    sub_location_response = app_client.post(
+        "/inventory/locations",
+        data={
+            "parent_inventory_location_id": str(location_id),
+            "location_name": "Rack A",
+            "return_to": "edit",
+        },
+        follow_redirects=False,
+    )
+    assert sub_location_response.status_code == 302
+    assert f"/inventory/locations/{location_id}/edit" in sub_location_response.headers["Location"]
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT inventory_location_id FROM inventory_location WHERE location_name = 'Rack A'")
+    sub_location_id = cursor.fetchone()[0]
+    conn.close()
+
+    line_response = app_client.post(
+        f"/inventory/locations/{sub_location_id}/items",
+        data={
+            "item_id": str(item_id),
+            "count_each_quantity": "2",
+            "count_case_quantity": "1",
+            "pack_quantity": "4",
+            "pack_size_text": "5 lb",
+            "unit_of_measurement": "Case",
+            "count_type": "counted_by_each_and_case",
+        },
+        follow_redirects=True,
+    )
+    line_page = line_response.get_data(as_text=True)
+
+    assert line_response.status_code == 200
+    assert "Inventory Management" in line_page
+    assert "Inventory item count saved." in line_page
+    assert "Route Inventory Onions" in line_page
+    assert 'value="2"' in line_page
+    assert 'value="1"' in line_page
+    assert "4 packs x 5 lb" in line_page
+    assert "Price history" in line_page
+    assert "Transfer Route Inventory Onions" in line_page
+    assert "Print" in line_page
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT inventory_location_item_id FROM inventory_location_item WHERE inventory_location_id = ? AND item_id = ?",
+        (sub_location_id, item_id),
+    )
+    location_item_id = cursor.fetchone()[0]
+    conn.close()
+
+    api_response = app_client.put(
+        f"/api/inventory/location-items/{location_item_id}",
+        json={
+            "inventory_location_id": sub_location_id,
+            "count_each_quantity": "3",
+            "count_case_quantity": "1",
+            "pack_quantity": "4",
+            "pack_size_text": "5 lb",
+            "unit_of_measurement": "Case",
+            "count_type": "counted_by_each_and_case",
+        },
+    )
+    api_payload = api_response.get_json()
+
+    assert api_response.status_code == 200
+    assert api_payload["ok"] is True
+    assert api_payload["line"]["quantity_display"] == "1.75"
+
+    dashboard_response = app_client.get("/inventory")
+    dashboard_page = dashboard_response.get_data(as_text=True)
+
+    assert dashboard_response.status_code == 200
+    assert "Current On Hand" in dashboard_page
+    assert "Route Inventory Onions" in dashboard_page
+    assert "1.75 each" in dashboard_page
+    assert "Enter Count" in dashboard_page
+
+    print_response = app_client.get(f"/inventory/locations/{sub_location_id}/print")
+    print_page = print_response.get_data(as_text=True)
+
+    assert print_response.status_code == 200
+    assert "Inventory count sheet" in print_page
+    assert "Route Inventory Onions" in print_page
 
 
 def test_production_record_post_requires_recorded_lines(app_client, isolated_db):

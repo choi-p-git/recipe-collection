@@ -24,6 +24,9 @@ def test_initialize_database_creates_expected_tables(isolated_db):
     assert "item_case_pack" in tables
     assert "production_record" in tables
     assert "production_record_line" in tables
+    assert "inventory_location" in tables
+    assert "inventory_location_item" in tables
+    assert "inventory_location_break" in tables
 
 
 def test_initialize_database_creates_expected_indexes(isolated_db):
@@ -44,6 +47,16 @@ def test_initialize_database_creates_expected_indexes(isolated_db):
     assert "idx_item_case_pack_item_id" in indexes
     assert "idx_production_record_menu_day" in indexes
     assert "idx_production_record_line_record_id" in indexes
+    assert "idx_inventory_location_status" in indexes
+    assert "idx_inventory_location_parent" in indexes
+    assert "idx_inventory_location_parent_name" in indexes
+    assert "idx_inventory_location_item_location" in indexes
+    assert "idx_inventory_location_item_item" in indexes
+    assert "idx_inventory_location_item_catalog" in indexes
+    assert "idx_inventory_location_item_sequence" in indexes
+    assert "idx_inventory_location_break_location" in indexes
+    assert "idx_inventory_catalog_item_status" in indexes
+    assert "idx_inventory_item_match_recipe_item" in indexes
 
 
 def test_initialize_database_records_applied_migration_versions(isolated_db):
@@ -72,6 +85,10 @@ def test_initialize_database_records_applied_migration_versions(isolated_db):
         "0016_refine_production_record_variance.sql",
         "0017_add_menu_date_range.sql",
         "0018_add_production_record_quantity_formulas.sql",
+        "0019_add_inventory_foundation.sql",
+        "0020_add_live_inventory_locations.sql",
+        "0021_refine_live_inventory_rows.sql",
+        "0022_add_inventory_catalog_bridge.sql",
     ]
 
 

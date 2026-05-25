@@ -198,8 +198,82 @@
                             {% for item in history.report.variance_by_item %}
                                 <tr>
                                     <td>{{ item.recipe_name }}</td>
-                                    <td>{{ item.leftover_quantity_display }} {{ item.unit|unit_label }}</td>
-                                    <td>{{ item.shortage_quantity_display }} {{ item.unit|unit_label }}</td>
+                                    <td>
+                                        {% set leftover_occurrences = item.leftover_occurrences %}
+                                        <div class="menu-forecast-history production-record-variance-history" data-history-popover>
+                                            <button type="button" class="menu-forecast-history-trigger" aria-label="Show leftover history for {{ item.recipe_name }}" data-history-trigger>
+                                                {{ item.leftover_quantity_display }} {{ item.unit|unit_label }}
+                                                <span class="muted">({{ item.leftover_occurrence_count }})</span>
+                                            </button>
+                                            <div class="menu-forecast-history-panel production-record-variance-history-panel" role="tooltip" data-history-panel>
+                                                <div class="menu-forecast-history-group">
+                                                    <p class="menu-forecast-history-heading">Leftover Occurrences</p>
+                                                    {% if leftover_occurrences %}
+                                                        <ul class="menu-forecast-history-list">
+                                                            {% for occurrence in leftover_occurrences %}
+                                                                <li>
+                                                                    <a class="text-link" href="{{ url_for('menu_service_context', menu_id=menu.menu_id, week=occurrence.week_number, day=occurrence.day_of_week) }}">
+                                                                        {{ occurrence.service_date_display }}
+                                                                    </a>
+                                                                    <span>
+                                                                        Leftover {{ occurrence.quantity_display }} {{ occurrence.unit|unit_label }}
+                                                                        | Forecast {{ occurrence.forecast_quantity_display }} {{ occurrence.forecast_unit|unit_label }}
+                                                                        | Actual {{ occurrence.actual_quantity_display }} {{ occurrence.actual_unit|unit_label }}
+                                                                    </span>
+                                                                    <span class="muted">
+                                                                        {{ occurrence.status_label }}
+                                                                        {% if occurrence.forecast_accuracy_level %}| {{ occurrence.forecast_accuracy_level|title }} {{ occurrence.forecast_error_percent_display }}%{% endif %}
+                                                                        {% if occurrence.reason_label %}| {{ occurrence.reason_label }}{% endif %}
+                                                                        {% if occurrence.has_notes %}| Notes{% endif %}
+                                                                    </span>
+                                                                </li>
+                                                            {% endfor %}
+                                                        </ul>
+                                                    {% else %}
+                                                        <p class="muted">No leftover occurrences for this item.</p>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        {% set shortage_occurrences = item.shortage_occurrences %}
+                                        <div class="menu-forecast-history production-record-variance-history" data-history-popover>
+                                            <button type="button" class="menu-forecast-history-trigger" aria-label="Show shortage history for {{ item.recipe_name }}" data-history-trigger>
+                                                {{ item.shortage_quantity_display }} {{ item.unit|unit_label }}
+                                                <span class="muted">({{ item.shortage_occurrence_count }})</span>
+                                            </button>
+                                            <div class="menu-forecast-history-panel production-record-variance-history-panel" role="tooltip" data-history-panel>
+                                                <div class="menu-forecast-history-group">
+                                                    <p class="menu-forecast-history-heading">Shortage Occurrences</p>
+                                                    {% if shortage_occurrences %}
+                                                        <ul class="menu-forecast-history-list">
+                                                            {% for occurrence in shortage_occurrences %}
+                                                                <li>
+                                                                    <a class="text-link" href="{{ url_for('menu_service_context', menu_id=menu.menu_id, week=occurrence.week_number, day=occurrence.day_of_week) }}">
+                                                                        {{ occurrence.service_date_display }}
+                                                                    </a>
+                                                                    <span>
+                                                                        Shortage {{ occurrence.quantity_display }} {{ occurrence.unit|unit_label }}
+                                                                        | Forecast {{ occurrence.forecast_quantity_display }} {{ occurrence.forecast_unit|unit_label }}
+                                                                        | Actual {{ occurrence.actual_quantity_display }} {{ occurrence.actual_unit|unit_label }}
+                                                                    </span>
+                                                                    <span class="muted">
+                                                                        {{ occurrence.status_label }}
+                                                                        {% if occurrence.forecast_accuracy_level %}| {{ occurrence.forecast_accuracy_level|title }} {{ occurrence.forecast_error_percent_display }}%{% endif %}
+                                                                        {% if occurrence.reason_label %}| {{ occurrence.reason_label }}{% endif %}
+                                                                        {% if occurrence.has_notes %}| Notes{% endif %}
+                                                                    </span>
+                                                                </li>
+                                                            {% endfor %}
+                                                        </ul>
+                                                    {% else %}
+                                                        <p class="muted">No shortage occurrences for this item.</p>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </td>
                                 </tr>
                             {% else %}
                                 <tr>
@@ -281,4 +355,8 @@
             </table>
         </div>
     </section>
+{% endblock %}
+
+{% block scripts %}
+    <script src="{{ url_for('static', filename='production_record_history.js') }}"></script>
 {% endblock %}

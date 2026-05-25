@@ -369,12 +369,36 @@ def _build_history_report(records: list[dict], filters: dict | None = None) -> d
                     "unit": variance_unit,
                     "leftover_quantity": 0.0,
                     "shortage_quantity": 0.0,
+                    "leftover_occurrences": [],
+                    "shortage_occurrences": [],
                 },
             )
-            if float(variance_quantity) >= 0:
-                item_total["leftover_quantity"] += float(variance_quantity)
+            signed_variance_quantity = float(variance_quantity)
+            occurrence = {
+                "production_record_id": record["production_record_id"],
+                "week_number": record["week_number"],
+                "day_of_week": record["day_of_week"],
+                "day_label": record["day_label"],
+                "status_label": record["status_label"],
+                "service_date_display": record.get("service_date_display") or f"Week {record['week_number']} {record['day_label']}",
+                "quantity": abs(signed_variance_quantity),
+                "quantity_display": _format_quantity(abs(signed_variance_quantity)),
+                "unit": variance_unit,
+                "forecast_quantity_display": line.get("forecast_quantity_display", ""),
+                "forecast_unit": line.get("forecast_unit", ""),
+                "actual_quantity_display": line.get("actual_quantity_display", ""),
+                "actual_unit": line.get("actual_unit", ""),
+                "forecast_accuracy_level": line.get("forecast_accuracy_level", ""),
+                "forecast_error_percent_display": line.get("forecast_error_percent_display", ""),
+                "reason_label": line.get("reason_label", ""),
+                "has_notes": bool(line.get("reason_note") or line.get("notes")),
+            }
+            if signed_variance_quantity >= 0:
+                item_total["leftover_quantity"] += signed_variance_quantity
+                item_total["leftover_occurrences"].append(occurrence)
             else:
-                item_total["shortage_quantity"] += abs(float(variance_quantity))
+                item_total["shortage_quantity"] += abs(signed_variance_quantity)
+                item_total["shortage_occurrences"].append(occurrence)
 
     reason_reverse = normalized_filters["reason_dir"] == "desc"
     reason_rows = sorted(
@@ -406,6 +430,8 @@ def _build_history_report(records: list[dict], filters: dict | None = None) -> d
     for row in variance_rows:
         row["leftover_quantity_display"] = _format_quantity(row["leftover_quantity"])
         row["shortage_quantity_display"] = _format_quantity(row["shortage_quantity"])
+        row["leftover_occurrence_count"] = len(row["leftover_occurrences"])
+        row["shortage_occurrence_count"] = len(row["shortage_occurrences"])
 
     return {
         "top_reason_codes": reason_rows,

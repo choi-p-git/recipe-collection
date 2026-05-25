@@ -1,0 +1,275 @@
+{% extends "base.html" %}
+{% block app_header_title %}Inventory Management{% endblock %}
+{% block main_class %}container container-inventory{% endblock %}
+{% block title %}Inventory Count{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <div>
+            <div class="inventory-name-row">
+                <h2>{{ location.location_name }}</h2>
+                <button type="button" class="inventory-action-button" data-inline-rename-open="location-rename-{{ location.inventory_location_id }}" aria-label="Rename {{ location.location_name }}" title="Rename">&#9998;</button>
+            </div>
+            <form id="location-rename-{{ location.inventory_location_id }}" method="post" action="{{ url_for('rename_inventory_location_route', inventory_location_id=location.inventory_location_id) }}" class="inventory-inline-rename" hidden>
+                <input type="hidden" name="return_url" value="{{ url_for('inventory_location_count', inventory_location_id=location.inventory_location_id) }}">
+                <input name="location_name" type="text" value="{{ location.location_name }}" aria-label="Location name" required>
+                <button type="submit" class="inventory-small-button">Accept</button>
+                <button type="button" class="inventory-small-button secondary" data-inline-rename-cancel>Cancel</button>
+            </form>
+            <p class="page-subtitle">Live item count</p>
+        </div>
+        <div class="production-record-review-actions">
+            <button type="button" class="page-action-link" data-dialog-open="inventory-item-dialog">Add Item</button>
+            <button type="button" class="page-action-link secondary" data-dialog-open="inventory-break-dialog">Add Break Line</button>
+            <a class="page-action-link secondary" href="{{ url_for('inventory_dashboard') }}">Inventory Dashboard</a>
+            <a class="page-action-link secondary" href="{{ url_for('inventory_location_print', inventory_location_id=location.inventory_location_id) }}" target="_blank" rel="noopener">Print</a>
+        </div>
+    </div>
+
+    <section class="item-detail-section">
+        <div class="menu-forecast-title-row">
+            <h3>Items In Location</h3>
+            <span class="muted">{{ location.item_rows|length }} item{% if location.item_rows|length != 1 %}s{% endif %}</span>
+        </div>
+        <div class="menu-forecast-table-shell">
+            <table class="menu-forecast-table inventory-table inventory-count-table">
+                <thead>
+                    <tr>
+                        <th>Order</th>
+                        <th>Item Name</th>
+                        <th>Item #</th>
+                        <th>Pack / Size / UoM</th>
+                        <th>Counts</th>
+                        <th>Status</th>
+                        <th>Quantity</th>
+                        <th>Last Price</th>
+                        <th>Extension Price</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in location.count_rows %}
+                        {% if row.row_type == "break" %}
+                            <tr class="inventory-break-row">
+                                <td>
+                                    <form method="post" action="{{ url_for('move_inventory_count_row_route') }}" class="inventory-icon-action">
+                                        <input type="hidden" name="inventory_location_id" value="{{ location.inventory_location_id }}">
+                                        <input type="hidden" name="row_type" value="break">
+                                        <input type="hidden" name="row_id" value="{{ row.inventory_location_break_id }}">
+                                        <button type="submit" name="direction" value="up" aria-label="Move {{ row.break_label }} up" title="Move up">&uarr;</button>
+                                        <button type="submit" name="direction" value="down" aria-label="Move {{ row.break_label }} down" title="Move down">&darr;</button>
+                                    </form>
+                                </td>
+                                <td colspan="8">{{ row.break_label }}</td>
+                                <td>
+                                    <form method="post" action="{{ url_for('delete_inventory_location_break_route', inventory_location_break_id=row.inventory_location_break_id) }}" class="menu-inline-action-form">
+                                        <input type="hidden" name="inventory_location_id" value="{{ location.inventory_location_id }}">
+                                        <button type="submit" class="inventory-action-button danger" aria-label="Delete {{ row.break_label }}" title="Delete">&#128465;</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr
+                                data-inventory-count-row
+                                data-save-url="{{ url_for('api_update_inventory_location_item', inventory_location_item_id=row.inventory_location_item_id) }}"
+                            >
+                                <td>
+                                    <form method="post" action="{{ url_for('move_inventory_count_row_route') }}" class="inventory-icon-action">
+                                        <input type="hidden" name="inventory_location_id" value="{{ location.inventory_location_id }}">
+                                        <input type="hidden" name="row_type" value="item">
+                                        <input type="hidden" name="row_id" value="{{ row.inventory_location_item_id }}">
+                                        <button type="submit" name="direction" value="up" aria-label="Move {{ row.item_name }} up" title="Move up">&uarr;</button>
+                                        <button type="submit" name="direction" value="down" aria-label="Move {{ row.item_name }} down" title="Move down">&darr;</button>
+                                    </form>
+                                </td>
+                                <td><a href="{{ url_for('item_detail', item_id=row.item_id) }}">{{ row.item_name }}</a></td>
+                                <td>{{ row.item_id }}</td>
+                                <td>
+                                    <div>{{ row.pack_summary }}</div>
+                                    <div class="muted">{{ row.unit_of_measurement }} / {{ row.count_type_label }}</div>
+                                </td>
+                                <td>
+                                    <form id="inventory-row-form-{{ row.inventory_location_item_id }}" method="post" action="{{ url_for('update_inventory_location_item_route', inventory_location_item_id=row.inventory_location_item_id) }}" class="inventory-row-form">
+                                        <input type="hidden" name="inventory_location_id" value="{{ location.inventory_location_id }}">
+                                        <input type="hidden" name="pack_quantity" value="{{ row.pack_quantity_display }}">
+                                        <input type="hidden" name="pack_size_text" value="{{ row.pack_size_text }}">
+                                        <input type="hidden" name="unit_of_measurement" value="{{ row.unit_of_measurement }}">
+                                        <input type="hidden" name="count_type" value="{{ row.count_type }}">
+                                        {% if row.count_type in ["counted_by_each_only", "counted_by_each_and_case"] %}
+                                            <span class="inventory-count-pair">
+                                                <label class="visually-hidden" for="each-{{ row.inventory_location_item_id }}">Each count</label>
+                                                <input id="each-{{ row.inventory_location_item_id }}" name="count_each_quantity" type="number" min="0" step="0.01" value="{{ row.count_each_quantity_display }}" aria-label="Each count for {{ row.item_name }}" data-inventory-count-input>
+                                                <span>each</span>
+                                            </span>
+                                        {% else %}
+                                            <input type="hidden" name="count_each_quantity" value="{{ row.count_each_quantity_display }}">
+                                        {% endif %}
+                                        {% if row.count_type in ["counted_by_case_only", "counted_by_each_and_case"] %}
+                                            <span class="inventory-count-pair">
+                                                <label class="visually-hidden" for="case-{{ row.inventory_location_item_id }}">Case count</label>
+                                                <input id="case-{{ row.inventory_location_item_id }}" name="count_case_quantity" type="number" min="0" step="0.01" value="{{ row.count_case_quantity_display }}" aria-label="Case count for {{ row.item_name }}" data-inventory-count-input>
+                                                <span>case</span>
+                                            </span>
+                                        {% else %}
+                                            <input type="hidden" name="count_case_quantity" value="{{ row.count_case_quantity_display }}">
+                                        {% endif %}
+                                    </form>
+                                </td>
+                                <td><span class="inventory-status-ok" aria-label="Saved" data-inventory-line-status data-state="saved">&#10003;</span></td>
+                                <td data-inventory-quantity>{{ row.quantity_display }} {{ row.unit_label }}</td>
+                                <td>{{ row.last_price_display }}</td>
+                                <td>{{ row.extension_price_display }}</td>
+                                <td>
+                                    <div class="inventory-action-stack">
+                                        <button
+                                            type="button"
+                                            class="inventory-action-button"
+                                            data-inventory-edit
+                                            data-row-id="{{ row.inventory_location_item_id }}"
+                                            data-item-id="{{ row.item_id }}"
+                                            data-item-name="{{ row.item_name }}"
+                                            data-each="{{ row.count_each_quantity_display }}"
+                                            data-case="{{ row.count_case_quantity_display }}"
+                                            data-pack-quantity="{{ row.pack_quantity_display }}"
+                                            data-pack-size="{{ row.pack_size_text }}"
+                                            data-uom="{{ row.unit_of_measurement }}"
+                                            data-count-type="{{ row.count_type }}"
+                                            aria-label="Edit {{ row.item_name }}"
+                                            title="Edit"
+                                        >&#9998;</button>
+                                        <button type="button" class="inventory-action-button" data-price-history-open data-item-name="{{ row.item_name }}" aria-label="View price history for {{ row.item_name }}" title="Price history">$</button>
+                                        <button
+                                            type="button"
+                                            class="inventory-action-button"
+                                            data-transfer-open
+                                            data-row-id="{{ row.inventory_location_item_id }}"
+                                            data-item-name="{{ row.item_name }}"
+                                            aria-label="Transfer {{ row.item_name }}"
+                                            title="Transfer"
+                                        >&#8645;</button>
+                                        <form method="post" action="{{ url_for('delete_inventory_location_item_route', inventory_location_item_id=row.inventory_location_item_id) }}" class="menu-inline-action-form" data-confirm-delete="Deleting this item removes it from this location and sets this location's count to zero. Continue?">
+                                            <input type="hidden" name="inventory_location_id" value="{{ location.inventory_location_id }}">
+                                            <button type="submit" class="inventory-action-button danger" aria-label="Delete {{ row.item_name }}" title="Delete">&#128465;</button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endif %}
+                    {% else %}
+                        <tr>
+                            <td colspan="10">No items have been added to this storage location.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <dialog id="inventory-item-dialog" class="inventory-dialog">
+        <form id="inventory-item-form" method="post" action="{{ url_for('save_inventory_location_item_route', inventory_location_id=location.inventory_location_id) }}" class="form-section">
+            <input type="hidden" name="inventory_location_id" value="{{ location.inventory_location_id }}">
+            <div class="inventory-dialog-header">
+                <h3 data-inventory-dialog-title>Add Item</h3>
+                <button type="button" class="inventory-dialog-close" data-dialog-close aria-label="Close">&times;</button>
+            </div>
+            <div class="form-grid two-column-form-grid">
+                <div class="form-row" data-add-only>
+                    <label for="item_id">Base Food Item</label>
+                    <select id="item_id" name="item_id" required data-inventory-item-select>
+                        {% for item in live_items %}
+                            <option value="{{ item.item_id }}">{{ item.item_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-row inventory-edit-item-row" data-edit-only hidden>
+                    <label>Editing Item</label>
+                    <div class="inventory-edit-item-summary">
+                        <strong data-edit-item-name></strong>
+                        <span class="muted" data-edit-item-number></span>
+                    </div>
+                </div>
+                <input type="hidden" name="count_each_quantity" value="0" data-overlay-count-each>
+                <input type="hidden" name="count_case_quantity" value="0" data-overlay-count-case>
+                <div class="form-row inventory-pack-quantity-row">
+                    <label for="pack_quantity">Pack Qty</label>
+                    <input id="pack_quantity" name="pack_quantity" type="number" min="0" step="0.01" data-inventory-field>
+                </div>
+                <div class="form-row inventory-pack-size-row">
+                    <label for="pack_size_text">Pack Size</label>
+                    <input id="pack_size_text" name="pack_size_text" type="text" placeholder="5 lb" data-inventory-field>
+                </div>
+                <div class="form-row inventory-uom-row">
+                    <label for="unit_of_measurement">Unit of Measurement</label>
+                    <select id="unit_of_measurement" name="unit_of_measurement" data-inventory-field required>
+                        {% for option in unit_of_measurement_options %}
+                            <option value="{{ option }}">{{ option }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-row inventory-count-type-row">
+                    <label for="count_type">Count Type</label>
+                    <select id="count_type" name="count_type" data-inventory-field required>
+                        {% for option in count_type_options %}
+                            <option value="{{ option.value }}">{{ option.label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <p class="inventory-interpretation" data-inventory-interpretation></p>
+            <button type="submit" data-inventory-submit>Add Item</button>
+        </form>
+    </dialog>
+
+    <dialog id="inventory-break-dialog" class="inventory-dialog">
+        <form method="post" action="{{ url_for('add_inventory_location_break_route', inventory_location_id=location.inventory_location_id) }}" class="form-section">
+            <div class="inventory-dialog-header">
+                <h3>Add Break Line</h3>
+                <button type="button" class="inventory-dialog-close" data-dialog-close aria-label="Close">&times;</button>
+            </div>
+            <div class="form-row">
+                <label for="break_label">Break Label</label>
+                <input id="break_label" name="break_label" type="text" placeholder="Shelf 2" required>
+            </div>
+            <button type="submit">Add Break Line</button>
+        </form>
+    </dialog>
+
+    <dialog id="inventory-price-history-dialog" class="inventory-dialog">
+        <div class="form-section">
+            <div class="inventory-dialog-header">
+                <h3>Price History</h3>
+                <button type="button" class="inventory-dialog-close" data-dialog-close aria-label="Close">&times;</button>
+            </div>
+            <p class="muted" data-price-history-copy>Invoice price history is to be implemented.</p>
+        </div>
+    </dialog>
+
+    <dialog id="inventory-transfer-dialog" class="inventory-dialog">
+        <form id="inventory-transfer-form" method="post" action="" class="form-section">
+            <input type="hidden" name="inventory_location_id" value="{{ location.inventory_location_id }}">
+            <div class="inventory-dialog-header">
+                <h3>Transfer Item</h3>
+                <button type="button" class="inventory-dialog-close" data-dialog-close aria-label="Close">&times;</button>
+            </div>
+            <p class="muted" data-transfer-copy>Select a sub-location for this item.</p>
+            <div class="form-row">
+                <label for="target_inventory_location_id">Target Sub-Location</label>
+                <select id="target_inventory_location_id" name="target_inventory_location_id" required>
+                    {% for root in transfer_location_tree %}
+                        <option value="" disabled>{{ root.location_name }}</option>
+                        {% for child in root.children %}
+                            {% if child.inventory_location_id != location.inventory_location_id %}
+                                <option value="{{ child.inventory_location_id }}">&nbsp;&nbsp;{{ child.location_name }}</option>
+                            {% endif %}
+                        {% endfor %}
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit">Transfer</button>
+        </form>
+    </dialog>
+{% endblock %}
+
+{% block scripts %}
+    <script src="{{ url_for('static', filename='inventory.js') }}"></script>
+{% endblock %}

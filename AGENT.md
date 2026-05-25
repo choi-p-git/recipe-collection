@@ -26,7 +26,7 @@ Current and planned examples:
 
 * `/recipe-collection` represents the Recipe Collection app: recipe creation, base-food submission, live collection browsing, item detail, and related collection workflows
 * `/menus` represents the Menu Builder app: menu cycles, slot assignment, Forecasting, Production Record, service context, and production history/reporting
-* future `/inventory` should represent the Inventory app: current counts, count freshness, pack/case definitions, availability, and purchasing suggestions
+* `/inventory` represents the Inventory app: current counts, count freshness, pack/case definitions, availability, and future purchasing suggestions
 * future `/analytics` should represent the Analytics app: trend, usage, menu, cost, portion-control, and forecast/purchasing recommendation analysis
 
 Architectural guidance:
@@ -37,6 +37,27 @@ Architectural guidance:
 * app-specific screens, routes, navigation, and future tests should keep clear ownership under their top-level module route
 * app-owned APIs should use the same module prefix where practical, for example `/recipe-collection/api/...` for recipe/item APIs
 * when adding a major feature, choose the top-level URL segment first and let templates/services follow that ownership boundary where practical
+
+### Inventory Foundation
+
+Inventory is now a top-level app under `/inventory`.
+
+Current implemented scope:
+
+* main storage locations and sub-storage locations
+* live item count rows for live base foods
+* ordered count rows with visual break lines for shelf/category separation
+* each/case count entry with item-level Pack Qty, Pack Size, Unit of Measurement, and Count Type
+* item transfer scaffolding between sub-storage locations
+* price-history button/overlay placeholder for future invoice history
+* print views for location count sheets
+* current-on-hand dashboard rollup from active location item rows
+* inventory catalog and item-match bridge foundation for future invoice/vendor auto-match
+* inventory availability service contract for Menu Builder / Forecasting / Production Record consumers
+
+Current on-hand semantics: sum live item rows across active storage locations by item/unit after normalizing count entry from each/case fields into the row quantity. Inventory counts are operational live counts and do not have an independent submit/finalize step in this app. Weekly business finalization belongs to a later business/finance/accounting service layer. Future invoice/vendor ingest, purchasing, forecast estimation, inventory-vs-actual, and analytics integrations should build on these item-linked live count facts rather than bypassing them.
+
+Inventory identity boundary: Recipe Collection `item_id` remains the culinary ingredient identity. Inventory owns `inventory_catalog_item` as the purchasing/counting/vendor-facing identity, and `inventory_item_match` bridges Recipe Collection items to inventory catalog items. Current count entry still accepts live base-food `item_id` for MVP workflow continuity, but new count rows create a legacy inventory catalog match so future invoice auto-match, vendor catalog import, accounting, and analytics work can migrate toward inventory-owned identity without breaking Menu Builder consumers.
 
 ## Dev Automation Guidance
 
@@ -793,11 +814,11 @@ Inventory should build on the current Menu Builder / Forecasting / Production da
 * Forecasting provides expected demand and order-planning quantities
 * Production Record provides actual usage, leftover, shortage, and forecast miss signals
 * posted Production Records should feed historical demand and variance analysis
-* Forecasting and Production Record should eventually have API access to inventory availability, item counts, case sizes, and purchasing status
-* inventory should attach to item IDs, especially base-food ingredient IDs
-* reusable pack/case definitions should attach to item IDs, not recipes
+* Forecasting and Production Record should consume inventory through service/API contracts, not direct table reads
+* inventory should bridge to Recipe Collection item IDs, especially base-food ingredient IDs, through `inventory_item_match`
+* reusable pack/case definitions should attach to inventory catalog items, not recipes
 * menu-cell-local case sizes may exist for forecast work, but saving a reusable pack size should explicitly write an item-level pack definition
-* future live inventory feeds should match an inventory line to an item ID and case-size definition
+* future live inventory feeds should match an inventory line to an inventory catalog item and case-size definition
 * inventory availability can later surface back into Forecasting as:
 
   * available on hand
@@ -1337,8 +1358,8 @@ Test data cleanup boundaries:
 
 ## Current Next Logical Development Steps
 
-1. begin Inventory Management foundation with item-linked inventory lines, current counts, count freshness, and item-linked pack/case definitions
-2. define Forecasting / Production Record / Inventory API contracts for availability, expected demand, actual usage, and purchasing suggestions
+1. expose the inventory availability bridge through narrow Forecasting / Production Record service calls or API endpoints
+2. add review UI for unmatched, ambiguous, and invoice-auto-matched inventory catalog items
 3. add forecast error trend reporting by item over time using posted facts
 4. refine posted facts only through versioned contract changes
 5. defer analytics algorithms until usage, menu, inventory, purchasing, and cost record contracts are stable

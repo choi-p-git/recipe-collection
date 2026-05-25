@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block app_header_title %}Inventory Management{% endblock %}
+{% block main_class %}container container-inventory{% endblock %}
+{% block title %}Inventory{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <div>
+            <h2>Inventory</h2>
+            <p class="page-subtitle">
+                Live storage-location counts. Add locations, enter item counts, and print count sheets by location.
+            </p>
+        </div>
+    </div>
+
+    <section class="item-detail-section">
+        <div class="production-record-summary">
+            <div class="production-record-summary-card">
+                <span class="detail-stat-label">Locations</span>
+                <strong>{{ page_data.totals.active_location_count }}</strong>
+                <span class="muted">main active</span>
+            </div>
+            <div class="production-record-summary-card">
+                <span class="detail-stat-label">Sub-Locations</span>
+                <strong>{{ page_data.totals.active_sub_location_count }}</strong>
+                <span class="muted">count areas</span>
+            </div>
+            <div class="production-record-summary-card">
+                <span class="detail-stat-label">Current Items</span>
+                <strong>{{ page_data.totals.current_item_count }}</strong>
+            </div>
+        </div>
+    </section>
+
+    <section class="item-detail-section">
+        <div class="menu-forecast-title-row inventory-section-title">
+            <h3>Storage Locations</h3>
+            <button type="button" class="page-action-link" data-dialog-open="inventory-location-dialog">Add Location</button>
+        </div>
+
+        {% if page_data.location_tree %}
+            <div class="inventory-location-grid">
+                {% for location in page_data.location_tree %}
+                    <article class="inventory-location-card">
+                        <div class="inventory-location-card-header">
+                            <div>
+                                <h3>{{ location.location_name }}</h3>
+                                <p class="muted">{{ location.children|length }} sub-storage location{% if location.children|length != 1 %}s{% endif %}</p>
+                            </div>
+                            <div class="inventory-location-actions">
+                                <a class="page-action-link secondary" href="{{ url_for('inventory_location_edit', inventory_location_id=location.inventory_location_id) }}">Edit</a>
+                                <a class="page-action-link secondary" href="{{ url_for('inventory_location_print', inventory_location_id=location.inventory_location_id) }}" target="_blank" rel="noopener" aria-label="Print {{ location.location_name }}">Print</a>
+                                <form method="post" action="{{ url_for('delete_inventory_location_route', inventory_location_id=location.inventory_location_id) }}">
+                                    <button type="submit" class="workflow-button workflow-button-danger">Delete</button>
+                                </form>
+                            </div>
+                        </div>
+
+                        <div class="inventory-sub-location-list">
+                            {% for child in location.children %}
+                                <div class="inventory-sub-location-row">
+                                    <span>{{ child.location_name }}</span>
+                                    <div class="inventory-location-actions">
+                                        <a class="page-action-link secondary compact" href="{{ url_for('inventory_location_count', inventory_location_id=child.inventory_location_id) }}">Enter Count</a>
+                                        <a class="page-action-link secondary compact" href="{{ url_for('inventory_location_print', inventory_location_id=child.inventory_location_id) }}" target="_blank" rel="noopener" aria-label="Print {{ child.location_name }}">Print</a>
+                                    </div>
+                                </div>
+                            {% else %}
+                                <p class="muted">No sub-storage locations yet. Use Edit to add freezer shelves, dry storage zones, or other count areas.</p>
+                            {% endfor %}
+                        </div>
+                    </article>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="empty-state">
+                <h3>No storage locations</h3>
+                <p>Add a main storage location to start building the inventory count structure.</p>
+            </div>
+        {% endif %}
+    </section>
+
+    <dialog id="inventory-location-dialog" class="inventory-dialog">
+        <form method="post" action="{{ url_for('create_inventory_location_route') }}" class="form-section">
+            <div class="inventory-dialog-header">
+                <h3>Add Location</h3>
+                <button type="button" class="workflow-button workflow-button-secondary" data-dialog-close>Close</button>
+            </div>
+            <div class="form-row">
+                <label for="location_name">Location Name</label>
+                <input id="location_name" name="location_name" type="text" placeholder="Walk-in Freezer" required>
+            </div>
+            <button type="submit">Add Location</button>
+        </form>
+    </dialog>
+
+    <section class="item-detail-section">
+        <div class="menu-forecast-title-row">
+            <h3>Current On Hand</h3>
+            <span class="muted">Live item rows summed across storage locations</span>
+        </div>
+        <div class="menu-forecast-table-shell">
+            <table class="menu-forecast-table inventory-table">
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        <th>Type</th>
+                        <th>Quantity</th>
+                        <th>Locations</th>
+                        <th>Last Counted</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in page_data.current_on_hand %}
+                        <tr>
+                            <td><a href="{{ url_for('item_detail', item_id=item.item_id) }}">{{ item.item_name }}</a></td>
+                            <td>{{ item.item_type|replace('_', ' ')|title }}</td>
+                            <td>{{ item.quantity_display }} {{ item.unit_label }}</td>
+                            <td>{{ item.location_count }}</td>
+                            <td>{{ item.last_counted_at }}</td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="5">No inventory item counts yet.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+{% endblock %}
+
+{% block scripts %}
+    <script src="{{ url_for('static', filename='inventory.js') }}"></script>
+{% endblock %}

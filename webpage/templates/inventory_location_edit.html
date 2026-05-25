@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block app_header_title %}Inventory Management{% endblock %}
+{% block main_class %}container container-inventory{% endblock %}
+{% block title %}Edit Inventory Location{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <div>
+            <div class="inventory-name-row">
+                <h2>{{ location.location_name }}</h2>
+                <button type="button" class="inventory-action-button" data-inline-rename-open="location-rename-{{ location.inventory_location_id }}" aria-label="Rename {{ location.location_name }}" title="Rename">&#9998;</button>
+            </div>
+            <form id="location-rename-{{ location.inventory_location_id }}" method="post" action="{{ url_for('rename_inventory_location_route', inventory_location_id=location.inventory_location_id) }}" class="inventory-inline-rename" hidden>
+                <input type="hidden" name="return_url" value="{{ url_for('inventory_location_edit', inventory_location_id=location.inventory_location_id) }}">
+                <input name="location_name" type="text" value="{{ location.location_name }}" aria-label="Location name" required>
+                <button type="submit" class="inventory-small-button">Accept</button>
+                <button type="button" class="inventory-small-button secondary" data-inline-rename-cancel>Cancel</button>
+            </form>
+            <p class="page-subtitle">Edit storage location and sub-storage locations.</p>
+        </div>
+        <div class="inventory-edit-header-actions">
+            <a class="page-action-link secondary" href="{{ url_for('inventory_dashboard') }}">Inventory Dashboard</a>
+            {% if location.parent_inventory_location_id is none %}
+                <button type="button" class="inventory-small-text-button" data-dialog-open="inventory-sub-location-dialog">Add Sub-Storage</button>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if location.parent_inventory_location_id is none %}
+        <section class="item-detail-section">
+            <h3>Sub-Storage Locations</h3>
+            {% if location.children %}
+                <div class="inventory-sub-location-list">
+                    {% for child in location.children %}
+                        <article class="inventory-sub-location-edit-row">
+                            <div>
+                                <div class="inventory-name-row">
+                                    <h3>{{ child.location_name }}</h3>
+                                    <button type="button" class="inventory-action-button" data-inline-rename-open="location-rename-{{ child.inventory_location_id }}" aria-label="Rename {{ child.location_name }}" title="Rename">&#9998;</button>
+                                </div>
+                                <form id="location-rename-{{ child.inventory_location_id }}" method="post" action="{{ url_for('rename_inventory_location_route', inventory_location_id=child.inventory_location_id) }}" class="inventory-inline-rename" hidden>
+                                    <input type="hidden" name="return_url" value="{{ url_for('inventory_location_edit', inventory_location_id=location.inventory_location_id) }}">
+                                    <input name="location_name" type="text" value="{{ child.location_name }}" aria-label="Sub-storage name" required>
+                                    <button type="submit" class="inventory-small-button">Accept</button>
+                                    <button type="button" class="inventory-small-button secondary" data-inline-rename-cancel>Cancel</button>
+                                </form>
+                                <p class="recipe-card-dates">Updated {{ child.updated_at }}</p>
+                            </div>
+                            <div class="inventory-location-actions">
+                                <a class="page-action-link secondary compact" href="{{ url_for('inventory_location_count', inventory_location_id=child.inventory_location_id) }}">Enter Count</a>
+                                <a class="page-action-link secondary compact" href="{{ url_for('inventory_location_print', inventory_location_id=child.inventory_location_id) }}" target="_blank" rel="noopener">Print</a>
+                                <form method="post" action="{{ url_for('delete_inventory_location_route', inventory_location_id=child.inventory_location_id) }}" class="menu-inline-action-form">
+                                    <input type="hidden" name="return_inventory_location_id" value="{{ location.inventory_location_id }}">
+                                    <button type="submit" class="inventory-action-button danger" aria-label="Delete {{ child.location_name }}" title="Delete">&#128465;</button>
+                                </form>
+                            </div>
+                        </article>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="muted">No sub-storage locations yet.</p>
+            {% endif %}
+        </section>
+
+        <dialog id="inventory-sub-location-dialog" class="inventory-dialog inventory-dialog-small">
+            <form method="post" action="{{ url_for('create_inventory_location_route') }}" class="form-section">
+                <input type="hidden" name="parent_inventory_location_id" value="{{ location.inventory_location_id }}">
+                <input type="hidden" name="return_to" value="edit">
+                <div class="inventory-dialog-header">
+                    <h3>Add Sub-Storage</h3>
+                    <button type="button" class="inventory-dialog-close" data-dialog-close aria-label="Close">&times;</button>
+                </div>
+                <div class="form-row inventory-compact-form-row">
+                    <label for="sub_location_name">Name</label>
+                    <input id="sub_location_name" name="location_name" type="text" placeholder="Left Wall" required>
+                </div>
+                <div class="inventory-dialog-actions">
+                    <button type="submit" class="inventory-small-button">Accept</button>
+                    <button type="button" class="inventory-small-button secondary" data-dialog-close>Cancel</button>
+                </div>
+            </form>
+        </dialog>
+    {% endif %}
+{% endblock %}
+
+{% block scripts %}
+    <script src="{{ url_for('static', filename='inventory.js') }}"></script>
+{% endblock %}

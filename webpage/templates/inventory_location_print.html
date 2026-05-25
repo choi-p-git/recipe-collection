@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block app_header_title %}Inventory Management{% endblock %}
+{% block main_class %}container container-inventory container-print{% endblock %}
+{% block title %}Print Inventory Location{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <div>
+            <h2>{{ location.location_name }}</h2>
+            <p class="page-subtitle">Inventory count sheet</p>
+        </div>
+        <button type="button" onclick="window.print()">Print</button>
+    </div>
+
+    <section class="item-detail-section">
+        <div class="menu-forecast-table-shell">
+            <table class="menu-forecast-table inventory-table">
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        <th>Item #</th>
+                        <th>Pack / Size / UoM</th>
+                        <th>Each</th>
+                        <th>Case</th>
+                        <th>Quantity</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in location.count_rows %}
+                        {% if row.row_type == "break" %}
+                            <tr class="inventory-break-row">
+                                <td colspan="6">{{ row.break_label }}</td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td>{{ row.item_name }}</td>
+                                <td>{{ row.item_id }}</td>
+                                <td>{{ row.pack_summary }}</td>
+                                <td>{{ row.count_each_quantity_display }}</td>
+                                <td>{{ row.count_case_quantity_display }}</td>
+                                <td>{{ row.quantity_display }} {{ row.unit_label }}</td>
+                            </tr>
+                        {% endif %}
+                    {% else %}
+                        <tr>
+                            <td colspan="6">No items have been added to this storage location.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+{% endblock %}

@@ -24,6 +24,7 @@ FILE_MARKERS = {
     "test_dev_automation.py": {"module_menu", "module_forecast", "module_production", "relation_service"},
     "test_item_notes.py": {"module_item", "module_workflow", "relation_service"},
     "test_item_service.py": {"module_item", "relation_service"},
+    "test_inventory_service.py": {"module_inventory", "relation_service"},
     "test_menu_forecast_service.py": {"module_forecast", "relation_service"},
     "test_menu_service.py": {"module_menu", "relation_service"},
     "test_my_recipes.py": {"module_recipe", "module_item", "relation_service"},
@@ -39,6 +40,7 @@ FILE_MARKERS = {
 
 ROUTE_MARKER_PATTERNS = [
     (("production_record",), {"module_production", "module_forecast"}),
+    (("inventory",), {"module_inventory"}),
     (("menu_forecast", "forecast", "advanced_case"), {"module_forecast"}),
     (
         (

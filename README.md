@@ -22,6 +22,7 @@ Current MVP behavior
 - Workflow history, note threads, and notifications are active across the review lifecycle.
 - Dietitian-owned official serving fields are separated from submitter-facing recipe entry.
 - Menu Builder, Forecasting, and Production Record workflows are active for live menu planning, production scaling, floor entry, posted review, CSV export, and print handoff.
+- Inventory foundation is active as a top-level `/inventory` app for storage locations, sub-storage locations, live ordered item count rows, count-sheet printing, transfer scaffolding, and current-on-hand rollups.
 - Advanced hotel-pan units are available only in live recipe scaling, forecasting, and future production-record workflows; recipe/base-food authoring remains limited to standard mass, volume, and count units.
 
 System priorities
@@ -90,6 +91,15 @@ Workflow note threads hidden on `live` item detail pages
 Workflow history timeline with reason capture on send-back and reject actions
 Automatic workflow-action notifications for affected users/roles even without a note
 Post-live item edits notify recipe authors plus reviewer and dietitian roles
+
+8. Inventory foundation
+Top-level Inventory app at `/inventory`
+Inventory locations can be created as count targets
+Inventory uses live storage-location item rows instead of independent count sessions
+Main locations can own sub-storage locations such as freezer racks, dry storage zones, or shelves
+Sub-storage locations support live base-food item count entry, ordered count rows, visual break lines, each/case count entry, pack quantity/size/UoM/count-type editing, print sheets, transfer scaffolding, price-history placeholders, and guarded item removal
+Current on-hand view sums live item rows across active storage locations
+Inventory remains foundational only; purchasing suggestions, forecast-to-inventory estimation, and analytics algorithms remain deferred
 
 Database migration/versioning note
 
@@ -172,6 +182,7 @@ Production Record refinement roadmap
 - Posted fact semantics: `actual_production_quantity` is what the floor reports as produced; signed `end_service_variance_quantity` is positive leftover and negative shortage; `leftover_quantity` and `shortage_quantity` split that sign into separate non-negative downstream fields; `implied_demand_quantity` remains actual production minus signed variance; forecast error and accuracy are calculated against implied demand.
 - Future inventory tie-in should consume posted Production Record and Forecasting data rather than draft records. Forecasting should drive expected demand/order needs; posted Production Records should feed actual usage, leftover/shortage, and variance signals.
 - Future inventory app should hold current inventory counts, expose API access to/from Forecasting and Production Record, compare estimated versus actual usage, and support purchasing suggestions.
+- Inventory foundation is implemented with storage locations, sub-storage locations, live item count rows, and a current-on-hand dashboard based on active location item rows.
 - Inventory pack/case definitions should be item-linked, not recipe-linked, and should reuse saved pack sizes where possible. Forecast-linked case sizes can remain local to a menu cell until explicitly saved to the item-level pack library.
 - Future inventory availability should attach to ingredient/base-food item IDs and later offer live system matches, available quantity, case size, and ordering status back into Forecasting and Production Record views.
 - Future analytics should consume menu, usage, inventory, purchasing, cost, and production variance data. Algorithmic analytics can later estimate year-over-year trends and suggest production or purchasing adjustments to prevent over/under production and purchasing.

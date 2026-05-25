@@ -23,6 +23,7 @@ markers = [
     "module_auth: mock auth, login, session, and user preference behavior",
     "module_database: database initialization, migrations, schema, and seed data",
     "module_forecast: menu forecasting and production-facing forecast behavior",
+    "module_inventory: inventory locations, counts, current-on-hand, and inventory app behavior",
     "module_item: item, base-food, notes, and live collection behavior",
     "module_menu: menu builder, menu detail, slot, copy, paste, and clear behavior",
     "module_production: production record routes and production-facing workflow",
