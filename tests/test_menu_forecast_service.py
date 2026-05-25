@@ -3,13 +3,16 @@ import sqlite3
 import pytest
 
 from services.item_service import create_base_food
+from services.inventory_service import create_inventory_location, save_inventory_location_item
 from services.menu_forecast_service import (
     InvalidMenuForecastBatchError,
+    attach_inventory_availability_to_production_summary,
     build_menu_forecast_production_summary,
     save_menu_forecast_batch_splits,
     save_menu_forecast_yield,
 )
 from services.menu_service import create_menu, replace_menu_slot_items
+from queries.menu_forecast import get_menu_forecast_page
 from services.recipe_service import create_recipe
 
 
@@ -178,6 +181,104 @@ def test_build_menu_forecast_production_summary_keeps_unforecasted_base_food_rec
     assert summary["rows"][0]["total_forecast_quantity_display"] == "0"
     assert summary["rows"][0]["total_forecast_unit"] == "lb"
     assert "without a forecast yield" in summary["warnings"][0]
+
+
+def test_attach_inventory_availability_to_production_summary_uses_bridge(isolated_db):
+    item_id = create_base_food(item_name="Forecast Inventory Beans", mass_quantity=1, mass_unit="lb")
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id = ?", (item_id,))
+    conn.commit()
+    conn.close()
+    location_id = create_inventory_location(
+        location_name="Forecast Inventory Storage",
+        actor_user_id="dev_user_001",
+        actor_display_name="Plato Choi",
+    )
+    save_inventory_location_item(
+        inventory_location_id=location_id,
+        item_id=item_id,
+        count_each_quantity="12",
+        unit_of_measurement="Lb",
+        count_type="counted_by_each_only",
+    )
+
+    summary = attach_inventory_availability_to_production_summary(
+        build_menu_forecast_production_summary(
+            [
+                {
+                    "item_id": item_id,
+                    "recipe_name": "Forecast Inventory Beans",
+                    "item_type": "base_food",
+                    "meal_period_label": "Lunch",
+                    "concept_label": "Hot Line",
+                    "yield_quantity": None,
+                    "yield_unit": "",
+                    "mass_quantity": 1,
+                    "mass_unit": "lb",
+                    "volume_quantity": None,
+                    "volume_unit": "",
+                    "forecast_quantity": "4",
+                    "forecast_unit": "lb",
+                    "desired_portions": "",
+                    "batch_splits": [],
+                }
+            ]
+        )
+    )
+
+    availability = summary["rows"][0]["inventory_availability"]
+    assert summary["inventory_contract_version"] == "inventory.availability.v1"
+    assert availability["match_status"] == "active"
+    assert availability["match_type"] == "legacy_item"
+    assert availability["on_hand_quantity_display"] == "12"
+    assert availability["on_hand_unit"] == "lb"
+
+
+def test_menu_forecast_page_production_summary_includes_inventory_availability(isolated_db):
+    item_id = create_base_food(item_name="Forecast Inventory Farro", mass_quantity=1, mass_unit="lb")
+    menu_id = create_menu(
+        menu_name="Forecast Inventory Menu",
+        author_user_id="dev_user_001",
+        author_display_name="Plato Choi",
+        service_days=["monday"],
+        meal_periods=["lunch"],
+        concepts=["hot_line"],
+        menu_length_weeks=1,
+        allowed_service_days=["monday"],
+        allowed_meal_periods=["lunch"],
+        allowed_concepts=["hot_line"],
+    )
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id = ?", (item_id,))
+    cursor.execute("SELECT menu_slot_id FROM menu_slot WHERE menu_id = ?", (menu_id,))
+    menu_slot_id = cursor.fetchone()[0]
+    conn.commit()
+    conn.close()
+    replace_menu_slot_items(
+        menu_slot_id=menu_slot_id,
+        selected_item_ids=[item_id],
+        actor_user_id="dev_user_001",
+    )
+    location_id = create_inventory_location(
+        location_name="Forecast Page Storage",
+        actor_user_id="dev_user_001",
+        actor_display_name="Plato Choi",
+    )
+    save_inventory_location_item(
+        inventory_location_id=location_id,
+        item_id=item_id,
+        count_each_quantity="7",
+        unit_of_measurement="Lb",
+        count_type="counted_by_each_only",
+    )
+
+    page_data = get_menu_forecast_page(menu_id, week_number=1, day_of_week="monday")
+
+    availability = page_data["production_summary"]["rows"][0]["inventory_availability"]
+    assert availability["inventory_catalog_display_name"] == "Forecast Inventory Farro"
+    assert availability["on_hand_quantity_display"] == "7"
 
 
 def test_save_menu_forecast_batch_splits_persists_percentage_splits(isolated_db):

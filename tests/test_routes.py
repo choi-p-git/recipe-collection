@@ -1,5 +1,6 @@
 import sqlite3
 
+from services.inventory_service import create_inventory_location, save_inventory_location_item
 from services.item_service import create_base_food
 from services.recipe_service import create_recipe
 
@@ -434,6 +435,18 @@ def test_menu_forecast_route_renders_day_recipes_in_menu_order(app_client, isola
     }
     conn.commit()
     conn.close()
+    inventory_location_id = create_inventory_location(
+        location_name="Forecast Route Storage",
+        actor_user_id="dev_user_001",
+        actor_display_name="Plato Choi",
+    )
+    save_inventory_location_item(
+        inventory_location_id=inventory_location_id,
+        item_id=base_food_slot_item_id,
+        count_each_quantity="9",
+        unit_of_measurement="Lb",
+        count_type="counted_by_each_only",
+    )
 
     app_client.post(
         f"/menus/{menu_id}/slots/{slot_lookup[('lunch', 'hot_line')]}/assign",
@@ -461,6 +474,8 @@ def test_menu_forecast_route_renders_day_recipes_in_menu_order(app_client, isola
     assert "<th>User Serving Size</th>" in page
     assert "<th>Desired Portions</th>" in page
     assert "<th>Portions Made</th>" in page
+    assert "<th>Inventory</th>" in page
+    assert "9 lb on hand" in page
     assert "menu_forecast.js" in page
     assert "data-forecast-control" in page
     assert "data-batch-display-unit" in page

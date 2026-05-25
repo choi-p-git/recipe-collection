@@ -6,6 +6,7 @@ from db import get_connection
 from services.menu_calendar_service import build_week_day_dates
 from services.menu_forecast_service import (
     InvalidMenuForecastError,
+    attach_inventory_availability_to_production_summary,
     build_menu_forecast_production_summary,
     build_forecast_display_unit_options,
     calculate_advanced_case_effective_yield,
@@ -563,6 +564,10 @@ def get_menu_forecast_page(
     cycle_start = ((normalized_week - 1) // 4) * 4 + 1
     cycle_weeks = [week for week in range(cycle_start, min(cycle_start + 4, menu_length_weeks + 1))]
 
+    production_summary = attach_inventory_availability_to_production_summary(
+        build_menu_forecast_production_summary(rows)
+    )
+
     return {
         "menu": {
             "menu_id": menu_row[0],
@@ -589,7 +594,7 @@ def get_menu_forecast_page(
         "previous_cycle_week": cycle_start - 4 if cycle_start > 1 else None,
         "next_cycle_week": cycle_start + 4 if cycle_start + 4 <= menu_length_weeks else None,
         "rows": rows,
-        "production_summary": build_menu_forecast_production_summary(rows),
+        "production_summary": production_summary,
         "search_term": normalized_search,
         "selected_meal_period": normalized_meal_period,
         "selected_concept": normalized_concept,

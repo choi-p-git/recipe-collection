@@ -54,6 +54,7 @@ Current implemented scope:
 * current-on-hand dashboard rollup from active location item rows
 * inventory catalog and item-match bridge foundation for future invoice/vendor auto-match
 * inventory availability service contract for Menu Builder / Forecasting / Production Record consumers
+* Forecasting Production Summary consumes the inventory availability bridge and surfaces current on-hand/match status
 
 Current on-hand semantics: sum live item rows across active storage locations by item/unit after normalizing count entry from each/case fields into the row quantity. Inventory counts are operational live counts and do not have an independent submit/finalize step in this app. Weekly business finalization belongs to a later business/finance/accounting service layer. Future invoice/vendor ingest, purchasing, forecast estimation, inventory-vs-actual, and analytics integrations should build on these item-linked live count facts rather than bypassing them.
 
@@ -1358,8 +1359,8 @@ Test data cleanup boundaries:
 
 ## Current Next Logical Development Steps
 
-1. expose the inventory availability bridge through narrow Forecasting / Production Record service calls or API endpoints
-2. add review UI for unmatched, ambiguous, and invoice-auto-matched inventory catalog items
+1. add review UI for unmatched, ambiguous, and invoice-auto-matched inventory catalog items
+2. expand inventory availability from menu item rollups to recipe ingredient demand rollups
 3. add forecast error trend reporting by item over time using posted facts
 4. refine posted facts only through versioned contract changes
 5. defer analytics algorithms until usage, menu, inventory, purchasing, and cost record contracts are stable

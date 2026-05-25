@@ -1,5 +1,6 @@
 from config.units import APPROVED_UNITS, STANDARD_UNITS
 from db import get_connection
+from services.inventory_bridge_service import get_inventory_availability_for_items
 from services.recipe_scaling_service import build_bottom_up_scaled_recipe_view
 from services.unit_conversion_service import (
     convert_with_item_mass_volume_bridge,
@@ -1299,4 +1300,51 @@ def build_menu_forecast_production_summary(rows: list[dict]) -> dict:
     return {
         "rows": summary_rows,
         "warnings": list(dict.fromkeys(warnings)),
+    }
+
+
+def attach_inventory_availability_to_production_summary(production_summary: dict) -> dict:
+    """
+    Decorate production summary rows with Inventory-owned availability facts.
+
+    Forecasting and Production Record should consume this bridge output instead
+    of reading inventory tables directly. Recipe Collection item IDs are inputs
+    to the bridge, not permanent inventory identity.
+    """
+    summary_rows = production_summary.get("rows", [])
+    item_ids = [int(row["item_id"]) for row in summary_rows if row.get("item_id") is not None]
+    availability_rows = get_inventory_availability_for_items(item_ids)
+    availability_by_item_id = {
+        int(row["recipe_collection_item_id"]): row
+        for row in availability_rows
+    }
+    decorated_rows = [
+        {
+            **row,
+            "inventory_availability": availability_by_item_id.get(
+                int(row["item_id"]),
+                {
+                    "recipe_collection_item_id": int(row["item_id"]),
+                    "match_status": "unmatched",
+                    "match_type": "",
+                    "inventory_catalog_item_id": None,
+                    "inventory_catalog_display_name": "",
+                    "on_hand_quantity": 0.0,
+                    "on_hand_quantity_display": "0",
+                    "on_hand_unit": "",
+                    "location_count": 0,
+                    "last_counted_at": "",
+                    "purchase_uom": "",
+                    "pack_quantity": None,
+                    "pack_quantity_display": "",
+                    "pack_size_text": "",
+                },
+            ),
+        }
+        for row in summary_rows
+    ]
+    return {
+        **production_summary,
+        "rows": decorated_rows,
+        "inventory_contract_version": "inventory.availability.v1",
     }

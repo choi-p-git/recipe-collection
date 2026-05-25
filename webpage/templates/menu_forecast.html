@@ -468,6 +468,7 @@
                         <th>Item Name</th>
                         <th>Assignments</th>
                         <th>Total Forecast</th>
+                        <th>Inventory</th>
                         <th>Batch Plan</th>
                         <th>Notes</th>
                     </tr>
@@ -519,6 +520,17 @@
                                 </div>
                             </td>
                             <td>
+                                {% set availability = rollup.inventory_availability %}
+                                {% if availability.match_status == 'active' %}
+                                    <div>{{ availability.on_hand_quantity_display }} {{ availability.on_hand_unit|unit_label }} on hand</div>
+                                    {% if availability.inventory_catalog_display_name %}
+                                        <div class="muted">{{ availability.inventory_catalog_display_name }}</div>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="muted">No inventory match</span>
+                                {% endif %}
+                            </td>
+                            <td>
                                 {% if rollup.batch_summary %}
                                     {% for batch in rollup.batch_summary %}
                                         <div>
@@ -548,7 +560,7 @@
                         </tr>
                     {% else %}
                         <tr>
-                            <td colspan="5">No production summary is available for this forecast view.</td>
+                            <td colspan="6">No production summary is available for this forecast view.</td>
                         </tr>
                     {% endfor %}
                 </tbody>
