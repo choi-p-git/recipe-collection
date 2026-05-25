@@ -28,6 +28,7 @@ FILE_MARKERS = {
     "test_menu_service.py": {"module_menu", "relation_service"},
     "test_my_recipes.py": {"module_recipe", "module_item", "relation_service"},
     "test_policy_service.py": {"module_workflow", "relation_service"},
+    "test_production_record_service.py": {"module_production", "relation_service"},
     "test_queries.py": {"module_search", "relation_service"},
     "test_recipe_flattening_service.py": {"module_recipe", "relation_service"},
     "test_recipe_instruction_codec.py": {"module_recipe", "relation_unit"},

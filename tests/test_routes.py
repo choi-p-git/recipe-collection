@@ -1218,6 +1218,9 @@ def test_production_record_route_snapshots_forecast_and_saves_variance(app_clien
     assert "Reporting Summary" in history_page
     assert "Top Reasons" in history_page
     assert "Leftover / Shortage By Item" in history_page
+    assert "reason_sort=lines&amp;reason_dir=desc" in history_page
+    assert "variance_sort=leftover&amp;variance_dir=desc" in history_page
+    assert "variance_sort=shortage&amp;variance_dir=desc" in history_page
     assert "<td>As Expected</td>" in history_page
     assert "<td>1</td>" in history_page
     assert "Production Record Soup" in history_page

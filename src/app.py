@@ -818,30 +818,53 @@ def production_record_history(menu_id: int):
         return "Menu not found.", 404
 
     current_user = get_current_mock_user(session)
+    history_filter_payload = {
+        "status": request.args.get("status", ""),
+        "accuracy": request.args.get("accuracy", ""),
+        "reason_code": request.args.get("reason_code", ""),
+        "item_query": request.args.get("item", ""),
+        "week": request.args.get("week", ""),
+        "day": request.args.get("day", ""),
+        "date_from": request.args.get("date_from", ""),
+        "date_to": request.args.get("date_to", ""),
+        "reason_sort": request.args.get("reason_sort", ""),
+        "reason_dir": request.args.get("reason_dir", ""),
+        "variance_sort": request.args.get("variance_sort", ""),
+        "variance_dir": request.args.get("variance_dir", ""),
+    }
     try:
         history = list_production_records_for_menu(
             menu_id=menu_id,
             actor_user_id=current_user["user_id"],
             service_date_lookup=menu.get("week_day_dates", {}),
-            filters={
-                "status": request.args.get("status", ""),
-                "accuracy": request.args.get("accuracy", ""),
-                "reason_code": request.args.get("reason_code", ""),
-                "item_query": request.args.get("item", ""),
-                "week": request.args.get("week", ""),
-                "day": request.args.get("day", ""),
-                "date_from": request.args.get("date_from", ""),
-                "date_to": request.args.get("date_to", ""),
-            },
+            filters=history_filter_payload,
         )
     except InvalidProductionRecordError as exc:
         flash(str(exc), "error")
         return redirect(url_for("menus"))
 
+    def _history_sort_url(sort_param: str, direction_param: str, sort_value: str) -> str:
+        args = request.args.to_dict()
+        current_sort = args.get(sort_param, "")
+        current_direction = args.get(direction_param, "desc")
+        args[sort_param] = sort_value
+        args[direction_param] = (
+            "asc"
+            if current_sort == sort_value and current_direction != "asc"
+            else "desc"
+        )
+        clean_args = {key: value for key, value in args.items() if value}
+        return url_for("production_record_history", menu_id=menu_id, **clean_args)
+
     return render_template(
         "production_record_history.html",
         menu=menu,
         history=history,
+        history_sort_urls={
+            "reason_lines": _history_sort_url("reason_sort", "reason_dir", "lines"),
+            "variance_leftover": _history_sort_url("variance_sort", "variance_dir", "leftover"),
+            "variance_shortage": _history_sort_url("variance_sort", "variance_dir", "shortage"),
+        },
         day_options=DAY_OF_WEEK_OPTIONS,
         production_record_reason_options=PRODUCTION_RECORD_REASON_OPTIONS,
     )

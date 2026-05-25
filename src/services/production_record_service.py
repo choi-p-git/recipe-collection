@@ -52,6 +52,10 @@ PRODUCTION_RECORD_HISTORY_FILTER_DEFAULTS = {
     "day": "",
     "date_from": "",
     "date_to": "",
+    "reason_sort": "lines",
+    "reason_dir": "desc",
+    "variance_sort": "total",
+    "variance_dir": "desc",
 }
 
 
@@ -256,6 +260,14 @@ def _normalize_history_filters(filters: dict | None) -> dict:
         normalized["accuracy"] = ""
     if normalized["reason_code"] not in {"", *PRODUCTION_RECORD_REASON_VALUES}:
         normalized["reason_code"] = ""
+    if normalized["reason_sort"] not in {"lines"}:
+        normalized["reason_sort"] = "lines"
+    if normalized["reason_dir"] not in {"asc", "desc"}:
+        normalized["reason_dir"] = "desc"
+    if normalized["variance_sort"] not in {"total", "leftover", "shortage"}:
+        normalized["variance_sort"] = "total"
+    if normalized["variance_dir"] not in {"asc", "desc"}:
+        normalized["variance_dir"] = "desc"
     if normalized["day"] not in {"", "sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"}:
         normalized["day"] = ""
     try:
@@ -327,7 +339,8 @@ def _build_history_totals(records: list[dict]) -> dict:
     return totals
 
 
-def _build_history_report(records: list[dict]) -> dict:
+def _build_history_report(records: list[dict], filters: dict | None = None) -> dict:
+    normalized_filters = filters or dict(PRODUCTION_RECORD_HISTORY_FILTER_DEFAULTS)
     reason_counts: dict[str, dict] = {}
     variance_by_item: dict[tuple[int, str], dict] = {}
     for record in records:
@@ -363,14 +376,33 @@ def _build_history_report(records: list[dict]) -> dict:
             else:
                 item_total["shortage_quantity"] += abs(float(variance_quantity))
 
+    reason_reverse = normalized_filters["reason_dir"] == "desc"
     reason_rows = sorted(
         reason_counts.values(),
-        key=lambda row: (-row["count"], row["reason_label"]),
-    )[:8]
+        key=lambda row: (
+            -row["count"] if reason_reverse else row["count"],
+            row["reason_label"],
+        ),
+    )
+
+    variance_sort = normalized_filters["variance_sort"]
+    variance_reverse = normalized_filters["variance_dir"] == "desc"
+
+    def variance_sort_value(row: dict) -> float:
+        if variance_sort == "leftover":
+            return float(row["leftover_quantity"])
+        if variance_sort == "shortage":
+            return float(row["shortage_quantity"])
+        return float(row["leftover_quantity"]) + float(row["shortage_quantity"])
+
     variance_rows = sorted(
         variance_by_item.values(),
-        key=lambda row: (-(row["leftover_quantity"] + row["shortage_quantity"]), row["recipe_name"]),
-    )[:8]
+        key=lambda row: (
+            -variance_sort_value(row) if variance_reverse else variance_sort_value(row),
+            row["recipe_name"],
+            row["unit"],
+        ),
+    )
     for row in variance_rows:
         row["leftover_quantity_display"] = _format_quantity(row["leftover_quantity"])
         row["shortage_quantity_display"] = _format_quantity(row["shortage_quantity"])
@@ -1127,7 +1159,7 @@ def list_production_records_for_menu(
     return {
         "records": records,
         "totals": _build_history_totals(records),
-        "report": _build_history_report(records),
+        "report": _build_history_report(records, normalized_filters),
         "filters": normalized_filters,
     }
 

@@ -1756,12 +1756,87 @@ button:disabled {
     gap: 1rem;
 }
 
+.production-record-report-grid article {
+    min-width: 0;
+}
+
 .production-record-report-grid h4 {
     margin: 0 0 0.5rem;
 }
 
+.production-record-report-table-shell {
+    overflow-x: hidden;
+}
+
+.production-record-variance-table-shell {
+    max-height: 18.65rem;
+    overflow-y: auto;
+}
+
+.production-record-report-table {
+    min-width: 0;
+    table-layout: fixed;
+}
+
+.production-record-report-table thead th {
+    background: #fff;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.production-record-report-table th,
 .production-record-report-table td {
+    padding: 0.4rem 0.45rem;
     vertical-align: top;
+}
+
+.production-record-report-table th:first-child,
+.production-record-report-table td:first-child {
+    overflow-wrap: anywhere;
+}
+
+.production-record-report-table th:not(:first-child),
+.production-record-report-table td:not(:first-child) {
+    white-space: nowrap;
+}
+
+.production-record-reasons-table th:first-child,
+.production-record-reasons-table td:first-child {
+    width: 68%;
+}
+
+.production-record-variance-table th:first-child,
+.production-record-variance-table td:first-child {
+    width: 46%;
+}
+
+.production-record-sort-heading {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.production-record-sort-button {
+    border: 1px solid #cbd5e1;
+    border-radius: 50%;
+    color: #475569;
+    display: inline-grid;
+    font-size: 0.85rem;
+    font-weight: 700;
+    height: 1.35rem;
+    line-height: 1;
+    place-items: center;
+    text-align: center;
+    text-decoration: none;
+    white-space: nowrap;
+    width: 1.35rem;
+}
+
+.production-record-sort-button:hover,
+.production-record-sort-button:focus {
+    background: #f8fafc;
+    color: #0f172a;
 }
 
 .production-record-entry {
@@ -2756,6 +2831,10 @@ button:disabled {
 
     .production-record-summary {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .production-record-report-grid {
+        grid-template-columns: 1fr;
     }
 
     .production-record-review-actions {

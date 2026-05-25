@@ -124,12 +124,24 @@
         <div class="production-record-report-grid">
             <article>
                 <h4>Top Reasons</h4>
-                <div class="menu-forecast-table-shell">
-                    <table class="menu-forecast-table production-record-report-table">
+                <div class="menu-forecast-table-shell production-record-report-table-shell">
+                    <table class="menu-forecast-table production-record-report-table production-record-reasons-table">
                         <thead>
                             <tr>
                                 <th>Reason</th>
-                                <th>Lines</th>
+                                <th>
+                                    <span class="production-record-sort-heading">
+                                        Lines
+                                        <a
+                                            class="production-record-sort-button"
+                                            href="{{ history_sort_urls.reason_lines }}"
+                                            aria-label="Sort reasons by line count"
+                                            title="Sort reasons by line count"
+                                        >
+                                            {% if history.filters.reason_dir == 'asc' %}&uarr;{% else %}&darr;{% endif %}
+                                        </a>
+                                    </span>
+                                </th>
                             </tr>
                         </thead>
                         <tbody>
@@ -149,13 +161,37 @@
             </article>
             <article>
                 <h4>Leftover / Shortage By Item</h4>
-                <div class="menu-forecast-table-shell">
-                    <table class="menu-forecast-table production-record-report-table">
+                <div class="menu-forecast-table-shell production-record-report-table-shell production-record-variance-table-shell">
+                    <table class="menu-forecast-table production-record-report-table production-record-variance-table">
                         <thead>
                             <tr>
                                 <th>Item</th>
-                                <th>Leftover</th>
-                                <th>Shortage</th>
+                                <th>
+                                    <span class="production-record-sort-heading">
+                                        Leftover
+                                        <a
+                                            class="production-record-sort-button"
+                                            href="{{ history_sort_urls.variance_leftover }}"
+                                            aria-label="Sort items by leftover quantity"
+                                            title="Sort items by leftover quantity"
+                                        >
+                                            {% if history.filters.variance_sort == 'leftover' and history.filters.variance_dir == 'asc' %}&uarr;{% else %}&darr;{% endif %}
+                                        </a>
+                                    </span>
+                                </th>
+                                <th>
+                                    <span class="production-record-sort-heading">
+                                        Shortage
+                                        <a
+                                            class="production-record-sort-button"
+                                            href="{{ history_sort_urls.variance_shortage }}"
+                                            aria-label="Sort items by shortage quantity"
+                                            title="Sort items by shortage quantity"
+                                        >
+                                            {% if history.filters.variance_sort == 'shortage' and history.filters.variance_dir == 'asc' %}&uarr;{% else %}&darr;{% endif %}
+                                        </a>
+                                    </span>
+                                </th>
                             </tr>
                         </thead>
                         <tbody>
