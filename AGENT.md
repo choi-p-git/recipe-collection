@@ -73,8 +73,11 @@ Current default shape:
 * 3-5 randomized live recipes/base foods per slot
 * draft Forecasting rows for every assignment
 * draft Production Records with randomized accurate/review/miss scenarios
+* optional Inventory population from existing populated menus using `--inventory`
 
-Keep generated records draft by default. Posting should stay opt-in through the `--post-records` flag so manual testing can exercise editable workflows before lock/post behavior. Future inventory/analytics automation should build on the same menu/forecast/production services instead of inserting downstream records directly.
+Keep generated records draft by default. Posting should stay opt-in through the `--post-records` flag so manual testing can exercise editable workflows before lock/post behavior.
+
+Inventory automation should run after at least one populated menu exists. It parses populated menu cells, expands recipe assignments into flattened base-food ingredients, creates the default inventory storage/sub-storage structure, distributes items evenly across sub-storage locations, and saves randomized case-only count rows through the Inventory service so the catalog/match bridge is exercised.
 
 ## Current Folder Structure
 

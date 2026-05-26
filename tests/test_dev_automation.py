@@ -1,7 +1,7 @@
 import sqlite3
 from datetime import date
 
-from dev_automation import AutomationConfig, run_dev_menu_automation
+from dev_automation import AutomationConfig, InventoryAutomationConfig, run_dev_inventory_automation, run_dev_menu_automation
 
 
 def test_dev_menu_automation_creates_draft_menu_forecasts_and_records(isolated_db):
@@ -124,3 +124,92 @@ def test_dev_menu_automation_can_post_records_when_requested(isolated_db):
     )
     assert cursor.fetchone()[0] == "posted"
     conn.close()
+
+
+def test_dev_inventory_automation_populates_locations_and_menu_ingredients(isolated_db):
+    menu_result = run_dev_menu_automation(
+        AutomationConfig(
+            menu_name="Inventory Automation Source Menu",
+            start_date=date(2026, 6, 1),
+            weeks=1,
+            service_days=("monday",),
+            meal_periods=("breakfast",),
+            concepts=("hot_line",),
+            min_items_per_slot=3,
+            max_items_per_slot=3,
+            random_seed=17,
+        )
+    )
+
+    inventory_result = run_dev_inventory_automation(
+        InventoryAutomationConfig(
+            menu_ids=(menu_result["menu_id"],),
+            random_seed=23,
+        )
+    )
+
+    assert inventory_result["menu_ids"] == [menu_result["menu_id"]]
+    assert inventory_result["root_location_count"] == 3
+    assert inventory_result["sub_location_count"] == 6
+    assert inventory_result["inventory_item_count"] > 0
+    assert sum(inventory_result["count_type_counts"].values()) == inventory_result["inventory_item_count"]
+    assert sum(inventory_result["location_counts"].values()) == inventory_result["inventory_item_count"]
+    assert set(inventory_result["count_type_counts"]) == {
+        "counted_by_each_only",
+        "counted_by_case_only",
+        "counted_by_each_and_case",
+    }
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT COUNT(*)
+        FROM inventory_location
+        WHERE parent_inventory_location_id IS NULL
+          AND location_name IN ('Dry Pantry', 'Walk-In Cooler', 'Walk-In Freezer')
+        """
+    )
+    root_count = cursor.fetchone()[0]
+    cursor.execute(
+        """
+        SELECT COUNT(*)
+        FROM inventory_location
+        WHERE parent_inventory_location_id IS NOT NULL
+          AND location_name IN ('Left Wall', 'Right Wall')
+        """
+    )
+    sub_count = cursor.fetchone()[0]
+    cursor.execute(
+        """
+        SELECT
+            COUNT(*),
+            COUNT(DISTINCT inventory_location_id),
+            SUM(CASE WHEN unit_of_measurement = 'Case' THEN 1 ELSE 0 END),
+            SUM(CASE WHEN pack_quantity BETWEEN 1 AND 10 THEN 1 ELSE 0 END),
+            SUM(CASE WHEN pack_size_text LIKE '% lb' THEN 1 ELSE 0 END)
+        FROM inventory_location_item
+        """
+    )
+    item_count, used_location_count, case_uom_count, pack_quantity_count, pack_size_count = cursor.fetchone()
+    cursor.execute("SELECT COUNT(*) FROM inventory_item_match WHERE status = 'active'")
+    active_match_count = cursor.fetchone()[0]
+    conn.close()
+
+    assert root_count == 3
+    assert sub_count == 6
+    assert item_count == inventory_result["inventory_item_count"]
+    assert used_location_count > 0
+    assert case_uom_count == item_count
+    assert pack_quantity_count == item_count
+    assert pack_size_count == item_count
+    assert active_match_count >= item_count
+
+
+def test_dev_inventory_automation_requires_populated_menu(isolated_db):
+    try:
+        run_dev_inventory_automation(InventoryAutomationConfig(menu_ids=(9999,)))
+    except ValueError as exc:
+        assert "No live base-food ingredients" in str(exc)
+    else:
+        raise AssertionError("Expected inventory automation to require populated menu ingredients.")

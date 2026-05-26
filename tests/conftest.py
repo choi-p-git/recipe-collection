@@ -21,7 +21,7 @@ if str(SRC_PATH) not in sys.path:
 FILE_MARKERS = {
     "test_db_init.py": {"module_database", "relation_persistence"},
     "test_db_seed.py": {"module_database", "relation_persistence"},
-    "test_dev_automation.py": {"module_menu", "module_forecast", "module_production", "relation_service"},
+    "test_dev_automation.py": {"module_menu", "module_forecast", "module_production", "module_inventory", "relation_service"},
     "test_item_notes.py": {"module_item", "module_workflow", "relation_service"},
     "test_item_service.py": {"module_item", "relation_service"},
     "test_inventory_service.py": {"module_inventory", "relation_service"},

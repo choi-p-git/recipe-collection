@@ -131,6 +131,9 @@ Dev automation note
 - Production Records remain draft by default so behavior can be manually tested without locking. Use `--post-records` only when a posted/locked dataset is needed.
 - Example: `uv run python src/dev_automation.py --menu-name "Dev Automation Draft Menu" --seed 42`
 - Useful knobs: `--weeks`, `--start-date`, `--service-days`, `--meal-periods`, `--concepts`, `--min-items`, `--max-items`, `--seed`, and `--post-records`.
+- Inventory automation can populate count rows from existing populated menus after menu automation has run.
+- Inventory example: `uv run python src/dev_automation.py --inventory --menu-ids 1 --seed 42`
+- Inventory automation creates Dry Pantry, Walk-In Cooler, and Walk-In Freezer with Left Wall / Right Wall sub-storage, then distributes menu base foods and flattened recipe ingredients across those sub-storage locations with randomized case-only pack/count setup.
 
 Search stack note
 
