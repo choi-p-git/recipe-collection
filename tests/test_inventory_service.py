@@ -49,6 +49,9 @@ def test_inventory_location_item_updates_current_on_hand(isolated_db):
     assert dashboard["current_on_hand"][0]["item_name"] == "Inventory Apples"
     assert dashboard["current_on_hand"][0]["quantity_display"] == "12.5"
     assert dashboard["current_on_hand"][0]["unit"] == "lb"
+    assert dashboard["current_on_hand"][0]["display_quantity_display"] == "12.5"
+    assert dashboard["current_on_hand"][0]["display_unit"] == "lb"
+    assert dashboard["current_on_hand"][0]["item_category"] == "produce"
 
 
 def test_location_item_update_replaces_quantity(isolated_db):
@@ -146,6 +149,56 @@ def test_each_and_case_count_normalizes_quantity(isolated_db):
     assert detail["item_rows"][0]["quantity_display"] == "1.33"
     assert detail["item_rows"][0]["pack_summary"] == "6 packs x 5 lb"
     assert "counted by each and case" in detail["item_rows"][0]["interpretation"]
+
+
+def test_current_on_hand_prefers_case_display_for_case_counts(isolated_db):
+    item_id = _live_base_food(isolated_db, "Inventory Pasta")
+    location_id = create_inventory_location(
+        location_name="Case Display Dry Storage",
+        actor_user_id="dev_user_001",
+        actor_display_name="Plato Choi",
+    )
+
+    save_inventory_location_item(
+        inventory_location_id=location_id,
+        item_id=item_id,
+        count_case_quantity="2",
+        pack_quantity="8",
+        pack_size_text="5 lb",
+        unit_of_measurement="Case",
+        count_type="counted_by_case_only",
+    )
+    dashboard = get_inventory_dashboard()
+
+    assert dashboard["current_on_hand"][0]["quantity_display"] == "2"
+    assert dashboard["current_on_hand"][0]["display_quantity_display"] == "2"
+    assert dashboard["current_on_hand"][0]["display_unit"] == "case"
+    assert dashboard["current_on_hand"][0]["display_unit_label"] == "case"
+
+
+def test_current_on_hand_displays_small_case_counts_as_each(isolated_db):
+    item_id = _live_base_food(isolated_db, "Inventory Pepper")
+    location_id = create_inventory_location(
+        location_name="Small Case Display Cooler",
+        actor_user_id="dev_user_001",
+        actor_display_name="Plato Choi",
+    )
+
+    save_inventory_location_item(
+        inventory_location_id=location_id,
+        item_id=item_id,
+        count_each_quantity="1",
+        pack_quantity="8",
+        pack_size_text="5 lb",
+        unit_of_measurement="Case",
+        count_type="counted_by_each_and_case",
+    )
+    dashboard = get_inventory_dashboard()
+
+    assert dashboard["current_on_hand"][0]["quantity_display"] == "0.12"
+    assert dashboard["current_on_hand"][0]["display_quantity_display"] == "1"
+    assert dashboard["current_on_hand"][0]["display_unit"] == "each"
+    assert dashboard["current_on_hand"][0]["item_category"] == "produce"
 
 
 def test_inventory_item_interpretation_uses_singular_pack_verb():

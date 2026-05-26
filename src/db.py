@@ -115,6 +115,9 @@ def initialize_database(seed: bool | None = None) -> None:
     apply_migrations()
     if seed:
         load_seed_catalog_if_needed()
+    from services.item_category_service import sync_item_categories
+
+    sync_item_categories()
 
 
 def garbage_collect_test_tmp(

@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS item (
 
     item_name TEXT NOT NULL UNIQUE COLLATE NOCASE,
     item_type TEXT NOT NULL,
+    item_category TEXT NOT NULL DEFAULT 'grocery',
 
     author_user_id TEXT NOT NULL,
     author_display_name TEXT NOT NULL,
@@ -40,6 +41,8 @@ CREATE TABLE IF NOT EXISTS item (
     updated_at TEXT NOT NULL,
 
     CHECK (item_type IN ('base_food', 'recipe')),
+
+    CHECK (item_category IN ('meat', 'grocery', 'frozen', 'beverages', 'dairy', 'bakery', 'produce')),
 
     CHECK (status IN ('submitted', 'reviewed', 'approved', 'analyzed', 'live', 'rejected')),
 
@@ -544,6 +547,9 @@ CREATE TABLE IF NOT EXISTS inventory_location_break (
 
 CREATE INDEX IF NOT EXISTS idx_item_type
 ON item(item_type);
+
+CREATE INDEX IF NOT EXISTS idx_item_category
+ON item(item_category);
 
 CREATE INDEX IF NOT EXISTS idx_item_status
 ON item(status);

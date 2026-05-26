@@ -1526,7 +1526,9 @@ def test_inventory_foundation_routes_create_count_and_current_on_hand(app_client
     assert dashboard_response.status_code == 200
     assert "Current On Hand" in dashboard_page
     assert "Route Inventory Onions" in dashboard_page
-    assert "1.75 each" in dashboard_page
+    assert "<th>Category</th>" in dashboard_page
+    assert "Produce" in dashboard_page
+    assert "1.75 case" in dashboard_page
     assert "Enter Count" in dashboard_page
 
     print_response = app_client.get(f"/inventory/locations/{sub_location_id}/print")

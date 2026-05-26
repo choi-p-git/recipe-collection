@@ -104,7 +104,7 @@
                 <thead>
                     <tr>
                         <th>Item</th>
-                        <th>Type</th>
+                        <th>Category</th>
                         <th>Quantity</th>
                         <th>Locations</th>
                         <th>Last Counted</th>
@@ -114,8 +114,8 @@
                     {% for item in page_data.current_on_hand %}
                         <tr>
                             <td><a href="{{ url_for('item_detail', item_id=item.item_id) }}">{{ item.item_name }}</a></td>
-                            <td>{{ item.item_type|replace('_', ' ')|title }}</td>
-                            <td>{{ item.quantity_display }} {{ item.unit_label }}</td>
+                            <td>{{ item.item_category_label }}</td>
+                            <td>{{ item.display_quantity_display }} {{ item.display_unit_label }}</td>
                             <td>{{ item.location_count }}</td>
                             <td>{{ item.last_counted_at }}</td>
                         </tr>

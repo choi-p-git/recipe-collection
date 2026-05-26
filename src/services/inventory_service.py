@@ -1,5 +1,6 @@
 import sqlite3
 
+from config.item_categories import ITEM_CATEGORY_LABELS
 from config.units import STANDARD_UNITS
 from db import get_connection, initialize_database
 from services.inventory_bridge_service import ensure_legacy_inventory_match_for_item_with_cursor
@@ -53,6 +54,46 @@ def _format_quantity(value) -> str:
     if rounded == 0:
         return "0"
     return f"{rounded:g}"
+
+
+def _format_current_on_hand_display(row: dict) -> dict:
+    quantity = float(row["quantity"] or 0)
+    unit = row["unit"]
+    pack_quantity = row.get("pack_quantity")
+    if (
+        unit == "each"
+        and row.get("unit_of_measurement") == "Case"
+        and pack_quantity
+        and quantity >= 0.25
+    ):
+        return {
+            "display_quantity": quantity,
+            "display_quantity_display": _format_quantity(quantity),
+            "display_unit": "case",
+            "display_unit_label": "case",
+        }
+    if (
+        unit == "each"
+        and row.get("unit_of_measurement") == "Case"
+        and pack_quantity
+        and quantity < 0.25
+    ):
+        each_quantity = (
+            float(row.get("count_case_quantity") or 0) * float(pack_quantity)
+            + float(row.get("count_each_quantity") or 0)
+        )
+        return {
+            "display_quantity": each_quantity,
+            "display_quantity_display": _format_quantity(each_quantity),
+            "display_unit": "each",
+            "display_unit_label": format_unit_label("each"),
+        }
+    return {
+        "display_quantity": quantity,
+        "display_quantity_display": _format_quantity(quantity),
+        "display_unit": unit,
+        "display_unit_label": format_unit_label(unit),
+    }
 
 
 def _normalize_optional_pack_quantity(value) -> float | None:
@@ -995,34 +1036,47 @@ def _list_current_on_hand() -> list[dict]:
                 i.item_id,
                 i.item_name,
                 i.item_type,
+                i.item_category,
                 ili.unit,
                 SUM(ili.quantity),
                 COUNT(DISTINCT ili.inventory_location_id),
-                MAX(ili.updated_at)
+                MAX(ili.updated_at),
+                MAX(ili.pack_quantity),
+                MAX(ili.unit_of_measurement),
+                SUM(ili.count_each_quantity),
+                SUM(ili.count_case_quantity)
             FROM inventory_location_item ili
             JOIN inventory_location il
               ON il.inventory_location_id = ili.inventory_location_id
             JOIN item i
               ON i.item_id = ili.item_id
             WHERE il.status = 'active'
-            GROUP BY i.item_id, ili.unit
+            GROUP BY i.item_id, ili.unit, ili.unit_of_measurement
             ORDER BY i.item_name ASC, ili.unit ASC
             """
         )
-        return [
-            {
+        rows = []
+        for row in cursor.fetchall():
+            payload = {
                 "item_id": int(row[0]),
                 "item_name": row[1],
                 "item_type": row[2],
-                "unit": row[3],
-                "unit_label": format_unit_label(row[3]),
-                "quantity": float(row[4] or 0),
-                "quantity_display": _format_quantity(row[4]),
-                "location_count": int(row[5] or 0),
-                "last_counted_at": row[6] or "",
+                "item_category": row[3],
+                "item_category_label": ITEM_CATEGORY_LABELS.get(row[3], str(row[3]).title()),
+                "unit": row[4],
+                "unit_label": format_unit_label(row[4]),
+                "quantity": float(row[5] or 0),
+                "quantity_display": _format_quantity(row[5]),
+                "location_count": int(row[6] or 0),
+                "last_counted_at": row[7] or "",
+                "pack_quantity": row[8],
+                "unit_of_measurement": row[9],
+                "count_each_quantity": float(row[10] or 0),
+                "count_case_quantity": float(row[11] or 0),
             }
-            for row in cursor.fetchall()
-        ]
+            payload.update(_format_current_on_hand_display(payload))
+            rows.append(payload)
+        return rows
 
 
 def get_inventory_dashboard() -> dict:

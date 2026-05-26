@@ -39,6 +39,7 @@ def test_initialize_database_creates_expected_indexes(isolated_db):
     conn.close()
 
     assert "idx_item_type" in indexes
+    assert "idx_item_category" in indexes
     assert "idx_recipe_component_parent" in indexes
     assert "idx_item_event_item" in indexes
     assert "idx_item_notification_item" in indexes
@@ -89,6 +90,7 @@ def test_initialize_database_records_applied_migration_versions(isolated_db):
         "0020_add_live_inventory_locations.sql",
         "0021_refine_live_inventory_rows.sql",
         "0022_add_inventory_catalog_bridge.sql",
+        "0023_add_item_accounting_category.sql",
     ]
 
 
