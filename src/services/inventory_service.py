@@ -59,29 +59,17 @@ def _format_quantity(value) -> str:
 def _format_current_on_hand_display(row: dict) -> dict:
     quantity = float(row["quantity"] or 0)
     unit = row["unit"]
-    pack_quantity = row.get("pack_quantity")
-    if (
-        unit == "each"
-        and row.get("unit_of_measurement") == "Case"
-        and pack_quantity
-        and quantity >= 0.25
-    ):
-        return {
-            "display_quantity": quantity,
-            "display_quantity_display": _format_quantity(quantity),
-            "display_unit": "case",
-            "display_unit_label": "case",
-        }
-    if (
-        unit == "each"
-        and row.get("unit_of_measurement") == "Case"
-        and pack_quantity
-        and quantity < 0.25
-    ):
-        each_quantity = (
-            float(row.get("count_case_quantity") or 0) * float(pack_quantity)
-            + float(row.get("count_each_quantity") or 0)
-        )
+    if row.get("unit_of_measurement") == "Case" and row.get("case_quantity") is not None:
+        case_quantity = float(row.get("case_quantity") or 0)
+        each_quantity = float(row.get("each_quantity") or 0)
+        has_case_entry = float(row.get("count_case_quantity") or 0) > 0
+        if has_case_entry and case_quantity >= 0.25:
+            return {
+                "display_quantity": case_quantity,
+                "display_quantity_display": _format_quantity(case_quantity),
+                "display_unit": "case",
+                "display_unit_label": "case",
+            }
         return {
             "display_quantity": each_quantity,
             "display_quantity_display": _format_quantity(each_quantity),
@@ -1044,7 +1032,21 @@ def _list_current_on_hand() -> list[dict]:
                 MAX(ili.pack_quantity),
                 MAX(ili.unit_of_measurement),
                 SUM(ili.count_each_quantity),
-                SUM(ili.count_case_quantity)
+                SUM(ili.count_case_quantity),
+                SUM(
+                    CASE
+                        WHEN ili.unit_of_measurement = 'Case' AND ili.pack_quantity IS NOT NULL AND ili.pack_quantity > 0
+                        THEN ili.count_case_quantity + (ili.count_each_quantity / ili.pack_quantity)
+                        ELSE NULL
+                    END
+                ),
+                SUM(
+                    CASE
+                        WHEN ili.unit_of_measurement = 'Case' AND ili.pack_quantity IS NOT NULL AND ili.pack_quantity > 0
+                        THEN (ili.count_case_quantity * ili.pack_quantity) + ili.count_each_quantity
+                        ELSE NULL
+                    END
+                )
             FROM inventory_location_item ili
             JOIN inventory_location il
               ON il.inventory_location_id = ili.inventory_location_id
@@ -1073,6 +1075,8 @@ def _list_current_on_hand() -> list[dict]:
                 "unit_of_measurement": row[9],
                 "count_each_quantity": float(row[10] or 0),
                 "count_case_quantity": float(row[11] or 0),
+                "case_quantity": row[12],
+                "each_quantity": row[13],
             }
             payload.update(_format_current_on_hand_display(payload))
             rows.append(payload)

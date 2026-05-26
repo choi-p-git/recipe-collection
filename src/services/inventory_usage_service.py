@@ -98,8 +98,7 @@ def _usage_payload(row, menu_date_lookup: dict, today_iso: str) -> dict:
         week_number=week_number,
         day_of_week=day_of_week,
     )
-    has_recorded_line = actual_quantity is not None or variance_quantity is not None
-    is_past = bool(service_date["date"] and service_date["date"] < today_iso) or has_recorded_line
+    is_past = bool(service_date["date"] and service_date["date"] < today_iso)
     return {
         "menu_id": menu_id,
         "menu_name": menu_name,

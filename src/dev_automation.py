@@ -374,11 +374,18 @@ def _choose_inventory_band(rng: random.Random) -> tuple[float, float]:
     return DEFAULT_INVENTORY_BANDS[-1][1], DEFAULT_INVENTORY_BANDS[-1][2]
 
 
+def _inventory_count_type_options(unit_of_measurement: str) -> tuple[str, ...]:
+    if unit_of_measurement == "Each":
+        return ("counted_by_each_only",)
+    return DEFAULT_INVENTORY_COUNT_TYPES
+
+
 def _build_inventory_count_payload(
     *,
     rng: random.Random,
     source_count: int,
     count_type: str,
+    unit_of_measurement: str = "Case",
 ) -> dict:
     pack_quantity = rng.randint(1, 10)
     pack_size_lbs = rng.randint(1, 10)
@@ -392,7 +399,11 @@ def _build_inventory_count_payload(
     count_each_quantity = 0.0
     count_case_quantity = 0.0
     input_mode = count_type
-    if count_type == "counted_by_each_only":
+    if unit_of_measurement == "Each":
+        count_type = "counted_by_each_only"
+        target_each = round(target_cases * pack_quantity, 2)
+        count_each_quantity = target_each
+    elif count_type == "counted_by_each_only":
         count_each_quantity = target_each
     elif count_type == "counted_by_case_only":
         count_case_quantity = target_cases
@@ -412,7 +423,7 @@ def _build_inventory_count_payload(
         "count_case_quantity": count_case_quantity,
         "pack_quantity": pack_quantity,
         "pack_size_text": f"{pack_size_lbs} lb",
-        "unit_of_measurement": "Case",
+        "unit_of_measurement": unit_of_measurement,
         "count_type": count_type,
         "input_mode": input_mode,
         "baseline_cases": baseline_cases,
@@ -685,11 +696,14 @@ def run_dev_inventory_automation(config: InventoryAutomationConfig | None = None
     inventory_rows = []
     for index, candidate in enumerate(sorted_candidates):
         target_location = sub_locations[index % len(sub_locations)]
-        count_type = DEFAULT_INVENTORY_COUNT_TYPES[index % len(DEFAULT_INVENTORY_COUNT_TYPES)]
+        unit_of_measurement = "Case"
+        count_type_options = _inventory_count_type_options(unit_of_measurement)
+        count_type = count_type_options[index % len(count_type_options)]
         payload = _build_inventory_count_payload(
             rng=rng,
             source_count=int(candidate["source_count"]),
             count_type=count_type,
+            unit_of_measurement=unit_of_measurement,
         )
         saved = save_inventory_location_item(
             inventory_location_id=target_location["inventory_location_id"],

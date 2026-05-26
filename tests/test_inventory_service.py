@@ -207,6 +207,30 @@ def test_current_on_hand_displays_small_case_counts_as_each(isolated_db):
     assert dashboard["current_on_hand"][0]["item_category"] == "produce"
 
 
+def test_current_on_hand_keeps_case_uom_each_only_counts_as_each(isolated_db):
+    item_id = _live_base_food(isolated_db, "Inventory Case Each Apples")
+    location_id = create_inventory_location(
+        location_name="Case Each Display Pantry",
+        actor_user_id="dev_user_001",
+        actor_display_name="Plato Choi",
+    )
+
+    save_inventory_location_item(
+        inventory_location_id=location_id,
+        item_id=item_id,
+        count_each_quantity="8",
+        pack_quantity="8",
+        pack_size_text="4 lb",
+        unit_of_measurement="Case",
+        count_type="counted_by_each_only",
+    )
+    dashboard = get_inventory_dashboard()
+
+    assert dashboard["current_on_hand"][0]["quantity_display"] == "8"
+    assert dashboard["current_on_hand"][0]["display_quantity_display"] == "8"
+    assert dashboard["current_on_hand"][0]["display_unit"] == "each"
+
+
 def test_inventory_item_interpretation_uses_singular_pack_verb():
     interpretation = build_inventory_item_interpretation(
         item_name="Bacon",
@@ -494,6 +518,24 @@ def test_inventory_item_detail_groups_recipe_usage_and_count_rolldown(isolated_d
         end_service_variance_unit="lb",
         reason_code="as_expected",
     )
+    future_forecast_page = get_menu_forecast_page(future_menu_id, week_number=1, day_of_week="monday")
+    future_record = ensure_production_record(
+        menu_id=future_menu_id,
+        week_number=1,
+        day_of_week="monday",
+        production_summary=future_forecast_page["production_summary"],
+        actor_user_id="dev_user_001",
+    )
+    save_production_record_line(
+        menu_id=future_menu_id,
+        production_record_line_id=future_record["lines"][0]["production_record_line_id"],
+        actor_user_id="dev_user_001",
+        actual_quantity="12",
+        actual_unit="lb",
+        end_service_variance_quantity="0",
+        end_service_variance_unit="lb",
+        reason_code="as_expected",
+    )
 
     detail = get_inventory_item_detail(ingredient_id)
 
@@ -502,6 +544,7 @@ def test_inventory_item_detail_groups_recipe_usage_and_count_rolldown(isolated_d
     assert detail["count_rolldown"][0]["count_case_quantity_display"] == "1"
     assert detail["upcoming"][0]["menu_item_name"] == "Inventory Usage Soup"
     assert detail["upcoming"][0]["menu_name"] == "Inventory Future Menu"
+    assert detail["upcoming"][0]["actual_quantity_display"] == "12"
     assert detail["past"][0]["menu_item_name"] == "Inventory Usage Soup"
     assert detail["past"][0]["actual_quantity_display"] == "12"
     assert detail["past"][0]["variance_quantity_display"] == "1"

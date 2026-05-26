@@ -1,7 +1,15 @@
 import sqlite3
+import random
 from datetime import date
 
-from dev_automation import AutomationConfig, InventoryAutomationConfig, run_dev_inventory_automation, run_dev_menu_automation
+from dev_automation import (
+    AutomationConfig,
+    InventoryAutomationConfig,
+    _build_inventory_count_payload,
+    _inventory_count_type_options,
+    run_dev_inventory_automation,
+    run_dev_menu_automation,
+)
 
 
 def test_dev_menu_automation_creates_draft_menu_forecasts_and_records(isolated_db):
@@ -213,3 +221,24 @@ def test_dev_inventory_automation_requires_populated_menu(isolated_db):
         assert "No live base-food ingredients" in str(exc)
     else:
         raise AssertionError("Expected inventory automation to require populated menu ingredients.")
+
+
+def test_inventory_count_type_options_follow_uom():
+    assert _inventory_count_type_options("Each") == ("counted_by_each_only",)
+    assert _inventory_count_type_options("Case") == (
+        "counted_by_each_only",
+        "counted_by_case_only",
+        "counted_by_each_and_case",
+    )
+
+    payload = _build_inventory_count_payload(
+        rng=random.Random(3),
+        source_count=5,
+        count_type="counted_by_case_only",
+        unit_of_measurement="Each",
+    )
+
+    assert payload["unit_of_measurement"] == "Each"
+    assert payload["count_type"] == "counted_by_each_only"
+    assert payload["count_case_quantity"] == 0.0
+    assert payload["count_each_quantity"] > 0
