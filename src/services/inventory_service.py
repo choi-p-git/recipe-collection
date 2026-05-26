@@ -4,6 +4,7 @@ from config.item_categories import ITEM_CATEGORY_LABELS
 from config.units import STANDARD_UNITS
 from db import get_connection, initialize_database
 from services.inventory_bridge_service import ensure_legacy_inventory_match_for_item_with_cursor
+from services.item_category_service import sync_item_categories
 from services.unit_conversion_service import normalize_unit_symbol
 from services.unit_label_service import format_unit_label
 
@@ -1117,14 +1118,9 @@ def _list_current_on_hand() -> list[dict]:
 
 def get_inventory_dashboard() -> dict:
     initialize_database()
+    sync_item_categories()
     locations = list_inventory_locations(include_inactive=True)
     current_on_hand = _list_current_on_hand()
-    from services.inventory_usage_service import get_inventory_item_count_rolldown, get_inventory_item_usage
-
-    for item in current_on_hand:
-        usage = get_inventory_item_usage(item["item_id"], limit=5)
-        item["usage_summary"] = usage
-        item["count_rolldown"] = get_inventory_item_count_rolldown(item["item_id"])
     location_tree = get_inventory_location_tree()
     return {
         "locations": locations,

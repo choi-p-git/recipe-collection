@@ -1,6 +1,7 @@
 (() => {
     const SAVE_DEBOUNCE_MS = 500;
     const HISTORY_HOVER_FOCUS_MS = 500;
+    const POPOVER_FETCH_INTENT_MS = 650;
     const countTypeLabels = {
         counted_by_each_only: "counted by each only",
         counted_by_case_only: "counted by case only",
@@ -50,14 +51,122 @@
         });
     };
 
+    const textNode = (tagName, text, className = "") => {
+        const node = document.createElement(tagName);
+        node.textContent = text;
+        if (className) {
+            node.className = className;
+        }
+        return node;
+    };
+
+    const appendUsageGroup = (panel, heading, rows, isPast = false) => {
+        const group = document.createElement("div");
+        group.className = `menu-forecast-history-group${isPast ? " inventory-history-past-group" : ""}`;
+        group.appendChild(textNode("p", heading, "menu-forecast-history-heading"));
+        if (!rows.length) {
+            group.appendChild(textNode("p", `No ${heading.toLowerCase()}.`, "muted"));
+            panel.appendChild(group);
+            return;
+        }
+        const list = document.createElement("ul");
+        list.className = "menu-forecast-history-list";
+        rows.forEach((usage) => {
+            const item = document.createElement("li");
+            const link = textNode("a", usage.service_date_display || "Open service", "text-link");
+            link.href = usage.service_context_url || "#";
+            item.appendChild(link);
+            item.appendChild(textNode("div", usage.menu_item_name || ""));
+            const details = [
+                `${usage.menu_name || ""} | ${usage.meal_period_label || ""} / ${usage.concept_label || ""}`,
+            ];
+            if (usage.needed_display) details.push(`Needed: ${usage.needed_display}`);
+            if (usage.forecast_quantity_display) details.push(`Forecast ${usage.forecast_quantity_display} ${usage.forecast_unit_label || ""}`);
+            if (usage.actual_quantity_display) details.push(`Actual ${usage.actual_quantity_display} ${usage.actual_unit_label || ""}`);
+            item.appendChild(textNode("small", details.join(" | ")));
+            list.appendChild(item);
+        });
+        group.appendChild(list);
+        panel.appendChild(group);
+    };
+
+    const renderUsagePanel = (panel, payload) => {
+        panel.replaceChildren();
+        appendUsageGroup(panel, "Upcoming Menu Items", payload.usage?.upcoming || []);
+        appendUsageGroup(panel, "Past Menu Items", payload.usage?.past || [], true);
+    };
+
+    const renderCountPanel = (panel, payload) => {
+        const mode = panel.dataset.countMode || "roll-down";
+        panel.replaceChildren();
+        const group = document.createElement("div");
+        group.className = "menu-forecast-history-group";
+        group.appendChild(textNode("p", mode === "location" ? "Location Breakdown" : "Count Roll-Down", "menu-forecast-history-heading"));
+        const rows = payload.rows || [];
+        if (!rows.length) {
+            group.appendChild(textNode("p", "No active counts.", "muted"));
+            panel.appendChild(group);
+            return;
+        }
+        const list = document.createElement("ul");
+        list.className = "menu-forecast-history-list";
+        rows.forEach((row) => {
+            const item = document.createElement("li");
+            const link = textNode("a", row.location_label || "Open location", "text-link");
+            link.href = row.inventory_location_count_url || "#";
+            item.appendChild(link);
+            if (mode === "location") {
+                item.appendChild(textNode("small", `${row.display_quantity_display} ${row.display_unit_label} | Updated ${row.updated_at || ""}`));
+            } else {
+                const details = [
+                    `Each ${row.count_each_quantity_display}`,
+                    `Case ${row.count_case_quantity_display}`,
+                ];
+                if (row.pack_quantity_display) details.push(`${row.pack_quantity_display} x ${row.pack_size_text}`);
+                details.push(row.count_type_label || "");
+                item.appendChild(textNode("small", details.filter(Boolean).join(" | ")));
+            }
+            list.appendChild(item);
+        });
+        group.appendChild(list);
+        panel.appendChild(group);
+    };
+
+    const loadInventoryPopoverPanel = async (popover) => {
+        const panel = popover.querySelector("[data-inventory-usage-panel], [data-inventory-count-panel]");
+        if (!panel || panel.dataset.loaded === "true" || panel.dataset.loading === "true") {
+            return;
+        }
+        panel.dataset.loading = "true";
+        try {
+            const response = await fetch(panel.dataset.fetchUrl || "", {headers: {"Accept": "application/json"}});
+            const payload = await response.json();
+            if (!response.ok || !payload.ok) {
+                throw new Error(payload.error || "Unable to load popover.");
+            }
+            if (panel.matches("[data-inventory-usage-panel]")) {
+                renderUsagePanel(panel, payload);
+            } else {
+                renderCountPanel(panel, payload);
+            }
+            panel.dataset.loaded = "true";
+        } catch (error) {
+            panel.replaceChildren(textNode("p", error.message || "Unable to load popover.", "muted"));
+        } finally {
+            panel.dataset.loading = "";
+        }
+    };
+
     document.querySelectorAll("[data-history-popover]").forEach((popover) => {
         const trigger = popover.querySelector("[data-history-trigger]");
         let hoverTimer = null;
+        let fetchIntentTimer = null;
 
         const pinPopover = () => {
             closeHistoryPopovers(popover);
             popover.classList.add("is-open");
             popover.dataset.pinned = "true";
+            loadInventoryPopoverPanel(popover);
         };
 
         const clearHoverTimer = () => {
@@ -67,13 +176,30 @@
             }
         };
 
+        const clearFetchIntentTimer = () => {
+            if (fetchIntentTimer) {
+                window.clearTimeout(fetchIntentTimer);
+                fetchIntentTimer = null;
+            }
+        };
+
+        const schedulePopoverFetch = () => {
+            clearFetchIntentTimer();
+            fetchIntentTimer = window.setTimeout(() => {
+                fetchIntentTimer = null;
+                loadInventoryPopoverPanel(popover);
+            }, POPOVER_FETCH_INTENT_MS);
+        };
+
         popover.addEventListener("mouseenter", () => {
             clearHoverTimer();
+            schedulePopoverFetch();
             hoverTimer = window.setTimeout(pinPopover, HISTORY_HOVER_FOCUS_MS);
         });
 
         popover.addEventListener("mouseleave", () => {
             clearHoverTimer();
+            clearFetchIntentTimer();
         });
 
         trigger?.addEventListener("click", (event) => {
@@ -83,6 +209,10 @@
                 closeHistoryPopovers(popover);
                 popover.classList.toggle("is-open", !isPinned);
                 popover.dataset.pinned = isPinned ? "" : "true";
+                if (!isPinned) {
+                    clearFetchIntentTimer();
+                    loadInventoryPopoverPanel(popover);
+                }
                 if (isPinned) {
                     trigger.blur();
                 }

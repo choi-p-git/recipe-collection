@@ -14,6 +14,7 @@ MIGRATION_TABLE = "schema_migration"
 AUTO_SEED_ENABLED = True
 TEST_TMP_DIR = PROJECT_ROOT / ".test_tmp"
 TEST_TMP_PREFIXES = ("run-", "debug-")
+_INITIALIZED_DATABASE_KEYS: set[tuple[str, bool]] = set()
 
 
 def get_connection() -> sqlite3.Connection:
@@ -111,6 +112,9 @@ def initialize_database(seed: bool | None = None) -> None:
     """Create the database, apply pending SQL migrations, and optionally seed items."""
     if seed is None:
         seed = AUTO_SEED_ENABLED
+    database_key = (str(DB_PATH.resolve()), bool(seed))
+    if database_key in _INITIALIZED_DATABASE_KEYS:
+        return
 
     apply_migrations()
     if seed:
@@ -118,6 +122,7 @@ def initialize_database(seed: bool | None = None) -> None:
     from services.item_category_service import sync_item_categories
 
     sync_item_categories()
+    _INITIALIZED_DATABASE_KEYS.add(database_key)
 
 
 def garbage_collect_test_tmp(

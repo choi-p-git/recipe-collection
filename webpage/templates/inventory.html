@@ -118,32 +118,8 @@
                                     <a class="text-link menu-forecast-history-trigger" href="{{ url_for('inventory_item_detail', item_id=item.item_id) }}" data-history-trigger>
                                         {{ item.item_name }}
                                     </a>
-                                    <div class="menu-forecast-history-panel inventory-dashboard-history-panel" role="tooltip" data-history-panel>
-                                        {% for group_label, usages in [('Upcoming Menu Items', item.usage_summary.upcoming), ('Past Menu Items', item.usage_summary.past)] %}
-                                            <div class="menu-forecast-history-group {% if group_label.startswith('Past') %}inventory-history-past-group{% endif %}">
-                                                <p class="menu-forecast-history-heading">{{ group_label }}</p>
-                                                {% if usages %}
-                                                    <ul class="menu-forecast-history-list">
-                                                        {% for usage in usages %}
-                                                            <li>
-                                                                <a class="text-link" href="{{ url_for('menu_service_context', menu_id=usage.menu_id, week=usage.week_number, day=usage.day_of_week) }}">
-                                                                    {{ usage.service_date_display }}
-                                                                </a>
-                                                                <div>{{ usage.menu_item_name }}</div>
-                                                                <small>
-                                                                    {{ usage.menu_name }} | {{ usage.meal_period_label }} / {{ usage.concept_label }}
-                                                                    {% if usage.needed_display %}| Needed: {{ usage.needed_display }}{% endif %}
-                                                                    {% if usage.forecast_quantity_display %}| Forecast {{ usage.forecast_quantity_display }} {{ usage.forecast_unit_label }}{% endif %}
-                                                                    {% if usage.actual_quantity_display %}| Actual {{ usage.actual_quantity_display }} {{ usage.actual_unit_label }}{% endif %}
-                                                                </small>
-                                                            </li>
-                                                        {% endfor %}
-                                                    </ul>
-                                                {% else %}
-                                                    <p class="muted">No {{ group_label|lower }}.</p>
-                                                {% endif %}
-                                            </div>
-                                        {% endfor %}
+                                    <div class="menu-forecast-history-panel inventory-dashboard-history-panel" role="tooltip" data-history-panel data-inventory-usage-panel data-fetch-url="{{ url_for('api_inventory_item_usage_summary', item_id=item.item_id) }}">
+                                        <p class="muted">Loading menu usage...</p>
                                     </div>
                                 </div>
                             </td>
@@ -153,25 +129,9 @@
                                     <button type="button" class="menu-forecast-history-trigger inventory-table-popover-button" data-history-trigger>
                                         {{ item.display_quantity_display }} {{ item.display_unit_label }}
                                     </button>
-                                    <div class="menu-forecast-history-panel inventory-dashboard-history-panel" role="tooltip" data-history-panel>
-                                        <div class="menu-forecast-history-group">
-                                            <p class="menu-forecast-history-heading">Count Roll-Down</p>
-                                            <ul class="menu-forecast-history-list">
-                                                {% for count_row in item.count_rolldown %}
-                                                    <li>
-                                                        <a class="text-link" href="{{ url_for('inventory_location_count', inventory_location_id=count_row.inventory_location_id) }}">
-                                                            {{ count_row.location_label }}
-                                                        </a>
-                                                        <small>
-                                                            Each {{ count_row.count_each_quantity_display }}
-                                                            | Case {{ count_row.count_case_quantity_display }}
-                                                            {% if count_row.pack_quantity_display %}| {{ count_row.pack_quantity_display }} x {{ count_row.pack_size_text }}{% endif %}
-                                                            | {{ count_row.count_type_label }}
-                                                        </small>
-                                                    </li>
-                                                {% endfor %}
-                                            </ul>
-                                        </div>
+                                    <div class="menu-forecast-history-panel inventory-dashboard-history-panel" role="tooltip" data-history-panel data-inventory-count-panel data-count-mode="roll-down" data-fetch-url="{{ url_for('api_inventory_item_count_rolldown', item_id=item.item_id) }}">
+                                        <p class="menu-forecast-history-heading">Count Roll-Down</p>
+                                        <p class="muted">Loading count roll-down...</p>
                                     </div>
                                 </div>
                             </td>
@@ -180,20 +140,9 @@
                                     <button type="button" class="menu-forecast-history-trigger inventory-table-popover-button" data-history-trigger>
                                         {{ item.location_count }}
                                     </button>
-                                    <div class="menu-forecast-history-panel inventory-dashboard-history-panel" role="tooltip" data-history-panel>
-                                        <div class="menu-forecast-history-group">
-                                            <p class="menu-forecast-history-heading">Location Breakdown</p>
-                                            <ul class="menu-forecast-history-list">
-                                                {% for count_row in item.count_rolldown %}
-                                                    <li>
-                                                        <a class="text-link" href="{{ url_for('inventory_location_count', inventory_location_id=count_row.inventory_location_id) }}">
-                                                            {{ count_row.location_label }}
-                                                        </a>
-                                                        <small>{{ count_row.display_quantity_display }} {{ count_row.display_unit_label }} | Updated {{ count_row.updated_at }}</small>
-                                                    </li>
-                                                {% endfor %}
-                                            </ul>
-                                        </div>
+                                    <div class="menu-forecast-history-panel inventory-dashboard-history-panel" role="tooltip" data-history-panel data-inventory-count-panel data-count-mode="location" data-fetch-url="{{ url_for('api_inventory_item_count_rolldown', item_id=item.item_id) }}">
+                                        <p class="menu-forecast-history-heading">Location Breakdown</p>
+                                        <p class="muted">Loading locations...</p>
                                     </div>
                                 </div>
                             </td>

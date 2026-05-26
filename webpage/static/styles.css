@@ -1695,7 +1695,6 @@ button:disabled {
     color: #374151;
 }
 
-.menu-forecast-history:hover .menu-forecast-history-panel,
 .menu-forecast-history:focus-within .menu-forecast-history-panel,
 .menu-forecast-history.is-open .menu-forecast-history-panel {
     display: block;

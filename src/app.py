@@ -95,7 +95,7 @@ from services.inventory_service import (
     transfer_inventory_location_item,
     update_inventory_location_item,
 )
-from services.inventory_usage_service import get_inventory_item_detail
+from services.inventory_usage_service import get_inventory_item_count_rolldown, get_inventory_item_detail, get_inventory_item_usage
 from services.item_note_service import (
     ItemNoteError,
     acknowledge_item_notes_for_viewer,
@@ -238,6 +238,33 @@ def inventory_item_detail(item_id: int):
         detail=detail,
         current_user=get_current_mock_user(session),
     )
+
+
+@app.get("/api/inventory/items/<int:item_id>/usage-summary")
+def api_inventory_item_usage_summary(item_id: int):
+    usage = get_inventory_item_usage(item_id, limit=5)
+    if not usage["item"]["item_name"]:
+        return jsonify({"ok": False, "error": "Inventory item not found."}), 404
+    for group in ("upcoming", "past"):
+        for row in usage[group]:
+            row["service_context_url"] = url_for(
+                "menu_service_context",
+                menu_id=row["menu_id"],
+                week=row["week_number"],
+                day=row["day_of_week"],
+            )
+    return jsonify({"ok": True, "usage": usage})
+
+
+@app.get("/api/inventory/items/<int:item_id>/count-rolldown")
+def api_inventory_item_count_rolldown(item_id: int):
+    rows = get_inventory_item_count_rolldown(item_id)
+    for row in rows:
+        row["inventory_location_count_url"] = url_for(
+            "inventory_location_count",
+            inventory_location_id=row["inventory_location_id"],
+        )
+    return jsonify({"ok": True, "rows": rows})
 
 
 @app.post("/inventory/locations")

@@ -1536,7 +1536,17 @@ def test_inventory_foundation_routes_create_count_and_current_on_hand(app_client
     assert "1.75 case" in dashboard_page
     assert "Count Roll-Down" in dashboard_page
     assert "Location Breakdown" in dashboard_page
+    assert f"/api/inventory/items/{item_id}/count-rolldown" in dashboard_page
     assert "Enter Count" in dashboard_page
+
+    count_rollup_response = app_client.get(f"/api/inventory/items/{item_id}/count-rolldown")
+    count_rollup_payload = count_rollup_response.get_json()
+
+    assert count_rollup_response.status_code == 200
+    assert count_rollup_payload["ok"] is True
+    assert count_rollup_payload["rows"][0]["location_label"] == "Walk-In Freezer / Rack A"
+    assert count_rollup_payload["rows"][0]["display_quantity_display"] == "1.75"
+    assert count_rollup_payload["rows"][0]["display_unit_label"] == "case"
 
     detail_response = app_client.get(f"/inventory/items/{item_id}")
     detail_page = detail_response.get_data(as_text=True)
