@@ -296,7 +296,9 @@
             }
             const quantityCell = row.querySelector("[data-inventory-quantity]");
             if (quantityCell && payload.line) {
-                quantityCell.textContent = `${payload.line.quantity_display} ${payload.line.unit_label}`;
+                const quantityDisplay = payload.line.display_quantity_display || payload.line.quantity_display;
+                const unitLabel = payload.line.display_unit_label || payload.line.unit_label;
+                quantityCell.textContent = `${quantityDisplay} ${unitLabel}`;
             }
             setLineStatus(row, "saved", "\u2713");
         } catch (error) {

@@ -84,6 +84,37 @@ def _format_current_on_hand_display(row: dict) -> dict:
     }
 
 
+def _format_location_line_display(row: dict) -> dict:
+    quantity = float(row["quantity"] or 0)
+    unit = row["unit"]
+    if row.get("unit_of_measurement") == "Case":
+        count_type = row.get("count_type")
+        count_case_quantity = float(row.get("count_case_quantity") or 0)
+        pack_quantity = row.get("pack_quantity")
+        has_case_display = count_type in {"counted_by_case_only", "counted_by_each_and_case"}
+        if has_case_display and count_case_quantity > 0 and quantity >= 0.25:
+            return {
+                "display_quantity": quantity,
+                "display_quantity_display": _format_quantity(quantity),
+                "display_unit": "case",
+                "display_unit_label": "case",
+            }
+        if has_case_display and pack_quantity:
+            each_quantity = (count_case_quantity * float(pack_quantity)) + float(row.get("count_each_quantity") or 0)
+            return {
+                "display_quantity": each_quantity,
+                "display_quantity_display": _format_quantity(each_quantity),
+                "display_unit": "each",
+                "display_unit_label": format_unit_label("each"),
+            }
+    return {
+        "display_quantity": quantity,
+        "display_quantity_display": _format_quantity(quantity),
+        "display_unit": unit,
+        "display_unit_label": format_unit_label(unit),
+    }
+
+
 def _normalize_optional_pack_quantity(value) -> float | None:
     quantity = _normalize_quantity(value, allow_blank=True)
     if quantity is None:
@@ -206,6 +237,7 @@ def _line_payload(row) -> dict:
         "extension_price_display": "TBI",
     }
     payload["pack_summary"] = _build_pack_summary(payload)
+    payload.update(_format_location_line_display(payload))
     payload["interpretation"] = build_inventory_item_interpretation(
         item_name=payload["item_name"],
         pack_quantity=payload["pack_quantity"],

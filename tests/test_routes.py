@@ -1489,6 +1489,7 @@ def test_inventory_foundation_routes_create_count_and_current_on_hand(app_client
     assert 'value="2"' in line_page
     assert 'value="1"' in line_page
     assert "4 packs x 5 lb" in line_page
+    assert "1.5 case" in line_page
     assert "Price history" in line_page
     assert "Transfer Route Inventory Onions" in line_page
     assert "Print" in line_page
@@ -1519,6 +1520,8 @@ def test_inventory_foundation_routes_create_count_and_current_on_hand(app_client
     assert api_response.status_code == 200
     assert api_payload["ok"] is True
     assert api_payload["line"]["quantity_display"] == "1.75"
+    assert api_payload["line"]["display_quantity_display"] == "1.75"
+    assert api_payload["line"]["display_unit_label"] == "case"
 
     dashboard_response = app_client.get("/inventory")
     dashboard_page = dashboard_response.get_data(as_text=True)
@@ -1544,6 +1547,7 @@ def test_inventory_foundation_routes_create_count_and_current_on_hand(app_client
     assert "Upcoming Menu Usage" in detail_page
     assert "Past Menu Usage" in detail_page
     assert "Each 3 / Case 1" in detail_page
+    assert "1.75 case" in detail_page
 
     print_response = app_client.get(f"/inventory/locations/{sub_location_id}/print")
     print_page = print_response.get_data(as_text=True)
@@ -1551,6 +1555,7 @@ def test_inventory_foundation_routes_create_count_and_current_on_hand(app_client
     assert print_response.status_code == 200
     assert "Inventory count sheet" in print_page
     assert "Route Inventory Onions" in print_page
+    assert "1.75 case" in print_page
 
 
 def test_production_record_post_requires_recorded_lines(app_client, isolated_db):

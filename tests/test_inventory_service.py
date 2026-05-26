@@ -153,6 +153,8 @@ def test_each_and_case_count_normalizes_quantity(isolated_db):
     detail = get_inventory_location_detail(location_id)
 
     assert detail["item_rows"][0]["quantity_display"] == "1.33"
+    assert detail["item_rows"][0]["display_quantity_display"] == "1.33"
+    assert detail["item_rows"][0]["display_unit"] == "case"
     assert detail["item_rows"][0]["pack_summary"] == "6 packs x 5 lb"
     assert "counted by each and case" in detail["item_rows"][0]["interpretation"]
 
@@ -200,11 +202,14 @@ def test_current_on_hand_displays_small_case_counts_as_each(isolated_db):
         count_type="counted_by_each_and_case",
     )
     dashboard = get_inventory_dashboard()
+    detail = get_inventory_location_detail(location_id)
 
     assert dashboard["current_on_hand"][0]["quantity_display"] == "0.12"
     assert dashboard["current_on_hand"][0]["display_quantity_display"] == "1"
     assert dashboard["current_on_hand"][0]["display_unit"] == "each"
     assert dashboard["current_on_hand"][0]["item_category"] == "produce"
+    assert detail["item_rows"][0]["display_quantity_display"] == "1"
+    assert detail["item_rows"][0]["display_unit"] == "each"
 
 
 def test_current_on_hand_keeps_case_uom_each_only_counts_as_each(isolated_db):
@@ -225,10 +230,13 @@ def test_current_on_hand_keeps_case_uom_each_only_counts_as_each(isolated_db):
         count_type="counted_by_each_only",
     )
     dashboard = get_inventory_dashboard()
+    detail = get_inventory_location_detail(location_id)
 
     assert dashboard["current_on_hand"][0]["quantity_display"] == "8"
     assert dashboard["current_on_hand"][0]["display_quantity_display"] == "8"
     assert dashboard["current_on_hand"][0]["display_unit"] == "each"
+    assert detail["item_rows"][0]["display_quantity_display"] == "8"
+    assert detail["item_rows"][0]["display_unit"] == "each"
 
 
 def test_inventory_item_interpretation_uses_singular_pack_verb():

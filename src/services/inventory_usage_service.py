@@ -5,7 +5,7 @@ from datetime import date
 
 from config.item_categories import ITEM_CATEGORY_LABELS
 from db import get_connection
-from services.inventory_service import _format_quantity
+from services.inventory_service import _format_location_line_display, _format_quantity
 from services.menu_calendar_service import build_week_day_dates
 from services.unit_label_service import format_unit_label
 
@@ -287,27 +287,33 @@ def get_inventory_item_count_rolldown(item_id: int) -> list[dict]:
             """,
             (item_id,),
         )
-        return [
-            {
+        payloads = []
+        for row in cursor.fetchall():
+            payload = {
                 "inventory_location_item_id": int(row[0]),
                 "inventory_location_id": int(row[1]),
                 "root_location_name": row[2] or row[3],
                 "location_name": row[3],
                 "location_label": f"{row[2]} / {row[3]}" if row[2] else row[3],
+                "count_each_quantity": float(row[4] or 0),
                 "count_each_quantity_display": _format_quantity(row[4]),
+                "count_case_quantity": float(row[5] or 0),
                 "count_case_quantity_display": _format_quantity(row[5]),
+                "pack_quantity": row[6],
                 "pack_quantity_display": _format_quantity(row[6]) if row[6] is not None else "",
                 "pack_size_text": row[7] or "",
                 "unit_of_measurement": row[8],
                 "count_type": row[9],
                 "count_type_label": str(row[9]).replace("_", " ").title(),
+                "quantity": float(row[10] or 0),
                 "quantity_display": _format_quantity(row[10]),
                 "unit": row[11],
                 "unit_label": format_unit_label(row[11]),
                 "updated_at": row[12],
             }
-            for row in cursor.fetchall()
-        ]
+            payload.update(_format_location_line_display(payload))
+            payloads.append(payload)
+        return payloads
 
 
 def get_inventory_item_detail(item_id: int) -> dict | None:
