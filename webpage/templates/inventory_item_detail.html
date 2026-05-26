@@ -12,6 +12,7 @@
                         <th>Service</th>
                         <th>Menu Item</th>
                         <th>Context</th>
+                        <th>Needed</th>
                         <th>Forecast</th>
                         <th>Production</th>
                     </tr>
@@ -27,6 +28,13 @@
                             </td>
                             <td><a class="text-link" href="{{ url_for('item_detail', item_id=usage.menu_item_id) }}">{{ usage.menu_item_name }}</a></td>
                             <td>{{ usage.meal_period_label }} / {{ usage.concept_label }}</td>
+                            <td>
+                                {% if usage.needed_display %}
+                                    {{ usage.needed_display }}
+                                {% else %}
+                                    <span class="muted">--</span>
+                                {% endif %}
+                            </td>
                             <td>
                                 {% if usage.forecast_quantity_display %}
                                     {{ usage.forecast_quantity_display }} {{ usage.forecast_unit_label }}

@@ -7,6 +7,8 @@ from config.item_categories import ITEM_CATEGORY_LABELS
 from db import get_connection
 from services.inventory_service import _format_location_line_display, _format_quantity
 from services.menu_calendar_service import build_week_day_dates
+from services.recipe_flattening_service import build_flattened_recipe_view
+from services.unit_conversion_service import convert_unit_value, convert_with_item_mass_volume_bridge
 from services.unit_label_service import format_unit_label
 
 
@@ -76,6 +78,12 @@ def _usage_payload(row, menu_date_lookup: dict, today_iso: str) -> dict:
         menu_item_id,
         menu_item_name,
         menu_item_type,
+        menu_item_yield_quantity,
+        menu_item_yield_unit,
+        menu_item_mass_quantity,
+        menu_item_mass_unit,
+        menu_item_volume_quantity,
+        menu_item_volume_unit,
         production_record_id,
         production_record_line_id,
         production_status,
@@ -113,12 +121,19 @@ def _usage_payload(row, menu_date_lookup: dict, today_iso: str) -> dict:
         "menu_item_id": int(menu_item_id),
         "menu_item_name": menu_item_name,
         "menu_item_type": menu_item_type,
+        "menu_item_yield_quantity": float(menu_item_yield_quantity) if menu_item_yield_quantity is not None else None,
+        "menu_item_yield_unit": menu_item_yield_unit or "",
+        "menu_item_mass_quantity": float(menu_item_mass_quantity) if menu_item_mass_quantity is not None else None,
+        "menu_item_mass_unit": menu_item_mass_unit or "",
+        "menu_item_volume_quantity": float(menu_item_volume_quantity) if menu_item_volume_quantity is not None else None,
+        "menu_item_volume_unit": menu_item_volume_unit or "",
         "production_record_id": int(production_record_id) if production_record_id is not None else None,
         "production_record_line_id": int(production_record_line_id) if production_record_line_id is not None else None,
         "production_status": production_status or "",
         "production_status_label": str(production_status or "").title(),
         "service_date": service_date["date"],
         "service_date_display": service_date["display"],
+        "forecast_quantity": float(forecast_quantity) if forecast_quantity is not None else None,
         "forecast_quantity_display": _format_optional_quantity(forecast_quantity),
         "forecast_unit": forecast_unit or "",
         "forecast_unit_label": format_unit_label(forecast_unit) if forecast_unit else "",
@@ -134,6 +149,85 @@ def _usage_payload(row, menu_date_lookup: dict, today_iso: str) -> dict:
         "forecast_error_percent_display": _format_optional_quantity(forecast_error_percent),
         "reason_label": str(reason_code or "").replace("_", " ").title(),
         "is_past": is_past,
+    }
+
+
+def _scaled_forecast_factor(usage: dict) -> float | None:
+    forecast_quantity = usage.get("forecast_quantity")
+    forecast_unit = usage.get("forecast_unit")
+    yield_quantity = usage.get("menu_item_yield_quantity")
+    yield_unit = usage.get("menu_item_yield_unit")
+    if forecast_quantity is None or not forecast_unit or not yield_quantity or not yield_unit:
+        return None
+    if forecast_unit == yield_unit:
+        forecast_in_yield_unit = float(forecast_quantity)
+    else:
+        conversion = convert_unit_value(float(forecast_quantity), forecast_unit, yield_unit)
+        if not conversion["ok"]:
+            conversion = convert_with_item_mass_volume_bridge(
+                float(forecast_quantity),
+                forecast_unit,
+                yield_unit,
+                item_type=usage.get("menu_item_type") or "",
+                mass_quantity=usage.get("menu_item_mass_quantity"),
+                mass_unit=usage.get("menu_item_mass_unit"),
+                volume_quantity=usage.get("menu_item_volume_quantity"),
+                volume_unit=usage.get("menu_item_volume_unit"),
+            )
+        if not conversion["ok"]:
+            return None
+        forecast_in_yield_unit = float(conversion["quantity"])
+    return forecast_in_yield_unit / float(yield_quantity)
+
+
+def _needed_parts_for_usage(item_id: int, usage: dict) -> list[dict]:
+    forecast_quantity = usage.get("forecast_quantity")
+    forecast_unit = usage.get("forecast_unit")
+    if int(usage["menu_item_id"]) == int(item_id) and forecast_quantity is not None and forecast_unit:
+        return [{"quantity": float(forecast_quantity), "unit": forecast_unit}]
+    if usage.get("menu_item_type") != "recipe":
+        return []
+
+    scale_factor = _scaled_forecast_factor(usage)
+    if scale_factor is None:
+        return []
+    flattened_view = build_flattened_recipe_view(int(usage["menu_item_id"]), scale_factor=scale_factor)
+    totals_by_unit: dict[str, float] = {}
+    for row in flattened_view.get("rows", []):
+        if int(row.get("component_item_id") or 0) != int(item_id):
+            continue
+        unit = row.get("component_unit") or ""
+        if not unit:
+            continue
+        totals_by_unit[unit] = totals_by_unit.get(unit, 0.0) + float(row.get("total_quantity") or 0)
+    return [
+        {"quantity": quantity, "unit": unit}
+        for unit, quantity in totals_by_unit.items()
+        if quantity > 0
+    ]
+
+
+def _attach_needed_display(item_id: int, usage: dict) -> dict:
+    needed_parts = _needed_parts_for_usage(item_id, usage)
+    if not needed_parts:
+        return {
+            **usage,
+            "needed_parts": [],
+            "needed_display": "",
+            "needed_quantity_display": "",
+            "needed_unit_label": "",
+        }
+    display_parts = [
+        f"{_format_quantity(part['quantity'])} {format_unit_label(part['unit'])}"
+        for part in needed_parts
+    ]
+    first_part = needed_parts[0]
+    return {
+        **usage,
+        "needed_parts": needed_parts,
+        "needed_display": " + ".join(display_parts),
+        "needed_quantity_display": _format_quantity(first_part["quantity"]),
+        "needed_unit_label": format_unit_label(first_part["unit"]),
     }
 
 
@@ -180,6 +274,12 @@ def get_inventory_item_usage(item_id: int, *, today: date | None = None, limit: 
                 i.item_id,
                 i.item_name,
                 i.item_type,
+                i.yield_quantity,
+                i.yield_unit,
+                i.mass_quantity,
+                i.mass_unit,
+                i.volume_quantity,
+                i.volume_unit,
                 pr.production_record_id,
                 prl.production_record_line_id,
                 pr.status,
@@ -231,7 +331,7 @@ def get_inventory_item_usage(item_id: int, *, today: date | None = None, limit: 
     upcoming = []
     past = []
     for row in raw_rows:
-        payload = _usage_payload(row, menu_date_lookup, today_iso)
+        payload = _attach_needed_display(item_id, _usage_payload(row, menu_date_lookup, today_iso))
         if payload["is_past"]:
             past.append(payload)
         else:

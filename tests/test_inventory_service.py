@@ -1,4 +1,5 @@
 import sqlite3
+from datetime import date
 
 from services.inventory_service import (
     add_inventory_location_break,
@@ -18,7 +19,7 @@ from services.inventory_bridge_service import (
     resolve_inventory_for_recipe_item,
 )
 from services.item_service import create_base_food
-from services.inventory_usage_service import get_inventory_item_detail
+from services.inventory_usage_service import get_inventory_item_detail, get_inventory_item_usage
 from services.menu_forecast_service import save_menu_forecast_yield
 from services.menu_service import create_menu, replace_menu_slot_items
 from services.production_record_service import ensure_production_record, save_production_record_line
@@ -552,7 +553,84 @@ def test_inventory_item_detail_groups_recipe_usage_and_count_rolldown(isolated_d
     assert detail["count_rolldown"][0]["count_case_quantity_display"] == "1"
     assert detail["upcoming"][0]["menu_item_name"] == "Inventory Usage Soup"
     assert detail["upcoming"][0]["menu_name"] == "Inventory Future Menu"
+    assert detail["upcoming"][0]["needed_display"] == "2.4 lb"
     assert detail["upcoming"][0]["actual_quantity_display"] == "12"
     assert detail["past"][0]["menu_item_name"] == "Inventory Usage Soup"
+    assert detail["past"][0]["needed_display"] == "2.4 lb"
     assert detail["past"][0]["actual_quantity_display"] == "12"
     assert detail["past"][0]["variance_quantity_display"] == "1"
+
+
+def test_inventory_usage_needed_quantity_uses_recipe_mass_volume_bridge(isolated_db):
+    ingredient_id = _live_base_food(isolated_db, "Inventory Usage Apple")
+    recipe_id = create_recipe(
+        {
+            "item_name": "Inventory Usage Apple Salad",
+            "yield_quantity": 1.25,
+            "yield_unit": "qt",
+            "primary_cooking_method_code": "no_cooking",
+            "instruction_steps": ["Mix"],
+            "ingredients": [
+                {
+                    "component_item_id": ingredient_id,
+                    "component_quantity": 1.5,
+                    "component_unit": "cup",
+                }
+            ],
+        }
+    )
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        UPDATE item
+        SET status = 'live',
+            mass_quantity = 600,
+            mass_unit = 'g',
+            volume_quantity = 1.25,
+            volume_unit = 'qt'
+        WHERE item_id = ?
+        """,
+        (recipe_id,),
+    )
+    conn.commit()
+    conn.close()
+    menu_id = create_menu(
+        menu_name="Inventory Bridge Needed Menu",
+        author_user_id="dev_user_001",
+        author_display_name="Plato Choi",
+        service_days=["tuesday"],
+        meal_periods=["lunch"],
+        concepts=["hot_line"],
+        menu_length_weeks=1,
+        menu_start_date="2026-05-26",
+        menu_end_date="2026-05-26",
+        require_date_range=True,
+        allowed_service_days=["tuesday"],
+        allowed_meal_periods=["lunch"],
+        allowed_concepts=["hot_line"],
+    )
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT menu_slot_id FROM menu_slot WHERE menu_id = ?", (menu_id,))
+    slot_id = cursor.fetchone()[0]
+    conn.close()
+    replace_menu_slot_items(menu_slot_id=slot_id, selected_item_ids=[recipe_id], actor_user_id="dev_user_001")
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT menu_slot_item_id FROM menu_slot_item WHERE menu_slot_id = ?", (slot_id,))
+    slot_item_id = cursor.fetchone()[0]
+    conn.close()
+    save_menu_forecast_yield(
+        menu_id=menu_id,
+        menu_slot_item_id=slot_item_id,
+        actor_user_id="dev_user_001",
+        forecast_yield_quantity=1889.07,
+        forecast_yield_unit="g",
+    )
+
+    usage = get_inventory_item_usage(ingredient_id, today=date(2026, 5, 26))
+
+    assert usage["upcoming"][0]["forecast_quantity_display"] == "1889.07"
+    assert usage["upcoming"][0]["forecast_unit"] == "g"
+    assert usage["upcoming"][0]["needed_display"] == "4.72 cup"

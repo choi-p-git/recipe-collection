@@ -132,6 +132,7 @@
                                                                 <div>{{ usage.menu_item_name }}</div>
                                                                 <small>
                                                                     {{ usage.menu_name }} | {{ usage.meal_period_label }} / {{ usage.concept_label }}
+                                                                    {% if usage.needed_display %}| Needed: {{ usage.needed_display }}{% endif %}
                                                                     {% if usage.forecast_quantity_display %}| Forecast {{ usage.forecast_quantity_display }} {{ usage.forecast_unit_label }}{% endif %}
                                                                     {% if usage.actual_quantity_display %}| Actual {{ usage.actual_quantity_display }} {{ usage.actual_unit_label }}{% endif %}
                                                                 </small>
