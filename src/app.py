@@ -95,6 +95,7 @@ from services.inventory_service import (
     transfer_inventory_location_item,
     update_inventory_location_item,
 )
+from services.inventory_usage_service import get_inventory_item_detail
 from services.item_note_service import (
     ItemNoteError,
     acknowledge_item_notes_for_viewer,
@@ -223,6 +224,18 @@ def inventory_dashboard():
     return render_template(
         "inventory.html",
         page_data=get_inventory_dashboard(),
+        current_user=get_current_mock_user(session),
+    )
+
+
+@app.route("/inventory/items/<int:item_id>")
+def inventory_item_detail(item_id: int):
+    detail = get_inventory_item_detail(item_id)
+    if detail is None:
+        return "Inventory item not found.", 404
+    return render_template(
+        "inventory_item_detail.html",
+        detail=detail,
         current_user=get_current_mock_user(session),
     )
 

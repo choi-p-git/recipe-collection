@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block app_header_title %}Inventory Management{% endblock %}
+{% block main_class %}container container-inventory{% endblock %}
+{% block title %}Inventory Item{% endblock %}
+
+{% macro usage_list(usages, empty_copy) %}
+    {% if usages %}
+        <div class="menu-forecast-table-shell">
+            <table class="menu-forecast-table inventory-table">
+                <thead>
+                    <tr>
+                        <th>Service</th>
+                        <th>Menu Item</th>
+                        <th>Context</th>
+                        <th>Forecast</th>
+                        <th>Production</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for usage in usages %}
+                        <tr>
+                            <td>
+                                <a class="text-link" href="{{ url_for('menu_service_context', menu_id=usage.menu_id, week=usage.week_number, day=usage.day_of_week) }}">
+                                    {{ usage.service_date_display }}
+                                </a>
+                                <div class="muted">{{ usage.menu_name }}</div>
+                            </td>
+                            <td><a class="text-link" href="{{ url_for('item_detail', item_id=usage.menu_item_id) }}">{{ usage.menu_item_name }}</a></td>
+                            <td>{{ usage.meal_period_label }} / {{ usage.concept_label }}</td>
+                            <td>
+                                {% if usage.forecast_quantity_display %}
+                                    {{ usage.forecast_quantity_display }} {{ usage.forecast_unit_label }}
+                                {% else %}
+                                    <span class="muted">No forecast</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if usage.production_record_id %}
+                                    <details>
+                                        <summary>{{ usage.production_status_label or "Production Record" }}</summary>
+                                        <div class="inventory-usage-detail-line">
+                                            {% if usage.actual_quantity_display %}Actual {{ usage.actual_quantity_display }} {{ usage.actual_unit_label }}{% endif %}
+                                            {% if usage.variance_quantity_display %}| Var {{ usage.variance_quantity_display }} {{ usage.variance_unit_label }}{% endif %}
+                                            {% if usage.implied_demand_quantity_display %}| Demand {{ usage.implied_demand_quantity_display }} {{ usage.implied_demand_unit_label }}{% endif %}
+                                            {% if usage.forecast_error_percent_display %}| Error {{ usage.forecast_error_percent_display }}%{% endif %}
+                                            {% if usage.reason_label %}| {{ usage.reason_label }}{% endif %}
+                                        </div>
+                                        <a class="text-link" href="{{ url_for('production_record_review', menu_id=usage.menu_id, production_record_id=usage.production_record_id) }}">Open record</a>
+                                    </details>
+                                {% else %}
+                                    <span class="muted">Not started</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p class="muted">{{ empty_copy }}</p>
+    {% endif %}
+{% endmacro %}
+
+{% block content %}
+    <div class="page-header">
+        <div>
+            <h2>{{ detail.item.item_name }}</h2>
+            <p class="page-subtitle">{{ detail.item.item_category_label }} inventory usage and count history.</p>
+        </div>
+        <div class="production-record-review-actions">
+            <a class="page-action-link secondary" href="{{ url_for('inventory_dashboard') }}">Inventory Dashboard</a>
+        </div>
+    </div>
+
+    <section class="item-detail-section">
+        <div class="menu-forecast-title-row">
+            <h3>Current Counts</h3>
+            <span class="muted">{{ detail.count_rolldown|length }} location{% if detail.count_rolldown|length != 1 %}s{% endif %}</span>
+        </div>
+        <div class="menu-forecast-table-shell">
+            <table class="menu-forecast-table inventory-table">
+                <thead>
+                    <tr>
+                        <th>Location</th>
+                        <th>Entered Count</th>
+                        <th>Pack</th>
+                        <th>Rollup</th>
+                        <th>Updated</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in detail.count_rolldown %}
+                        <tr>
+                            <td><a class="text-link" href="{{ url_for('inventory_location_count', inventory_location_id=row.inventory_location_id) }}">{{ row.location_label }}</a></td>
+                            <td>Each {{ row.count_each_quantity_display }} / Case {{ row.count_case_quantity_display }}</td>
+                            <td>{% if row.pack_quantity_display %}{{ row.pack_quantity_display }} x {{ row.pack_size_text }}{% else %}--{% endif %}</td>
+                            <td>{{ row.quantity_display }} {{ row.unit_label }}</td>
+                            <td>{{ row.updated_at }}</td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="5">No active count rows for this item.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="item-detail-section">
+        <div class="menu-forecast-title-row">
+            <h3>Upcoming Menu Usage</h3>
+            <span class="muted">{{ detail.upcoming_count }} rows</span>
+        </div>
+        {{ usage_list(detail.upcoming, "No upcoming menu items call for this ingredient.") }}
+    </section>
+
+    <section class="item-detail-section">
+        <div class="menu-forecast-title-row">
+            <h3>Past Menu Usage</h3>
+            <span class="muted">{{ detail.past_count }} rows</span>
+        </div>
+        {{ usage_list(detail.past, "No past menu usage has been recorded for this ingredient.") }}
+    </section>
+{% endblock %}

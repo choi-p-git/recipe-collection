@@ -1526,10 +1526,24 @@ def test_inventory_foundation_routes_create_count_and_current_on_hand(app_client
     assert dashboard_response.status_code == 200
     assert "Current On Hand" in dashboard_page
     assert "Route Inventory Onions" in dashboard_page
+    assert f"/inventory/items/{item_id}" in dashboard_page
+    assert f"/recipe-collection/items/{item_id}" not in dashboard_page
     assert "<th>Category</th>" in dashboard_page
     assert "Produce" in dashboard_page
     assert "1.75 case" in dashboard_page
+    assert "Count Roll-Down" in dashboard_page
+    assert "Location Breakdown" in dashboard_page
     assert "Enter Count" in dashboard_page
+
+    detail_response = app_client.get(f"/inventory/items/{item_id}")
+    detail_page = detail_response.get_data(as_text=True)
+
+    assert detail_response.status_code == 200
+    assert "Route Inventory Onions" in detail_page
+    assert "Current Counts" in detail_page
+    assert "Upcoming Menu Usage" in detail_page
+    assert "Past Menu Usage" in detail_page
+    assert "Each 3 / Case 1" in detail_page
 
     print_response = app_client.get(f"/inventory/locations/{sub_location_id}/print")
     print_page = print_response.get_data(as_text=True)

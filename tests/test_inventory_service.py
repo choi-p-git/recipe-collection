@@ -18,6 +18,12 @@ from services.inventory_bridge_service import (
     resolve_inventory_for_recipe_item,
 )
 from services.item_service import create_base_food
+from services.inventory_usage_service import get_inventory_item_detail
+from services.menu_forecast_service import save_menu_forecast_yield
+from services.menu_service import create_menu, replace_menu_slot_items
+from services.production_record_service import ensure_production_record, save_production_record_line
+from services.recipe_service import create_recipe
+from queries.menu_forecast import get_menu_forecast_page
 
 
 def _live_base_food(isolated_db, name: str) -> int:
@@ -368,3 +374,134 @@ def test_manual_inventory_match_can_exist_without_count_rows(isolated_db):
     assert availability[0]["confidence_score"] == 0.95
     assert availability[0]["on_hand_quantity_display"] == "0"
     assert availability[0]["purchase_uom"] == "Case"
+
+
+def test_inventory_item_detail_groups_recipe_usage_and_count_rolldown(isolated_db):
+    ingredient_id = _live_base_food(isolated_db, "Inventory Usage Carrot")
+    recipe_id = create_recipe(
+        {
+            "item_name": "Inventory Usage Soup",
+            "yield_quantity": 10,
+            "yield_unit": "lb",
+            "primary_cooking_method_code": "simmer",
+            "instruction_steps": ["Cook"],
+            "ingredients": [
+                {
+                    "component_item_id": ingredient_id,
+                    "component_quantity": 2,
+                    "component_unit": "lb",
+                }
+            ],
+        }
+    )
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id = ?", (recipe_id,))
+    conn.commit()
+    conn.close()
+    location_id = create_inventory_location(
+        location_name="Usage Cooler",
+        actor_user_id="dev_user_001",
+        actor_display_name="Plato Choi",
+    )
+    save_inventory_location_item(
+        inventory_location_id=location_id,
+        item_id=ingredient_id,
+        count_each_quantity="3",
+        count_case_quantity="1",
+        pack_quantity="4",
+        pack_size_text="5 lb",
+        unit_of_measurement="Case",
+        count_type="counted_by_each_and_case",
+    )
+
+    future_menu_id = create_menu(
+        menu_name="Inventory Future Menu",
+        author_user_id="dev_user_001",
+        author_display_name="Plato Choi",
+        service_days=["monday"],
+        meal_periods=["lunch"],
+        concepts=["hot_line"],
+        menu_length_weeks=1,
+        menu_start_date="2026-06-01",
+        menu_end_date="2026-06-07",
+        require_date_range=True,
+        allowed_service_days=["monday"],
+        allowed_meal_periods=["lunch"],
+        allowed_concepts=["hot_line"],
+    )
+    past_menu_id = create_menu(
+        menu_name="Inventory Past Menu",
+        author_user_id="dev_user_001",
+        author_display_name="Plato Choi",
+        service_days=["monday"],
+        meal_periods=["lunch"],
+        concepts=["hot_line"],
+        menu_length_weeks=1,
+        menu_start_date="2026-05-04",
+        menu_end_date="2026-05-10",
+        require_date_range=True,
+        allowed_service_days=["monday"],
+        allowed_meal_periods=["lunch"],
+        allowed_concepts=["hot_line"],
+    )
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT menu_slot_id FROM menu_slot WHERE menu_id = ?", (future_menu_id,))
+    future_slot_id = cursor.fetchone()[0]
+    cursor.execute("SELECT menu_slot_id FROM menu_slot WHERE menu_id = ?", (past_menu_id,))
+    past_slot_id = cursor.fetchone()[0]
+    conn.close()
+    replace_menu_slot_items(menu_slot_id=future_slot_id, selected_item_ids=[recipe_id], actor_user_id="dev_user_001")
+    replace_menu_slot_items(menu_slot_id=past_slot_id, selected_item_ids=[recipe_id], actor_user_id="dev_user_001")
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT msi.menu_slot_item_id, ms.menu_id
+        FROM menu_slot_item msi
+        JOIN menu_slot ms ON ms.menu_slot_id = msi.menu_slot_id
+        WHERE ms.menu_id IN (?, ?)
+        ORDER BY ms.menu_id ASC
+        """,
+        (past_menu_id, future_menu_id),
+    )
+    slot_items = {menu_id: slot_item_id for slot_item_id, menu_id in cursor.fetchall()}
+    conn.close()
+    for menu_id, slot_item_id in slot_items.items():
+        save_menu_forecast_yield(
+            menu_id=menu_id,
+            menu_slot_item_id=slot_item_id,
+            actor_user_id="dev_user_001",
+            forecast_yield_quantity=12,
+            forecast_yield_unit="lb",
+        )
+    past_forecast_page = get_menu_forecast_page(past_menu_id, week_number=1, day_of_week="monday")
+    record = ensure_production_record(
+        menu_id=past_menu_id,
+        week_number=1,
+        day_of_week="monday",
+        production_summary=past_forecast_page["production_summary"],
+        actor_user_id="dev_user_001",
+    )
+    save_production_record_line(
+        menu_id=past_menu_id,
+        production_record_line_id=record["lines"][0]["production_record_line_id"],
+        actor_user_id="dev_user_001",
+        actual_quantity="12",
+        actual_unit="lb",
+        end_service_variance_quantity="1",
+        end_service_variance_unit="lb",
+        reason_code="as_expected",
+    )
+
+    detail = get_inventory_item_detail(ingredient_id)
+
+    assert detail["item"]["item_name"] == "Inventory Usage Carrot"
+    assert detail["count_rolldown"][0]["count_each_quantity_display"] == "3"
+    assert detail["count_rolldown"][0]["count_case_quantity_display"] == "1"
+    assert detail["upcoming"][0]["menu_item_name"] == "Inventory Usage Soup"
+    assert detail["upcoming"][0]["menu_name"] == "Inventory Future Menu"
+    assert detail["past"][0]["menu_item_name"] == "Inventory Usage Soup"
+    assert detail["past"][0]["actual_quantity_display"] == "12"
+    assert detail["past"][0]["variance_quantity_display"] == "1"

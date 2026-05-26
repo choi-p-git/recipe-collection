@@ -1083,6 +1083,12 @@ def get_inventory_dashboard() -> dict:
     initialize_database()
     locations = list_inventory_locations(include_inactive=True)
     current_on_hand = _list_current_on_hand()
+    from services.inventory_usage_service import get_inventory_item_count_rolldown, get_inventory_item_usage
+
+    for item in current_on_hand:
+        usage = get_inventory_item_usage(item["item_id"], limit=5)
+        item["usage_summary"] = usage
+        item["count_rolldown"] = get_inventory_item_count_rolldown(item["item_id"])
     location_tree = get_inventory_location_tree()
     return {
         "locations": locations,

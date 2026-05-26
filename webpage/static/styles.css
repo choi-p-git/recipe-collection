@@ -1665,6 +1665,36 @@ button:disabled {
     padding: 0.75rem;
 }
 
+.inventory-dashboard-popover {
+    display: inline-block;
+}
+
+.inventory-dashboard-history-panel {
+    min-width: 320px;
+    max-width: 520px;
+}
+
+.inventory-history-past-group {
+    border-top: 1px solid #d1d5db;
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+}
+
+.inventory-table-popover-button {
+    border: 0;
+    background: transparent;
+    color: #2563eb;
+    cursor: pointer;
+    font: inherit;
+    padding: 0;
+    text-decoration: underline;
+}
+
+.inventory-usage-detail-line {
+    margin: 0.35rem 0;
+    color: #374151;
+}
+
 .menu-forecast-history:hover .menu-forecast-history-panel,
 .menu-forecast-history:focus-within .menu-forecast-history-panel,
 .menu-forecast-history.is-open .menu-forecast-history-panel {
