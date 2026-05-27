@@ -55,12 +55,13 @@ Current implemented scope:
 * inventory catalog and item-match bridge foundation for future invoice/vendor auto-match
 * inventory availability service contract for Menu Builder / Forecasting / Production Record consumers
 * Forecasting Production Summary consumes the inventory availability bridge and surfaces current on-hand/match status
+* first-pass reorder/shortage planning on the Inventory dashboard for counted live base foods with upcoming menu need
 
 Current on-hand semantics: sum live item rows across active storage locations by item/unit after normalizing count entry from each/case fields into the row quantity. Inventory counts are operational live counts and do not have an independent submit/finalize step in this app. Weekly business finalization belongs to a later business/finance/accounting service layer. Future invoice/vendor ingest, purchasing, forecast estimation, inventory-vs-actual, and analytics integrations should build on these item-linked live count facts rather than bypassing them.
 
 Inventory identity boundary: Recipe Collection `item_id` remains the culinary ingredient identity. Inventory owns `inventory_catalog_item` as the purchasing/counting/vendor-facing identity, and `inventory_item_match` bridges Recipe Collection items to inventory catalog items. Current count entry still accepts live base-food `item_id` for MVP workflow continuity, but new count rows create a legacy inventory catalog match so future invoice auto-match, vendor catalog import, accounting, and analytics work can migrate toward inventory-owned identity without breaking Menu Builder consumers.
 
-Inventory demand conversion governance: temporary `1 each = quantity/unit` conversions are preview-only operational assumptions and should not be persisted to Recipe Collection item metadata. Base-food official mass/volume metadata can support each-to-mass/volume conversion when present, but purveyor-specific or operator-specific each assumptions should stay in inventory/vendor/invoice context. Reorder and shortage planning should use inventory purchase UoM and pack setup for suggestions, while keeping calculated demand separate from rounded order quantities.
+Inventory demand conversion governance: temporary `1 each = quantity/unit` conversions are preview-only operational assumptions and should not be persisted to Recipe Collection item metadata. Base-food official mass/volume metadata can support each-to-mass/volume conversion when present, but purveyor-specific or operator-specific each assumptions should stay in inventory/vendor/invoice context. Reorder and shortage planning currently exposes calculated coverage facts only; future purchase suggestions should use inventory purchase UoM and pack setup while keeping calculated demand separate from rounded order quantities.
 
 ## Dev Automation Guidance
 
@@ -1364,8 +1365,8 @@ Test data cleanup boundaries:
 
 ## Current Next Logical Development Steps
 
-1. add inventory reorder/shortage planning from current on hand versus upcoming menu need, with calculated need kept separate from rounded purchase suggestions
-2. add review UI for unmatched, ambiguous, and invoice-auto-matched inventory catalog items
+1. add review UI for unmatched, ambiguous, and invoice-auto-matched inventory catalog items
+2. expand inventory reorder/shortage planning beyond counted items to include upcoming base-food needs with no current count row
 3. expand inventory availability from menu item rollups to recipe ingredient demand rollups
 4. add forecast error trend reporting by item over time using posted facts
 5. refine posted facts only through versioned contract changes

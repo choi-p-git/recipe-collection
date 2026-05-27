@@ -138,7 +138,7 @@ Dev automation note
 Inventory roadmap note
 
 - Inventory item detail now treats temporary `1 each = quantity/unit` conversions as preview-only operational context. Do not write those temporary conversions into base-food metadata, because purveyor, pack, and operator assumptions about `each` can differ by scenario.
-- Reorder and shortage planning is the next planned inventory slice after item-detail demand/usage refinement. It should compare current on hand against upcoming menu need, show `can cover`, `short by`, and remaining quantity, and keep calculated need separate from rounded purchase suggestions.
+- First-pass reorder and shortage planning is implemented on the Inventory dashboard for counted live base foods with upcoming menu need. It compares current on hand against next upcoming need, shows `can cover`, `short by`, or review status, and keeps calculated need separate from rounded purchase suggestions.
 - Future invoice/accounting work should use inventory purchase UoM and pack setup as the costing bridge, rather than forcing vendor-specific each assumptions into Recipe Collection item truth.
 
 Search stack note

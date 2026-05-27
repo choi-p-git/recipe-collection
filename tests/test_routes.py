@@ -1539,6 +1539,7 @@ def test_inventory_foundation_routes_create_count_and_current_on_hand(app_client
     dashboard_page = dashboard_response.get_data(as_text=True)
 
     assert dashboard_response.status_code == 200
+    assert "Reorder Planning" in dashboard_page
     assert "Current On Hand" in dashboard_page
     assert "Route Inventory Onions" in dashboard_page
     assert f"/inventory/items/{item_id}" in dashboard_page

@@ -441,6 +441,23 @@ def _inventory_needed_measure(
             "conversion_issue": None,
         }
 
+    if unit_of_measurement in {"Kg", "Lb"}:
+        target_unit = "kg" if unit_of_measurement == "Kg" else "lb"
+        needed_in_unit = _sum_needed_parts_in_unit(needed_parts, target_unit, profile, each_bridge)
+        if needed_in_unit is not None:
+            return {
+                "display": f"{_format_quantity(needed_in_unit)} {format_unit_label(target_unit)}",
+                "quantity": needed_in_unit,
+                "unit": target_unit,
+                "unit_label": format_unit_label(target_unit),
+                "conversion_note": each_bridge.get("label", ""),
+                "conversion_issue": None,
+            }
+        return {
+            **empty_measure,
+            "conversion_issue": _needed_conversion_issue(needed_parts, target_unit, each_bridge),
+        }
+
     if unit_of_measurement == "Each" or count_type == EACH_ONLY_COUNT_TYPE:
         if pack_size:
             pack_size_quantity, pack_size_unit = pack_size
@@ -468,23 +485,6 @@ def _inventory_needed_measure(
         return {
             **empty_measure,
             "conversion_issue": _needed_conversion_issue(needed_parts, "each", each_bridge),
-        }
-
-    if unit_of_measurement in {"Kg", "Lb"}:
-        target_unit = "kg" if unit_of_measurement == "Kg" else "lb"
-        needed_in_unit = _sum_needed_parts_in_unit(needed_parts, target_unit, profile, each_bridge)
-        if needed_in_unit is not None:
-            return {
-                "display": f"{_format_quantity(needed_in_unit)} {format_unit_label(target_unit)}",
-                "quantity": needed_in_unit,
-                "unit": target_unit,
-                "unit_label": format_unit_label(target_unit),
-                "conversion_note": each_bridge.get("label", ""),
-                "conversion_issue": None,
-            }
-        return {
-            **empty_measure,
-            "conversion_issue": _needed_conversion_issue(needed_parts, target_unit, each_bridge),
         }
     return empty_measure
 
@@ -833,4 +833,85 @@ def get_inventory_item_detail(item_id: int, *, temporary_each_bridge: dict | Non
         **usage,
         "count_rolldown": count_rolldown,
         "summary": _build_inventory_item_summary(usage=usage, count_rolldown=count_rolldown),
+    }
+
+
+def _inventory_planning_item_ids() -> list[int]:
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT DISTINCT ili.item_id
+            FROM inventory_location_item ili
+            JOIN inventory_location il
+              ON il.inventory_location_id = ili.inventory_location_id
+            JOIN item i
+              ON i.item_id = ili.item_id
+            WHERE il.status = 'active'
+              AND i.status = 'live'
+              AND i.item_type = 'base_food'
+            ORDER BY i.item_name ASC, i.item_id ASC
+            """
+        )
+        return [int(row[0]) for row in cursor.fetchall()]
+
+
+def get_inventory_reorder_plan(*, today: date | None = None, limit: int | None = None) -> dict:
+    """
+    Build first-pass shortage/reorder facts from counted inventory and upcoming menu need.
+
+    This intentionally returns calculated need/coverage only. Rounded purchasing
+    suggestions belong to a later inventory purchasing slice.
+    """
+    rows = []
+    status_sort = {"short": 0, "unknown": 1, "ok": 2, "none": 3}
+    for item_id in _inventory_planning_item_ids():
+        usage = get_inventory_item_usage(item_id, today=today)
+        if not usage["upcoming"]:
+            continue
+        count_rolldown = get_inventory_item_count_rolldown(item_id)
+        summary = _build_inventory_item_summary(usage=usage, count_rolldown=count_rolldown)
+        next_usage = usage["upcoming"][0]
+        rows.append(
+            {
+                "item_id": item_id,
+                "item_name": usage["item"]["item_name"],
+                "item_category_label": usage["item"]["item_category_label"],
+                "current_on_hand_display": summary["current_on_hand_display"],
+                "next_service_date": next_usage.get("service_date", ""),
+                "next_usage_display": summary["next_usage_display"],
+                "next_needed_display": summary["next_needed_display"],
+                "coverage_display": summary["coverage_display"],
+                "coverage_status": summary["coverage_status"],
+                "upcoming_count": usage["upcoming_count"],
+                "next_menu_name": next_usage.get("menu_name", ""),
+                "next_menu_item_name": next_usage.get("menu_item_name", ""),
+                "needed_conversion_issue": next_usage.get("needed_conversion_issue"),
+                "service_context": {
+                    "menu_id": next_usage["menu_id"],
+                    "week_number": next_usage["week_number"],
+                    "day_of_week": next_usage["day_of_week"],
+                },
+            }
+        )
+
+    rows.sort(
+        key=lambda row: (
+            status_sort.get(row["coverage_status"], 99),
+            row["next_service_date"] or "9999-99-99",
+            row["item_name"].lower(),
+        )
+    )
+    totals = {
+        "planning_item_count": len(rows),
+        "short_count": len([row for row in rows if row["coverage_status"] == "short"]),
+        "unknown_count": len([row for row in rows if row["coverage_status"] == "unknown"]),
+        "ok_count": len([row for row in rows if row["coverage_status"] == "ok"]),
+    }
+    if limit is not None:
+        rows = rows[:limit]
+    return {
+        "rows": rows,
+        "totals": totals,
+        "contract_version": "inventory.reorder_plan.v1",
     }

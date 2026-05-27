@@ -20,6 +20,7 @@ from services.inventory_bridge_service import (
 )
 from services.item_service import create_base_food
 from services.inventory_usage_service import get_inventory_item_detail, get_inventory_item_usage
+from services.inventory_usage_service import get_inventory_reorder_plan
 from services.menu_forecast_service import save_menu_forecast_yield
 from services.menu_service import create_menu, replace_menu_slot_items
 from services.production_record_service import ensure_production_record, save_production_record_line
@@ -599,6 +600,65 @@ def test_inventory_item_detail_groups_recipe_usage_and_count_rolldown(isolated_d
     usage = get_inventory_item_usage(ingredient_id)
 
     assert usage["upcoming"][0]["needed_display"] == "0.48 each"
+
+
+def test_inventory_reorder_plan_compares_on_hand_to_next_need(isolated_db):
+    item_id = _live_base_food(isolated_db, "Inventory Planning Beans")
+    location_id = create_inventory_location(
+        location_name="Planning Dry Storage",
+        actor_user_id="dev_user_001",
+        actor_display_name="Plato Choi",
+    )
+    save_inventory_location_item(
+        inventory_location_id=location_id,
+        item_id=item_id,
+        count_each_quantity="4",
+        unit_of_measurement="Lb",
+        count_type="counted_by_each_only",
+    )
+    menu_id = create_menu(
+        menu_name="Inventory Planning Menu",
+        author_user_id="dev_user_001",
+        author_display_name="Plato Choi",
+        service_days=["monday"],
+        meal_periods=["lunch"],
+        concepts=["hot_line"],
+        menu_length_weeks=1,
+        menu_start_date="2026-06-01",
+        menu_end_date="2026-06-07",
+        require_date_range=True,
+        allowed_service_days=["monday"],
+        allowed_meal_periods=["lunch"],
+        allowed_concepts=["hot_line"],
+    )
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT menu_slot_id FROM menu_slot WHERE menu_id = ?", (menu_id,))
+    slot_id = cursor.fetchone()[0]
+    conn.close()
+    replace_menu_slot_items(menu_slot_id=slot_id, selected_item_ids=[item_id], actor_user_id="dev_user_001")
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT menu_slot_item_id FROM menu_slot_item WHERE menu_slot_id = ?", (slot_id,))
+    slot_item_id = cursor.fetchone()[0]
+    conn.close()
+    save_menu_forecast_yield(
+        menu_id=menu_id,
+        menu_slot_item_id=slot_item_id,
+        actor_user_id="dev_user_001",
+        forecast_yield_quantity=6,
+        forecast_yield_unit="lb",
+    )
+
+    plan = get_inventory_reorder_plan(today=date(2026, 5, 27))
+
+    assert plan["contract_version"] == "inventory.reorder_plan.v1"
+    assert plan["totals"]["short_count"] == 1
+    assert plan["rows"][0]["item_name"] == "Inventory Planning Beans"
+    assert plan["rows"][0]["current_on_hand_display"] == "4 lb"
+    assert plan["rows"][0]["next_needed_display"] == "6 lb"
+    assert plan["rows"][0]["coverage_display"] == "Short by 2 lb"
+    assert plan["rows"][0]["coverage_status"] == "short"
 
 
 def test_inventory_usage_needed_quantity_uses_recipe_mass_volume_bridge(isolated_db):
