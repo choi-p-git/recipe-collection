@@ -296,9 +296,15 @@ def _sum_needed_parts_in_unit(needed_parts: list[dict], target_unit: str, profil
     return total
 
 
-def _inventory_needed_display(needed_parts: list[dict], profile: dict | None) -> str:
+def _inventory_needed_measure(needed_parts: list[dict], profile: dict | None) -> dict:
+    empty_measure = {
+        "display": "",
+        "quantity": None,
+        "unit": "",
+        "unit_label": "",
+    }
     if not profile:
-        return ""
+        return empty_measure
 
     unit_of_measurement = profile.get("unit_of_measurement")
     count_type = profile.get("count_type")
@@ -311,26 +317,48 @@ def _inventory_needed_display(needed_parts: list[dict], profile: dict | None) ->
         pack_size_quantity, pack_size_unit = pack_size
         needed_in_pack_unit = _sum_needed_parts_in_unit(needed_parts, pack_size_unit, profile)
         if needed_in_pack_unit is None or pack_size_quantity <= 0:
-            return ""
-        return f"{_format_quantity(needed_in_pack_unit / (pack_quantity * pack_size_quantity))} case"
+            return empty_measure
+        quantity = needed_in_pack_unit / (pack_quantity * pack_size_quantity)
+        return {
+            "display": f"{_format_quantity(quantity)} case",
+            "quantity": quantity,
+            "unit": "case",
+            "unit_label": "case",
+        }
 
     if unit_of_measurement == "Each" or count_type == EACH_ONLY_COUNT_TYPE:
         if pack_size:
             pack_size_quantity, pack_size_unit = pack_size
             needed_in_pack_unit = _sum_needed_parts_in_unit(needed_parts, pack_size_unit, profile)
             if needed_in_pack_unit is not None and pack_size_quantity > 0:
-                return f"{_format_quantity(needed_in_pack_unit / pack_size_quantity)} each"
+                quantity = needed_in_pack_unit / pack_size_quantity
+                return {
+                    "display": f"{_format_quantity(quantity)} each",
+                    "quantity": quantity,
+                    "unit": "each",
+                    "unit_label": format_unit_label("each"),
+                }
         needed_each = _sum_needed_parts_in_unit(needed_parts, "each", profile)
         if needed_each is not None:
-            return f"{_format_quantity(needed_each)} {format_unit_label('each')}"
-        return ""
+            return {
+                "display": f"{_format_quantity(needed_each)} {format_unit_label('each')}",
+                "quantity": needed_each,
+                "unit": "each",
+                "unit_label": format_unit_label("each"),
+            }
+        return empty_measure
 
     if unit_of_measurement in {"Kg", "Lb"}:
         target_unit = "kg" if unit_of_measurement == "Kg" else "lb"
         needed_in_unit = _sum_needed_parts_in_unit(needed_parts, target_unit, profile)
         if needed_in_unit is not None:
-            return f"{_format_quantity(needed_in_unit)} {format_unit_label(target_unit)}"
-    return ""
+            return {
+                "display": f"{_format_quantity(needed_in_unit)} {format_unit_label(target_unit)}",
+                "quantity": needed_in_unit,
+                "unit": target_unit,
+                "unit_label": format_unit_label(target_unit),
+            }
+    return empty_measure
 
 
 def _attach_needed_display(item_id: int, usage: dict, inventory_needed_profile: dict | None) -> dict:
@@ -340,9 +368,12 @@ def _attach_needed_display(item_id: int, usage: dict, inventory_needed_profile: 
             **usage,
             "needed_parts": [],
             "needed_display": "",
+            "needed_quantity": None,
+            "needed_unit": "",
+            "needed_unit_label": "",
             "recipe_needed_display": "",
             "needed_quantity_display": "",
-            "needed_unit_label": "",
+            "recipe_needed_unit_label": "",
         }
     display_parts = [
         f"{_format_quantity(part['quantity'])} {format_unit_label(part['unit'])}"
@@ -350,14 +381,17 @@ def _attach_needed_display(item_id: int, usage: dict, inventory_needed_profile: 
     ]
     first_part = needed_parts[0]
     recipe_needed_display = " + ".join(display_parts)
-    inventory_needed_display = _inventory_needed_display(needed_parts, inventory_needed_profile)
+    inventory_needed = _inventory_needed_measure(needed_parts, inventory_needed_profile)
     return {
         **usage,
         "needed_parts": needed_parts,
-        "needed_display": inventory_needed_display or recipe_needed_display,
+        "needed_display": inventory_needed["display"] or recipe_needed_display,
+        "needed_quantity": inventory_needed["quantity"],
+        "needed_unit": inventory_needed["unit"],
+        "needed_unit_label": inventory_needed["unit_label"],
         "recipe_needed_display": recipe_needed_display,
         "needed_quantity_display": _format_quantity(first_part["quantity"]),
-        "needed_unit_label": format_unit_label(first_part["unit"]),
+        "recipe_needed_unit_label": format_unit_label(first_part["unit"]),
     }
 
 
@@ -549,24 +583,62 @@ def get_inventory_item_count_rolldown(item_id: int) -> list[dict]:
 
 def _build_inventory_item_summary(*, usage: dict, count_rolldown: list[dict]) -> dict:
     quantities_by_unit: dict[str, float] = {}
+    quantity_labels_by_unit: dict[str, str] = {}
+    coverage_quantities_by_unit: dict[str, float] = {}
     for row in count_rolldown:
-        unit_label = row.get("display_unit_label") or row.get("unit_label") or ""
-        if not unit_label:
+        unit = row.get("display_unit") or row.get("unit") or ""
+        unit_label = row.get("display_unit_label") or row.get("unit_label") or unit
+        if not unit:
             continue
-        quantities_by_unit[unit_label] = quantities_by_unit.get(unit_label, 0.0) + float(row.get("display_quantity") or 0)
+        quantities_by_unit[unit] = quantities_by_unit.get(unit, 0.0) + float(row.get("display_quantity") or 0)
+        quantity_labels_by_unit[unit] = unit_label
+
+        if row.get("unit_of_measurement") == "Case" and row.get("pack_quantity"):
+            pack_quantity = float(row.get("pack_quantity") or 0)
+            if pack_quantity > 0:
+                count_each_quantity = float(row.get("count_each_quantity") or 0)
+                count_case_quantity = float(row.get("count_case_quantity") or 0)
+                equivalent_case_quantity = count_case_quantity + (count_each_quantity / pack_quantity)
+                equivalent_each_quantity = (count_case_quantity * pack_quantity) + count_each_quantity
+                coverage_quantities_by_unit["case"] = coverage_quantities_by_unit.get("case", 0.0) + equivalent_case_quantity
+                coverage_quantities_by_unit["each"] = coverage_quantities_by_unit.get("each", 0.0) + equivalent_each_quantity
+                continue
+        coverage_quantities_by_unit[unit] = coverage_quantities_by_unit.get(unit, 0.0) + float(
+            row.get("display_quantity") or 0
+        )
 
     current_on_hand_display = " / ".join(
-        f"{_format_quantity(quantity)} {unit_label}"
-        for unit_label, quantity in sorted(quantities_by_unit.items())
+        f"{_format_quantity(quantity)} {quantity_labels_by_unit.get(unit, unit)}"
+        for unit, quantity in sorted(quantities_by_unit.items())
     ) or "0"
     last_counted_at = max((row.get("updated_at") or "" for row in count_rolldown), default="")
     next_usage = usage["upcoming"][0] if usage["upcoming"] else None
+    coverage_display = "No upcoming need"
+    coverage_status = "none"
+    if next_usage and next_usage.get("needed_quantity") is not None and next_usage.get("needed_unit"):
+        needed_quantity = float(next_usage["needed_quantity"])
+        needed_unit = next_usage["needed_unit"]
+        needed_unit_label = next_usage.get("needed_unit_label") or needed_unit
+        on_hand_quantity = coverage_quantities_by_unit.get(needed_unit)
+        if on_hand_quantity is None:
+            coverage_display = "Unit mismatch"
+            coverage_status = "unknown"
+        else:
+            delta = on_hand_quantity - needed_quantity
+            if delta >= 0:
+                coverage_display = f"Can cover, {_format_quantity(delta)} {needed_unit_label} remaining"
+                coverage_status = "ok"
+            else:
+                coverage_display = f"Short by {_format_quantity(abs(delta))} {needed_unit_label}"
+                coverage_status = "short"
     return {
         "current_on_hand_display": current_on_hand_display,
         "count_location_count": len(count_rolldown),
         "last_counted_at": last_counted_at,
         "next_usage_display": next_usage["service_date_display"] if next_usage else "",
         "next_needed_display": next_usage.get("needed_display", "") if next_usage else "",
+        "coverage_display": coverage_display,
+        "coverage_status": coverage_status,
         "upcoming_count": usage["upcoming_count"],
         "past_count": usage["past_count"],
         "total_usage_count": usage["upcoming_count"] + usage["past_count"],

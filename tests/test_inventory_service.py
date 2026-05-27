@@ -553,6 +553,8 @@ def test_inventory_item_detail_groups_recipe_usage_and_count_rolldown(isolated_d
     assert detail["summary"]["count_location_count"] == 1
     assert detail["summary"]["next_usage_display"] == "Jun 1"
     assert detail["summary"]["next_needed_display"] == "0.12 case"
+    assert detail["summary"]["coverage_display"] == "Can cover, 1.63 case remaining"
+    assert detail["summary"]["coverage_status"] == "ok"
     assert detail["summary"]["total_usage_count"] == 2
     assert detail["count_rolldown"][0]["count_each_quantity_display"] == "3"
     assert detail["count_rolldown"][0]["count_case_quantity_display"] == "1"
@@ -565,6 +567,22 @@ def test_inventory_item_detail_groups_recipe_usage_and_count_rolldown(isolated_d
     assert detail["past"][0]["needed_display"] == "0.12 case"
     assert detail["past"][0]["actual_quantity_display"] == "12"
     assert detail["past"][0]["variance_quantity_display"] == "1"
+
+    update_inventory_location_item(
+        inventory_location_item_id=detail["count_rolldown"][0]["inventory_location_item_id"],
+        count_each_quantity="1",
+        count_case_quantity="0",
+        pack_quantity="4",
+        pack_size_text="5 lb",
+        unit_of_measurement="Case",
+        count_type="counted_by_each_and_case",
+    )
+    each_case_detail = get_inventory_item_detail(ingredient_id)
+
+    assert each_case_detail["summary"]["current_on_hand_display"] == "1 each"
+    assert each_case_detail["summary"]["next_needed_display"] == "0.12 case"
+    assert each_case_detail["summary"]["coverage_display"] == "Can cover, 0.13 case remaining"
+    assert each_case_detail["summary"]["coverage_status"] == "ok"
 
     update_inventory_location_item(
         inventory_location_item_id=detail["count_rolldown"][0]["inventory_location_item_id"],
