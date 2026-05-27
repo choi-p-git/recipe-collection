@@ -552,18 +552,33 @@ def test_inventory_item_detail_groups_recipe_usage_and_count_rolldown(isolated_d
     assert detail["summary"]["current_on_hand_display"] == "1.75 case"
     assert detail["summary"]["count_location_count"] == 1
     assert detail["summary"]["next_usage_display"] == "Jun 1"
-    assert detail["summary"]["next_needed_display"] == "2.4 lb"
+    assert detail["summary"]["next_needed_display"] == "0.12 case"
     assert detail["summary"]["total_usage_count"] == 2
     assert detail["count_rolldown"][0]["count_each_quantity_display"] == "3"
     assert detail["count_rolldown"][0]["count_case_quantity_display"] == "1"
     assert detail["upcoming"][0]["menu_item_name"] == "Inventory Usage Soup"
     assert detail["upcoming"][0]["menu_name"] == "Inventory Future Menu"
-    assert detail["upcoming"][0]["needed_display"] == "2.4 lb"
+    assert detail["upcoming"][0]["needed_display"] == "0.12 case"
+    assert detail["upcoming"][0]["recipe_needed_display"] == "2.4 lb"
     assert detail["upcoming"][0]["actual_quantity_display"] == "12"
     assert detail["past"][0]["menu_item_name"] == "Inventory Usage Soup"
-    assert detail["past"][0]["needed_display"] == "2.4 lb"
+    assert detail["past"][0]["needed_display"] == "0.12 case"
     assert detail["past"][0]["actual_quantity_display"] == "12"
     assert detail["past"][0]["variance_quantity_display"] == "1"
+
+    update_inventory_location_item(
+        inventory_location_item_id=detail["count_rolldown"][0]["inventory_location_item_id"],
+        count_each_quantity="3",
+        count_case_quantity="0",
+        pack_quantity="4",
+        pack_size_text="5 lb",
+        unit_of_measurement="Case",
+        count_type="counted_by_each_only",
+    )
+
+    usage = get_inventory_item_usage(ingredient_id)
+
+    assert usage["upcoming"][0]["needed_display"] == "0.48 each"
 
 
 def test_inventory_usage_needed_quantity_uses_recipe_mass_volume_bridge(isolated_db):

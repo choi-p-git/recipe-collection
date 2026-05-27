@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import date
 
 from config.item_categories import ITEM_CATEGORY_LABELS
@@ -8,11 +9,12 @@ from db import get_connection
 from services.inventory_service import _format_location_line_display, _format_quantity
 from services.menu_calendar_service import build_week_day_dates
 from services.recipe_flattening_service import build_flattened_recipe_view
-from services.unit_conversion_service import convert_unit_value, convert_with_item_mass_volume_bridge
+from services.unit_conversion_service import convert_unit_value, convert_with_item_mass_volume_bridge, normalize_unit_symbol
 from services.unit_label_service import format_unit_label
 
 
 MAX_DASHBOARD_USAGE_ROWS = 5
+EACH_ONLY_COUNT_TYPE = "counted_by_each_only"
 
 
 def _format_optional_quantity(value) -> str:
@@ -207,13 +209,138 @@ def _needed_parts_for_usage(item_id: int, usage: dict) -> list[dict]:
     ]
 
 
-def _attach_needed_display(item_id: int, usage: dict) -> dict:
+def _parse_pack_size_text(pack_size_text: str | None) -> tuple[float, str] | None:
+    match = re.match(r"^\s*(\d+(?:\.\d+)?)\s+([A-Za-z][A-Za-z0-9_ ]*)\s*$", str(pack_size_text or ""))
+    if not match:
+        return None
+    unit = normalize_unit_symbol(match.group(2).strip().lower())
+    if not unit:
+        return None
+    return float(match.group(1)), unit
+
+
+def _load_inventory_needed_profile(item_id: int) -> dict | None:
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT
+                ili.unit_of_measurement,
+                ili.count_type,
+                ili.pack_quantity,
+                ili.pack_size_text,
+                i.item_type,
+                i.mass_quantity,
+                i.mass_unit,
+                i.volume_quantity,
+                i.volume_unit
+            FROM inventory_location_item ili
+            JOIN inventory_location il
+              ON il.inventory_location_id = ili.inventory_location_id
+            JOIN item i
+              ON i.item_id = ili.item_id
+            WHERE ili.item_id = ?
+              AND il.status = 'active'
+            ORDER BY
+                CASE
+                    WHEN ili.unit_of_measurement = 'Case' AND ili.count_type != ? THEN 0
+                    WHEN ili.count_type = ? OR ili.unit_of_measurement = 'Each' THEN 1
+                    ELSE 2
+                END,
+                ili.updated_at DESC
+            LIMIT 1
+            """,
+            (item_id, EACH_ONLY_COUNT_TYPE, EACH_ONLY_COUNT_TYPE),
+        )
+        row = cursor.fetchone()
+    if row is None:
+        return None
+    return {
+        "unit_of_measurement": row[0] or "",
+        "count_type": row[1] or "",
+        "pack_quantity": float(row[2]) if row[2] is not None else None,
+        "pack_size_text": row[3] or "",
+        "item_type": row[4] or "",
+        "mass_quantity": float(row[5]) if row[5] is not None else None,
+        "mass_unit": row[6] or "",
+        "volume_quantity": float(row[7]) if row[7] is not None else None,
+        "volume_unit": row[8] or "",
+    }
+
+
+def _convert_needed_part_to_unit(part: dict, target_unit: str, profile: dict) -> float | None:
+    conversion = convert_unit_value(float(part["quantity"]), part["unit"], target_unit)
+    if not conversion["ok"]:
+        conversion = convert_with_item_mass_volume_bridge(
+            float(part["quantity"]),
+            part["unit"],
+            target_unit,
+            item_type=profile.get("item_type") or "",
+            mass_quantity=profile.get("mass_quantity"),
+            mass_unit=profile.get("mass_unit"),
+            volume_quantity=profile.get("volume_quantity"),
+            volume_unit=profile.get("volume_unit"),
+        )
+    if not conversion["ok"]:
+        return None
+    return float(conversion["quantity"])
+
+
+def _sum_needed_parts_in_unit(needed_parts: list[dict], target_unit: str, profile: dict) -> float | None:
+    total = 0.0
+    for part in needed_parts:
+        converted_quantity = _convert_needed_part_to_unit(part, target_unit, profile)
+        if converted_quantity is None:
+            return None
+        total += converted_quantity
+    return total
+
+
+def _inventory_needed_display(needed_parts: list[dict], profile: dict | None) -> str:
+    if not profile:
+        return ""
+
+    unit_of_measurement = profile.get("unit_of_measurement")
+    count_type = profile.get("count_type")
+    pack_size = _parse_pack_size_text(profile.get("pack_size_text"))
+
+    if unit_of_measurement == "Case" and count_type != EACH_ONLY_COUNT_TYPE:
+        pack_quantity = float(profile.get("pack_quantity") or 0)
+        if not pack_size or pack_quantity <= 0:
+            return ""
+        pack_size_quantity, pack_size_unit = pack_size
+        needed_in_pack_unit = _sum_needed_parts_in_unit(needed_parts, pack_size_unit, profile)
+        if needed_in_pack_unit is None or pack_size_quantity <= 0:
+            return ""
+        return f"{_format_quantity(needed_in_pack_unit / (pack_quantity * pack_size_quantity))} case"
+
+    if unit_of_measurement == "Each" or count_type == EACH_ONLY_COUNT_TYPE:
+        if pack_size:
+            pack_size_quantity, pack_size_unit = pack_size
+            needed_in_pack_unit = _sum_needed_parts_in_unit(needed_parts, pack_size_unit, profile)
+            if needed_in_pack_unit is not None and pack_size_quantity > 0:
+                return f"{_format_quantity(needed_in_pack_unit / pack_size_quantity)} each"
+        needed_each = _sum_needed_parts_in_unit(needed_parts, "each", profile)
+        if needed_each is not None:
+            return f"{_format_quantity(needed_each)} {format_unit_label('each')}"
+        return ""
+
+    if unit_of_measurement in {"Kg", "Lb"}:
+        target_unit = "kg" if unit_of_measurement == "Kg" else "lb"
+        needed_in_unit = _sum_needed_parts_in_unit(needed_parts, target_unit, profile)
+        if needed_in_unit is not None:
+            return f"{_format_quantity(needed_in_unit)} {format_unit_label(target_unit)}"
+    return ""
+
+
+def _attach_needed_display(item_id: int, usage: dict, inventory_needed_profile: dict | None) -> dict:
     needed_parts = _needed_parts_for_usage(item_id, usage)
     if not needed_parts:
         return {
             **usage,
             "needed_parts": [],
             "needed_display": "",
+            "recipe_needed_display": "",
             "needed_quantity_display": "",
             "needed_unit_label": "",
         }
@@ -222,10 +349,13 @@ def _attach_needed_display(item_id: int, usage: dict) -> dict:
         for part in needed_parts
     ]
     first_part = needed_parts[0]
+    recipe_needed_display = " + ".join(display_parts)
+    inventory_needed_display = _inventory_needed_display(needed_parts, inventory_needed_profile)
     return {
         **usage,
         "needed_parts": needed_parts,
-        "needed_display": " + ".join(display_parts),
+        "needed_display": inventory_needed_display or recipe_needed_display,
+        "recipe_needed_display": recipe_needed_display,
         "needed_quantity_display": _format_quantity(first_part["quantity"]),
         "needed_unit_label": format_unit_label(first_part["unit"]),
     }
@@ -328,10 +458,11 @@ def get_inventory_item_usage(item_id: int, *, today: date | None = None, limit: 
 
     menu_ids = {int(row[0]) for row in raw_rows}
     menu_date_lookup = _load_menu_date_lookup(menu_ids)
+    inventory_needed_profile = _load_inventory_needed_profile(item_id)
     upcoming = []
     past = []
     for row in raw_rows:
-        payload = _attach_needed_display(item_id, _usage_payload(row, menu_date_lookup, today_iso))
+        payload = _attach_needed_display(item_id, _usage_payload(row, menu_date_lookup, today_iso), inventory_needed_profile)
         if payload["is_past"]:
             past.append(payload)
         else:
