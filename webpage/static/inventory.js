@@ -51,15 +51,15 @@
 
     const appendUsageGroup = (panel, heading, rows, isPast = false) => {
         const group = document.createElement("div");
-        group.className = `menu-forecast-history-group${isPast ? " inventory-history-past-group" : ""}`;
-        group.appendChild(textNode("p", heading, "menu-forecast-history-heading"));
+        group.className = `app-popover-group${isPast ? " inventory-history-past-group" : ""}`;
+        group.appendChild(textNode("p", heading, "app-popover-heading"));
         if (!rows.length) {
             group.appendChild(textNode("p", `No ${heading.toLowerCase()}.`, "muted"));
             panel.appendChild(group);
             return;
         }
         const list = document.createElement("ul");
-        list.className = "menu-forecast-history-list";
+        list.className = "app-popover-list";
         rows.forEach((usage) => {
             const item = document.createElement("li");
             const link = textNode("a", usage.service_date_display || "Open service", "text-link");
@@ -89,8 +89,8 @@
         const mode = panel.dataset.countMode || "roll-down";
         panel.replaceChildren();
         const group = document.createElement("div");
-        group.className = "menu-forecast-history-group";
-        group.appendChild(textNode("p", mode === "location" ? "Location Breakdown" : "Count Roll-Down", "menu-forecast-history-heading"));
+        group.className = "app-popover-group";
+        group.appendChild(textNode("p", mode === "location" ? "Location Breakdown" : "Count Roll-Down", "app-popover-heading"));
         const rows = payload.rows || [];
         if (!rows.length) {
             group.appendChild(textNode("p", "No active counts.", "muted"));
@@ -98,7 +98,7 @@
             return;
         }
         const list = document.createElement("ul");
-        list.className = "menu-forecast-history-list";
+        list.className = "app-popover-list";
         rows.forEach((row) => {
             const item = document.createElement("li");
             const link = textNode("a", row.location_label || "Open location", "text-link");

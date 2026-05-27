@@ -4,7 +4,7 @@
 
 Move repeated hover/click/pin popover behavior into one reusable frontend controller while keeping feature-specific markup and rendering independent.
 
-The first pass should preserve current visual classes and page behavior. Avoid a broad rename from `menu-forecast-history` to neutral names until the controller is stable.
+The first pass preserved page behavior while moving the shared surfaces to neutral `app-popover*` classes. Legacy `menu-forecast-history*` selectors remain as CSS compatibility aliases.
 
 ## Shared Governance Contract
 
@@ -133,9 +133,12 @@ These should remain outside the shared history popover controller for now:
 
 ### Slice 4: CSS Naming Cleanup
 
+- Status: completed.
 - Introduce neutral classes such as `app-popover`, `app-popover-trigger`, and `app-popover-panel`.
 - Keep old `menu-forecast-history*` classes as compatibility aliases until all templates migrate.
 - Confirm CSS cannot bypass hover governance.
+- Current templates and inventory-rendered lazy content now use neutral `app-popover*` classes.
+- Legacy `menu-forecast-history*` CSS aliases remain for compatibility.
 
 ### Slice 5: Optional Lazy Static Popovers
 

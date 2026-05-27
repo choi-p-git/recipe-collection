@@ -114,34 +114,34 @@
                     {% for item in page_data.current_on_hand %}
                         <tr>
                             <td>
-                                <div class="menu-forecast-history inventory-dashboard-popover" data-popover>
-                                    <a class="text-link menu-forecast-history-trigger" href="{{ url_for('inventory_item_detail', item_id=item.item_id) }}" data-popover-trigger>
+                                <div class="app-popover inventory-dashboard-popover" data-popover>
+                                    <a class="text-link app-popover-trigger" href="{{ url_for('inventory_item_detail', item_id=item.item_id) }}" data-popover-trigger>
                                         {{ item.item_name }}
                                     </a>
-                                    <div class="menu-forecast-history-panel inventory-dashboard-history-panel" role="tooltip" data-popover-panel data-inventory-usage-panel data-popover-renderer="inventory-usage" data-fetch-url="{{ url_for('api_inventory_item_usage_summary', item_id=item.item_id) }}">
+                                    <div class="app-popover-panel inventory-dashboard-history-panel" role="tooltip" data-popover-panel data-inventory-usage-panel data-popover-renderer="inventory-usage" data-fetch-url="{{ url_for('api_inventory_item_usage_summary', item_id=item.item_id) }}">
                                         <p class="muted">Loading menu usage...</p>
                                     </div>
                                 </div>
                             </td>
                             <td>{{ item.item_category_label }}</td>
                             <td>
-                                <div class="menu-forecast-history inventory-dashboard-popover" data-popover>
-                                    <button type="button" class="menu-forecast-history-trigger inventory-table-popover-button" data-popover-trigger>
+                                <div class="app-popover inventory-dashboard-popover" data-popover>
+                                    <button type="button" class="app-popover-trigger inventory-table-popover-button" data-popover-trigger>
                                         {{ item.display_quantity_display }} {{ item.display_unit_label }}
                                     </button>
-                                    <div class="menu-forecast-history-panel inventory-dashboard-history-panel" role="tooltip" data-popover-panel data-inventory-count-panel data-popover-renderer="inventory-count" data-count-mode="roll-down" data-fetch-url="{{ url_for('api_inventory_item_count_rolldown', item_id=item.item_id) }}">
-                                        <p class="menu-forecast-history-heading">Count Roll-Down</p>
+                                    <div class="app-popover-panel inventory-dashboard-history-panel" role="tooltip" data-popover-panel data-inventory-count-panel data-popover-renderer="inventory-count" data-count-mode="roll-down" data-fetch-url="{{ url_for('api_inventory_item_count_rolldown', item_id=item.item_id) }}">
+                                        <p class="app-popover-heading">Count Roll-Down</p>
                                         <p class="muted">Loading count roll-down...</p>
                                     </div>
                                 </div>
                             </td>
                             <td>
-                                <div class="menu-forecast-history inventory-dashboard-popover" data-popover>
-                                    <button type="button" class="menu-forecast-history-trigger inventory-table-popover-button" data-popover-trigger>
+                                <div class="app-popover inventory-dashboard-popover" data-popover>
+                                    <button type="button" class="app-popover-trigger inventory-table-popover-button" data-popover-trigger>
                                         {{ item.location_count }}
                                     </button>
-                                    <div class="menu-forecast-history-panel inventory-dashboard-history-panel" role="tooltip" data-popover-panel data-inventory-count-panel data-popover-renderer="inventory-count" data-count-mode="location" data-fetch-url="{{ url_for('api_inventory_item_count_rolldown', item_id=item.item_id) }}">
-                                        <p class="menu-forecast-history-heading">Location Breakdown</p>
+                                    <div class="app-popover-panel inventory-dashboard-history-panel" role="tooltip" data-popover-panel data-inventory-count-panel data-popover-renderer="inventory-count" data-count-mode="location" data-fetch-url="{{ url_for('api_inventory_item_count_rolldown', item_id=item.item_id) }}">
+                                        <p class="app-popover-heading">Location Breakdown</p>
                                         <p class="muted">Loading locations...</p>
                                     </div>
                                 </div>

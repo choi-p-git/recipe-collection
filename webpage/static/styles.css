@@ -1626,6 +1626,7 @@ button:disabled {
     max-width: 11rem;
 }
 
+.app-popover,
 .menu-forecast-history {
     position: relative;
     display: inline-block;
@@ -1633,6 +1634,7 @@ button:disabled {
     font-size: 0.86rem;
 }
 
+.app-popover-trigger,
 .menu-forecast-history-trigger {
     border: 0;
     background: transparent;
@@ -1643,11 +1645,13 @@ button:disabled {
     font: inherit;
 }
 
+.app-popover-trigger:focus-visible,
 .menu-forecast-history-trigger:focus-visible {
     outline: 2px solid #2563eb;
     outline-offset: 2px;
 }
 
+.app-popover-panel,
 .menu-forecast-history-panel {
     position: absolute;
     z-index: 30;
@@ -1695,29 +1699,36 @@ button:disabled {
     color: #374151;
 }
 
+.app-popover:focus-within .app-popover-panel,
+.app-popover.is-open .app-popover-panel,
 .menu-forecast-history:focus-within .menu-forecast-history-panel,
 .menu-forecast-history.is-open .menu-forecast-history-panel {
     display: block;
 }
 
+.app-popover.is-open .app-popover-trigger,
 .menu-forecast-history.is-open .menu-forecast-history-trigger {
     color: #1e40af;
 }
 
+.app-popover-group,
 .menu-forecast-history-group {
     border-left: 3px solid #d1d5db;
     padding-left: 0.5rem;
 }
 
+.app-popover-group + .app-popover-group,
 .menu-forecast-history-group + .menu-forecast-history-group {
     margin-top: 0.7rem;
 }
 
+.app-popover-heading,
 .menu-forecast-history-heading {
     font-weight: 700;
     margin: 0 0 0.25rem;
 }
 
+.app-popover-list,
 .menu-forecast-history-list {
     list-style: none;
     margin: 0;
@@ -1726,6 +1737,7 @@ button:disabled {
     gap: 0.4rem;
 }
 
+.app-popover-list li,
 .menu-forecast-history-list li {
     display: grid;
     gap: 0.12rem;
