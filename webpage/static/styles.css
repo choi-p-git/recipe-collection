@@ -1739,6 +1739,15 @@ button:disabled {
     gap: 0.85rem;
 }
 
+.inventory-conversion-indicator {
+    border: 1px solid #bfdbfe;
+    background: #eff6ff;
+    color: #1d4ed8;
+    font-size: 0.9rem;
+    font-weight: 700;
+    padding: 0.65rem 0.8rem;
+}
+
 .inventory-temporary-conversion-form {
     align-items: end;
     display: flex;

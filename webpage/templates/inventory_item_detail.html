@@ -34,9 +34,6 @@
                                     {% if usage.recipe_needed_display and usage.recipe_needed_display != usage.needed_display %}
                                         <div class="inventory-needed-source">Recipe need: {{ usage.recipe_needed_display }}</div>
                                     {% endif %}
-                                    {% if usage.needed_conversion_note %}
-                                        <div class="inventory-needed-source">{{ usage.needed_conversion_note }}</div>
-                                    {% endif %}
                                 {% else %}
                                     <span class="muted">--</span>
                                 {% endif %}
@@ -130,6 +127,10 @@
             </article>
         </div>
     </section>
+
+    {% if detail.summary.conversion_note %}
+        <div class="inventory-conversion-indicator">{{ detail.summary.conversion_note }}</div>
+    {% endif %}
 
     {% set conversion = namespace(issue=None) %}
     {% for usage in detail.upcoming + detail.past %}

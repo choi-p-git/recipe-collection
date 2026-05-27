@@ -786,6 +786,11 @@ def _build_inventory_item_summary(*, usage: dict, count_rolldown: list[dict]) ->
     ) or "0"
     last_counted_at = max((row.get("updated_at") or "" for row in count_rolldown), default="")
     next_usage = usage["upcoming"][0] if usage["upcoming"] else None
+    conversion_note = ""
+    for usage_row in [*usage["upcoming"], *usage["past"]]:
+        if usage_row.get("needed_conversion_note"):
+            conversion_note = usage_row["needed_conversion_note"]
+            break
     coverage_display = "No upcoming need"
     coverage_status = "none"
     if next_usage and next_usage.get("needed_quantity") is not None and next_usage.get("needed_unit"):
@@ -810,6 +815,7 @@ def _build_inventory_item_summary(*, usage: dict, count_rolldown: list[dict]) ->
         "last_counted_at": last_counted_at,
         "next_usage_display": next_usage["service_date_display"] if next_usage else "",
         "next_needed_display": next_usage.get("needed_display", "") if next_usage else "",
+        "conversion_note": conversion_note,
         "coverage_display": coverage_display,
         "coverage_status": coverage_status,
         "upcoming_count": usage["upcoming_count"],

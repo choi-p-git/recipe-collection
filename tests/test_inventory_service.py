@@ -744,6 +744,10 @@ def test_inventory_usage_converts_each_need_to_case_with_official_item_mass(isol
     assert usage["upcoming"][0]["needed_conversion_note"] == "Official item conversion: 1 each = 0.5 lb"
     assert usage["upcoming"][0]["needed_conversion_issue"] is None
 
+    detail = get_inventory_item_detail(item_id)
+
+    assert detail["summary"]["conversion_note"] == "Official item conversion: 1 each = 0.5 lb"
+
 
 def test_inventory_usage_each_need_guard_allows_temporary_preview_conversion(isolated_db):
     item_id = create_base_food(item_name="Inventory Usage Each No Bridge", yield_quantity=1, yield_unit="each")
@@ -811,3 +815,10 @@ def test_inventory_usage_each_need_guard_allows_temporary_preview_conversion(iso
     assert guarded_usage["upcoming"][0]["needed_conversion_issue"]["code"] == "missing_each_bridge"
     assert preview_usage["upcoming"][0]["needed_display"] == "1.17 case"
     assert preview_usage["upcoming"][0]["needed_conversion_note"] == "Temporary each conversion: 1 each = 0.5 lb"
+
+    preview_detail = get_inventory_item_detail(
+        item_id,
+        temporary_each_bridge={"quantity": "0.5", "unit": "lb"},
+    )
+
+    assert preview_detail["summary"]["conversion_note"] == "Temporary each conversion: 1 each = 0.5 lb"
