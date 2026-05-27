@@ -200,12 +200,12 @@
                                     <td>{{ item.recipe_name }}</td>
                                     <td>
                                         {% set leftover_occurrences = item.leftover_occurrences %}
-                                        <div class="menu-forecast-history production-record-variance-history" data-history-popover>
-                                            <button type="button" class="menu-forecast-history-trigger" aria-label="Show leftover history for {{ item.recipe_name }}" data-history-trigger>
+                                        <div class="menu-forecast-history production-record-variance-history" data-popover>
+                                            <button type="button" class="menu-forecast-history-trigger" aria-label="Show leftover history for {{ item.recipe_name }}" data-popover-trigger>
                                                 {{ item.leftover_quantity_display }} {{ item.unit|unit_label }}
                                                 <span class="muted">({{ item.leftover_occurrence_count }})</span>
                                             </button>
-                                            <div class="menu-forecast-history-panel production-record-variance-history-panel" role="tooltip" data-history-panel>
+                                            <div class="menu-forecast-history-panel production-record-variance-history-panel" role="tooltip" data-popover-panel>
                                                 <div class="menu-forecast-history-group">
                                                     <p class="menu-forecast-history-heading">Leftover Occurrences</p>
                                                     {% if leftover_occurrences %}
@@ -238,12 +238,12 @@
                                     </td>
                                     <td>
                                         {% set shortage_occurrences = item.shortage_occurrences %}
-                                        <div class="menu-forecast-history production-record-variance-history" data-history-popover>
-                                            <button type="button" class="menu-forecast-history-trigger" aria-label="Show shortage history for {{ item.recipe_name }}" data-history-trigger>
+                                        <div class="menu-forecast-history production-record-variance-history" data-popover>
+                                            <button type="button" class="menu-forecast-history-trigger" aria-label="Show shortage history for {{ item.recipe_name }}" data-popover-trigger>
                                                 {{ item.shortage_quantity_display }} {{ item.unit|unit_label }}
                                                 <span class="muted">({{ item.shortage_occurrence_count }})</span>
                                             </button>
-                                            <div class="menu-forecast-history-panel production-record-variance-history-panel" role="tooltip" data-history-panel>
+                                            <div class="menu-forecast-history-panel production-record-variance-history-panel" role="tooltip" data-popover-panel>
                                                 <div class="menu-forecast-history-group">
                                                     <p class="menu-forecast-history-heading">Shortage Occurrences</p>
                                                     {% if shortage_occurrences %}

@@ -2,8 +2,8 @@
     const DEFAULT_HOVER_OPEN_MS = 500;
     const DEFAULT_FETCH_INTENT_MS = 650;
 
-    const popoverSelector = "[data-history-popover]";
-    const triggerSelector = "[data-history-trigger]";
+    const popoverSelector = "[data-popover], [data-history-popover]";
+    const triggerSelector = "[data-popover-trigger], [data-history-trigger]";
     const lazyPanelSelector = "[data-fetch-url]";
     const renderers = new Map();
 

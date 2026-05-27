@@ -26,9 +26,9 @@ The first pass should preserve current visual classes and page behavior. Avoid a
 - Controller today: `webpage/static/inventory.js`
 - CSS: `webpage/static/styles.css`
 - Markup:
-  - `data-history-popover`
-  - `data-history-trigger`
-  - `data-history-panel`
+  - `data-popover`
+  - `data-popover-trigger`
+  - `data-popover-panel`
   - `data-inventory-usage-panel`
   - `data-inventory-count-panel`
 - Content mode: lazy JSON fetch.
@@ -50,9 +50,9 @@ The first pass should preserve current visual classes and page behavior. Avoid a
 - Controller today: `webpage/static/menu_forecast.js`
 - CSS: `webpage/static/styles.css`
 - Markup:
-  - `data-history-popover`
-  - `data-history-trigger`
-  - `data-history-panel`
+  - `data-popover`
+  - `data-popover-trigger`
+  - `data-popover-panel`
 - Content mode: static HTML rendered with the page.
 - Current timing:
   - hover visual open: 500ms
@@ -69,9 +69,9 @@ The first pass should preserve current visual classes and page behavior. Avoid a
 - Controller today: `webpage/static/production_record_history.js`
 - CSS: `webpage/static/styles.css`
 - Markup:
-  - `data-history-popover`
-  - `data-history-trigger`
-  - `data-history-panel`
+  - `data-popover`
+  - `data-popover-trigger`
+  - `data-popover-panel`
 - Content mode: static HTML rendered with the page.
 - Current timing:
   - hover visual open: 500ms
@@ -121,12 +121,15 @@ These should remain outside the shared history popover controller for now:
 
 ### Slice 3: Markup Normalization
 
+- Status: completed.
 - Add neutral aliases such as `data-popover`, `data-popover-trigger`, and `data-popover-panel`.
 - Keep legacy `data-history-*` support during migration.
 - Update one route at a time:
   - menu forecast
   - production record history
   - inventory dashboard
+- Current templates now use neutral `data-popover*` attributes.
+- `popover.js` still supports legacy `data-history-*` attributes for compatibility.
 
 ### Slice 4: CSS Naming Cleanup
 

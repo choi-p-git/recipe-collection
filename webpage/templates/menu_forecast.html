@@ -148,12 +148,12 @@
                                     <a class="text-link" href="{{ url_for('item_detail', item_id=recipe.item_id) }}">{{ recipe.recipe_name }}</a>
                                 {% endif %}
                                 {% if recipe.history.total_count %}
-                                    <div class="menu-forecast-history" data-history-popover>
-                                        <button type="button" class="menu-forecast-history-trigger" aria-label="Show history for {{ recipe.recipe_name }}" data-history-trigger>
+                                    <div class="menu-forecast-history" data-popover>
+                                        <button type="button" class="menu-forecast-history-trigger" aria-label="Show history for {{ recipe.recipe_name }}" data-popover-trigger>
                                             History
                                             <span class="muted">({{ recipe.history.total_count }})</span>
                                         </button>
-                                        <div class="menu-forecast-history-panel" role="tooltip" data-history-panel>
+                                        <div class="menu-forecast-history-panel" role="tooltip" data-popover-panel>
                                             {% for group_label, occurrences in [('Current Menu', recipe.history.current_menu), ('Other Menus', recipe.history.other_menus)] %}
                                                 <div class="menu-forecast-history-group">
                                                     <p class="menu-forecast-history-heading">{{ group_label }}</p>
