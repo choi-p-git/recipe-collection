@@ -1,7 +1,5 @@
 (() => {
     const SAVE_DEBOUNCE_MS = 500;
-    const HISTORY_HOVER_FOCUS_MS = 500;
-    const POPOVER_FETCH_INTENT_MS = 650;
     const countTypeLabels = {
         counted_by_each_only: "counted by each only",
         counted_by_case_only: "counted by case only",
@@ -41,15 +39,6 @@
             closeDialog(button.closest("dialog"));
         });
     });
-
-    const closeHistoryPopovers = (exceptPopover = null) => {
-        document.querySelectorAll("[data-history-popover].is-open").forEach((popover) => {
-            if (popover !== exceptPopover) {
-                popover.classList.remove("is-open");
-                popover.dataset.pinned = "";
-            }
-        });
-    };
 
     const textNode = (tagName, text, className = "") => {
         const node = document.createElement(tagName);
@@ -132,105 +121,8 @@
         panel.appendChild(group);
     };
 
-    const loadInventoryPopoverPanel = async (popover) => {
-        const panel = popover.querySelector("[data-inventory-usage-panel], [data-inventory-count-panel]");
-        if (!panel || panel.dataset.loaded === "true" || panel.dataset.loading === "true") {
-            return;
-        }
-        panel.dataset.loading = "true";
-        try {
-            const response = await fetch(panel.dataset.fetchUrl || "", {headers: {"Accept": "application/json"}});
-            const payload = await response.json();
-            if (!response.ok || !payload.ok) {
-                throw new Error(payload.error || "Unable to load popover.");
-            }
-            if (panel.matches("[data-inventory-usage-panel]")) {
-                renderUsagePanel(panel, payload);
-            } else {
-                renderCountPanel(panel, payload);
-            }
-            panel.dataset.loaded = "true";
-        } catch (error) {
-            panel.replaceChildren(textNode("p", error.message || "Unable to load popover.", "muted"));
-        } finally {
-            panel.dataset.loading = "";
-        }
-    };
-
-    document.querySelectorAll("[data-history-popover]").forEach((popover) => {
-        const trigger = popover.querySelector("[data-history-trigger]");
-        let hoverTimer = null;
-        let fetchIntentTimer = null;
-
-        const pinPopover = () => {
-            closeHistoryPopovers(popover);
-            popover.classList.add("is-open");
-            popover.dataset.pinned = "true";
-            loadInventoryPopoverPanel(popover);
-        };
-
-        const clearHoverTimer = () => {
-            if (hoverTimer) {
-                window.clearTimeout(hoverTimer);
-                hoverTimer = null;
-            }
-        };
-
-        const clearFetchIntentTimer = () => {
-            if (fetchIntentTimer) {
-                window.clearTimeout(fetchIntentTimer);
-                fetchIntentTimer = null;
-            }
-        };
-
-        const schedulePopoverFetch = () => {
-            clearFetchIntentTimer();
-            fetchIntentTimer = window.setTimeout(() => {
-                fetchIntentTimer = null;
-                loadInventoryPopoverPanel(popover);
-            }, POPOVER_FETCH_INTENT_MS);
-        };
-
-        popover.addEventListener("mouseenter", () => {
-            clearHoverTimer();
-            schedulePopoverFetch();
-            hoverTimer = window.setTimeout(pinPopover, HISTORY_HOVER_FOCUS_MS);
-        });
-
-        popover.addEventListener("mouseleave", () => {
-            clearHoverTimer();
-            clearFetchIntentTimer();
-        });
-
-        trigger?.addEventListener("click", (event) => {
-            if (trigger.tagName !== "A") {
-                event.stopPropagation();
-                const isPinned = popover.dataset.pinned === "true";
-                closeHistoryPopovers(popover);
-                popover.classList.toggle("is-open", !isPinned);
-                popover.dataset.pinned = isPinned ? "" : "true";
-                if (!isPinned) {
-                    clearFetchIntentTimer();
-                    loadInventoryPopoverPanel(popover);
-                }
-                if (isPinned) {
-                    trigger.blur();
-                }
-            }
-        });
-    });
-
-    document.addEventListener("click", (event) => {
-        if (!event.target.closest("[data-history-popover]")) {
-            closeHistoryPopovers();
-        }
-    });
-
-    document.addEventListener("keydown", (event) => {
-        if (event.key === "Escape") {
-            closeHistoryPopovers();
-        }
-    });
+    window.AppPopover?.registerRenderer("inventory-usage", renderUsagePanel);
+    window.AppPopover?.registerRenderer("inventory-count", renderCountPanel);
 
     document.querySelectorAll("[data-confirm-delete]").forEach((form) => {
         form.addEventListener("submit", (event) => {

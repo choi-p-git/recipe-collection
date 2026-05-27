@@ -1242,7 +1242,7 @@ def test_production_record_route_snapshots_forecast_and_saves_variance(app_clien
     assert "0 Half pan, 4&#34;" in history_page
     assert "Leftover Occurrences" in history_page
     assert "Shortage Occurrences" in history_page
-    assert "production_record_history.js" in history_page
+    assert "popover.js" in history_page
     assert 'name="accuracy"' in history_page
     assert 'name="reason_code"' in history_page
     assert 'name="item"' in history_page
