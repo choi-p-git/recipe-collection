@@ -73,12 +73,48 @@
     <div class="page-header">
         <div>
             <h2>{{ detail.item.item_name }}</h2>
-            <p class="page-subtitle">{{ detail.item.item_category_label }} inventory usage and count history.</p>
+            <p class="page-subtitle">{{ detail.item.item_category_label }} inventory usage, count history, and menu demand.</p>
         </div>
         <div class="production-record-review-actions">
             <a class="page-action-link secondary" href="{{ url_for('inventory_dashboard') }}">Inventory Dashboard</a>
         </div>
     </div>
+
+    <section class="item-detail-section">
+        <div class="detail-stat-grid">
+            <article class="detail-stat-card">
+                <p class="detail-stat-label">Category</p>
+                <p class="detail-stat-value">{{ detail.item.item_category_label }}</p>
+            </article>
+            <article class="detail-stat-card">
+                <p class="detail-stat-label">Current On Hand</p>
+                <p class="detail-stat-value">{{ detail.summary.current_on_hand_display }}</p>
+            </article>
+            <article class="detail-stat-card">
+                <p class="detail-stat-label">Count Locations</p>
+                <p class="detail-stat-value">{{ detail.summary.count_location_count }}</p>
+            </article>
+            <article class="detail-stat-card">
+                <p class="detail-stat-label">Next Need</p>
+                <p class="detail-stat-value">
+                    {% if detail.summary.next_usage_display %}
+                        {{ detail.summary.next_usage_display }}
+                        {% if detail.summary.next_needed_display %} / {{ detail.summary.next_needed_display }}{% endif %}
+                    {% else %}
+                        No upcoming need
+                    {% endif %}
+                </p>
+            </article>
+            <article class="detail-stat-card">
+                <p class="detail-stat-label">Menu Usage Rows</p>
+                <p class="detail-stat-value">{{ detail.summary.total_usage_count }}</p>
+            </article>
+            <article class="detail-stat-card">
+                <p class="detail-stat-label">Last Counted</p>
+                <p class="detail-stat-value">{{ detail.summary.last_counted_at or "--" }}</p>
+            </article>
+        </div>
+    </section>
 
     <section class="item-detail-section">
         <div class="menu-forecast-title-row">

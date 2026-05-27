@@ -549,6 +549,11 @@ def test_inventory_item_detail_groups_recipe_usage_and_count_rolldown(isolated_d
     detail = get_inventory_item_detail(ingredient_id)
 
     assert detail["item"]["item_name"] == "Inventory Usage Carrot"
+    assert detail["summary"]["current_on_hand_display"] == "1.75 case"
+    assert detail["summary"]["count_location_count"] == 1
+    assert detail["summary"]["next_usage_display"] == "Jun 1"
+    assert detail["summary"]["next_needed_display"] == "2.4 lb"
+    assert detail["summary"]["total_usage_count"] == 2
     assert detail["count_rolldown"][0]["count_each_quantity_display"] == "3"
     assert detail["count_rolldown"][0]["count_case_quantity_display"] == "1"
     assert detail["upcoming"][0]["menu_item_name"] == "Inventory Usage Soup"

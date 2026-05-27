@@ -416,11 +416,39 @@ def get_inventory_item_count_rolldown(item_id: int) -> list[dict]:
         return payloads
 
 
+def _build_inventory_item_summary(*, usage: dict, count_rolldown: list[dict]) -> dict:
+    quantities_by_unit: dict[str, float] = {}
+    for row in count_rolldown:
+        unit_label = row.get("display_unit_label") or row.get("unit_label") or ""
+        if not unit_label:
+            continue
+        quantities_by_unit[unit_label] = quantities_by_unit.get(unit_label, 0.0) + float(row.get("display_quantity") or 0)
+
+    current_on_hand_display = " / ".join(
+        f"{_format_quantity(quantity)} {unit_label}"
+        for unit_label, quantity in sorted(quantities_by_unit.items())
+    ) or "0"
+    last_counted_at = max((row.get("updated_at") or "" for row in count_rolldown), default="")
+    next_usage = usage["upcoming"][0] if usage["upcoming"] else None
+    return {
+        "current_on_hand_display": current_on_hand_display,
+        "count_location_count": len(count_rolldown),
+        "last_counted_at": last_counted_at,
+        "next_usage_display": next_usage["service_date_display"] if next_usage else "",
+        "next_needed_display": next_usage.get("needed_display", "") if next_usage else "",
+        "upcoming_count": usage["upcoming_count"],
+        "past_count": usage["past_count"],
+        "total_usage_count": usage["upcoming_count"] + usage["past_count"],
+    }
+
+
 def get_inventory_item_detail(item_id: int) -> dict | None:
     usage = get_inventory_item_usage(item_id)
     if not usage["item"]["item_name"]:
         return None
+    count_rolldown = get_inventory_item_count_rolldown(item_id)
     return {
         **usage,
-        "count_rolldown": get_inventory_item_count_rolldown(item_id),
+        "count_rolldown": count_rolldown,
+        "summary": _build_inventory_item_summary(usage=usage, count_rolldown=count_rolldown),
     }

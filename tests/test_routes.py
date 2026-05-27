@@ -1565,6 +1565,9 @@ def test_inventory_foundation_routes_create_count_and_current_on_hand(app_client
 
     assert detail_response.status_code == 200
     assert "Route Inventory Onions" in detail_page
+    assert "Current On Hand" in detail_page
+    assert "Count Locations" in detail_page
+    assert "Menu Usage Rows" in detail_page
     assert "Current Counts" in detail_page
     assert "Upcoming Menu Usage" in detail_page
     assert "Past Menu Usage" in detail_page
