@@ -489,6 +489,18 @@ button:disabled {
     font-weight: 600;
 }
 
+.inventory-coverage-value-ok {
+    color: #166534;
+}
+
+.inventory-coverage-value-short {
+    color: #b91c1c;
+}
+
+.inventory-coverage-value-unknown {
+    color: #92400e;
+}
+
 .detail-copy-stack {
     display: grid;
     gap: 0.45rem;
@@ -1697,6 +1709,49 @@ button:disabled {
 .inventory-usage-detail-line {
     margin: 0.35rem 0;
     color: #374151;
+}
+
+.inventory-needed-value {
+    display: block;
+    color: #111827;
+    font-weight: 700;
+}
+
+.inventory-needed-source {
+    margin-top: 0.2rem;
+    color: #6b7280;
+    font-size: 0.85rem;
+}
+
+.inventory-needed-warning {
+    margin-top: 0.25rem;
+    color: #92400e;
+    font-size: 0.85rem;
+}
+
+.inventory-conversion-guard {
+    display: grid;
+    gap: 0.85rem;
+}
+
+.inventory-temporary-conversion-form {
+    align-items: end;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.inventory-temporary-conversion-form label {
+    display: grid;
+    gap: 0.25rem;
+    color: #374151;
+    font-weight: 700;
+}
+
+.inventory-temporary-conversion-form input,
+.inventory-temporary-conversion-form select {
+    min-height: 2.4rem;
+    min-width: 8rem;
 }
 
 .app-popover:focus-within .app-popover-panel,

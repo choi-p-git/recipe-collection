@@ -672,3 +672,140 @@ def test_inventory_usage_needed_quantity_uses_recipe_mass_volume_bridge(isolated
     assert usage["upcoming"][0]["forecast_quantity_display"] == "1889.07"
     assert usage["upcoming"][0]["forecast_unit"] == "g"
     assert usage["upcoming"][0]["needed_display"] == "4.72 cup"
+
+
+def test_inventory_usage_converts_each_need_to_case_with_official_item_mass(isolated_db):
+    item_id = create_base_food(
+        item_name="Inventory Usage Each Apple",
+        yield_quantity=1,
+        yield_unit="each",
+        mass_quantity=0.5,
+        mass_unit="lb",
+    )
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id = ?", (item_id,))
+    conn.commit()
+    conn.close()
+    location_id = create_inventory_location(
+        location_name="Each Bridge Storage",
+        actor_user_id="dev_user_001",
+        actor_display_name="Plato Choi",
+    )
+    save_inventory_location_item(
+        inventory_location_id=location_id,
+        item_id=item_id,
+        count_case_quantity="1",
+        pack_quantity="8",
+        pack_size_text="4 lb",
+        unit_of_measurement="Case",
+        count_type="counted_by_each_and_case",
+    )
+    menu_id = create_menu(
+        menu_name="Inventory Each Bridge Menu",
+        author_user_id="dev_user_001",
+        author_display_name="Plato Choi",
+        service_days=["tuesday"],
+        meal_periods=["lunch"],
+        concepts=["hot_line"],
+        menu_length_weeks=1,
+        menu_start_date="2026-06-02",
+        menu_end_date="2026-06-02",
+        require_date_range=True,
+        allowed_service_days=["tuesday"],
+        allowed_meal_periods=["lunch"],
+        allowed_concepts=["hot_line"],
+    )
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT menu_slot_id FROM menu_slot WHERE menu_id = ?", (menu_id,))
+    slot_id = cursor.fetchone()[0]
+    conn.close()
+    replace_menu_slot_items(menu_slot_id=slot_id, selected_item_ids=[item_id], actor_user_id="dev_user_001")
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT menu_slot_item_id FROM menu_slot_item WHERE menu_slot_id = ?", (slot_id,))
+    slot_item_id = cursor.fetchone()[0]
+    conn.close()
+    save_menu_forecast_yield(
+        menu_id=menu_id,
+        menu_slot_item_id=slot_item_id,
+        actor_user_id="dev_user_001",
+        forecast_yield_quantity=75,
+        forecast_yield_unit="each",
+    )
+
+    usage = get_inventory_item_usage(item_id, today=date(2026, 5, 27))
+
+    assert usage["upcoming"][0]["needed_display"] == "1.17 case"
+    assert usage["upcoming"][0]["recipe_needed_display"] == "75 each"
+    assert usage["upcoming"][0]["needed_conversion_note"] == "Official item conversion: 1 each = 0.5 lb"
+    assert usage["upcoming"][0]["needed_conversion_issue"] is None
+
+
+def test_inventory_usage_each_need_guard_allows_temporary_preview_conversion(isolated_db):
+    item_id = create_base_food(item_name="Inventory Usage Each No Bridge", yield_quantity=1, yield_unit="each")
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id = ?", (item_id,))
+    conn.commit()
+    conn.close()
+    location_id = create_inventory_location(
+        location_name="Each Guard Storage",
+        actor_user_id="dev_user_001",
+        actor_display_name="Plato Choi",
+    )
+    save_inventory_location_item(
+        inventory_location_id=location_id,
+        item_id=item_id,
+        count_case_quantity="1",
+        pack_quantity="8",
+        pack_size_text="4 lb",
+        unit_of_measurement="Case",
+        count_type="counted_by_each_and_case",
+    )
+    menu_id = create_menu(
+        menu_name="Inventory Each Guard Menu",
+        author_user_id="dev_user_001",
+        author_display_name="Plato Choi",
+        service_days=["tuesday"],
+        meal_periods=["lunch"],
+        concepts=["hot_line"],
+        menu_length_weeks=1,
+        menu_start_date="2026-06-02",
+        menu_end_date="2026-06-02",
+        require_date_range=True,
+        allowed_service_days=["tuesday"],
+        allowed_meal_periods=["lunch"],
+        allowed_concepts=["hot_line"],
+    )
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT menu_slot_id FROM menu_slot WHERE menu_id = ?", (menu_id,))
+    slot_id = cursor.fetchone()[0]
+    conn.close()
+    replace_menu_slot_items(menu_slot_id=slot_id, selected_item_ids=[item_id], actor_user_id="dev_user_001")
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT menu_slot_item_id FROM menu_slot_item WHERE menu_slot_id = ?", (slot_id,))
+    slot_item_id = cursor.fetchone()[0]
+    conn.close()
+    save_menu_forecast_yield(
+        menu_id=menu_id,
+        menu_slot_item_id=slot_item_id,
+        actor_user_id="dev_user_001",
+        forecast_yield_quantity=75,
+        forecast_yield_unit="each",
+    )
+
+    guarded_usage = get_inventory_item_usage(item_id, today=date(2026, 5, 27))
+    preview_usage = get_inventory_item_usage(
+        item_id,
+        today=date(2026, 5, 27),
+        temporary_each_bridge={"quantity": "0.5", "unit": "lb"},
+    )
+
+    assert guarded_usage["upcoming"][0]["needed_display"] == "75 each"
+    assert guarded_usage["upcoming"][0]["needed_conversion_issue"]["code"] == "missing_each_bridge"
+    assert preview_usage["upcoming"][0]["needed_display"] == "1.17 case"
+    assert preview_usage["upcoming"][0]["needed_conversion_note"] == "Temporary each conversion: 1 each = 0.5 lb"

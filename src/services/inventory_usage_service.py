@@ -229,6 +229,8 @@ def _load_inventory_needed_profile(item_id: int) -> dict | None:
                 ili.count_type,
                 ili.pack_quantity,
                 ili.pack_size_text,
+                i.yield_quantity,
+                i.yield_unit,
                 i.item_type,
                 i.mass_quantity,
                 i.mass_unit,
@@ -260,15 +262,95 @@ def _load_inventory_needed_profile(item_id: int) -> dict | None:
         "count_type": row[1] or "",
         "pack_quantity": float(row[2]) if row[2] is not None else None,
         "pack_size_text": row[3] or "",
-        "item_type": row[4] or "",
-        "mass_quantity": float(row[5]) if row[5] is not None else None,
-        "mass_unit": row[6] or "",
-        "volume_quantity": float(row[7]) if row[7] is not None else None,
-        "volume_unit": row[8] or "",
+        "yield_quantity": float(row[4]) if row[4] is not None else None,
+        "yield_unit": row[5] or "",
+        "item_type": row[6] or "",
+        "mass_quantity": float(row[7]) if row[7] is not None else None,
+        "mass_unit": row[8] or "",
+        "volume_quantity": float(row[9]) if row[9] is not None else None,
+        "volume_unit": row[10] or "",
     }
 
 
-def _convert_needed_part_to_unit(part: dict, target_unit: str, profile: dict) -> float | None:
+def _temporary_each_bridge_from_input(temporary_each_bridge: dict | None) -> dict:
+    if not temporary_each_bridge:
+        return {}
+    try:
+        quantity = float(temporary_each_bridge.get("quantity") or 0)
+    except (TypeError, ValueError):
+        return {
+            "ok": False,
+            "message": "Temporary each conversion quantity must be a valid number.",
+        }
+    unit = normalize_unit_symbol(temporary_each_bridge.get("unit"))
+    if quantity <= 0 or not unit:
+        return {}
+    return {
+        "ok": True,
+        "quantity": quantity,
+        "unit": unit,
+        "source": "temporary",
+        "label": f"Temporary each conversion: 1 each = {_format_quantity(quantity)} {format_unit_label(unit)}",
+    }
+
+
+def _official_each_bridge(profile: dict) -> dict:
+    yield_quantity = float(profile.get("yield_quantity") or 0)
+    if yield_quantity <= 0 or normalize_unit_symbol(profile.get("yield_unit")) != "each":
+        return {}
+    if profile.get("mass_quantity") and profile.get("mass_unit"):
+        quantity = float(profile["mass_quantity"]) / yield_quantity
+        return {
+            "ok": True,
+            "quantity": quantity,
+            "unit": profile["mass_unit"],
+            "source": "official",
+            "label": f"Official item conversion: 1 each = {_format_quantity(quantity)} {format_unit_label(profile['mass_unit'])}",
+        }
+    if profile.get("volume_quantity") and profile.get("volume_unit"):
+        quantity = float(profile["volume_quantity"]) / yield_quantity
+        return {
+            "ok": True,
+            "quantity": quantity,
+            "unit": profile["volume_unit"],
+            "source": "official",
+            "label": f"Official item conversion: 1 each = {_format_quantity(quantity)} {format_unit_label(profile['volume_unit'])}",
+        }
+    return {}
+
+
+def _each_bridge(profile: dict, temporary_each_bridge: dict | None) -> dict:
+    temporary_bridge = _temporary_each_bridge_from_input(temporary_each_bridge)
+    if temporary_bridge.get("ok"):
+        return temporary_bridge
+    official_bridge = _official_each_bridge(profile)
+    if official_bridge.get("ok"):
+        return official_bridge
+    return temporary_bridge or {}
+
+
+def _convert_each_part_with_bridge(part: dict, target_unit: str, profile: dict, each_bridge: dict) -> float | None:
+    if normalize_unit_symbol(part.get("unit")) != "each" or not each_bridge.get("ok"):
+        return None
+    bridged_quantity = float(part["quantity"]) * float(each_bridge["quantity"])
+    conversion = convert_unit_value(bridged_quantity, each_bridge["unit"], target_unit)
+    if not conversion["ok"]:
+        conversion = convert_with_item_mass_volume_bridge(
+            bridged_quantity,
+            each_bridge["unit"],
+            target_unit,
+            item_type=profile.get("item_type") or "",
+            mass_quantity=profile.get("mass_quantity"),
+            mass_unit=profile.get("mass_unit"),
+            volume_quantity=profile.get("volume_quantity"),
+            volume_unit=profile.get("volume_unit"),
+        )
+    if not conversion["ok"]:
+        return None
+    return float(conversion["quantity"])
+
+
+def _convert_needed_part_to_unit(part: dict, target_unit: str, profile: dict, each_bridge: dict) -> float | None:
     conversion = convert_unit_value(float(part["quantity"]), part["unit"], target_unit)
     if not conversion["ok"]:
         conversion = convert_with_item_mass_volume_bridge(
@@ -282,26 +364,53 @@ def _convert_needed_part_to_unit(part: dict, target_unit: str, profile: dict) ->
             volume_unit=profile.get("volume_unit"),
         )
     if not conversion["ok"]:
-        return None
+        return _convert_each_part_with_bridge(part, target_unit, profile, each_bridge)
     return float(conversion["quantity"])
 
 
-def _sum_needed_parts_in_unit(needed_parts: list[dict], target_unit: str, profile: dict) -> float | None:
+def _sum_needed_parts_in_unit(needed_parts: list[dict], target_unit: str, profile: dict, each_bridge: dict) -> float | None:
     total = 0.0
     for part in needed_parts:
-        converted_quantity = _convert_needed_part_to_unit(part, target_unit, profile)
+        converted_quantity = _convert_needed_part_to_unit(part, target_unit, profile, each_bridge)
         if converted_quantity is None:
             return None
         total += converted_quantity
     return total
 
 
-def _inventory_needed_measure(needed_parts: list[dict], profile: dict | None) -> dict:
+def _needed_conversion_issue(needed_parts: list[dict], target_unit: str, each_bridge: dict) -> dict:
+    if each_bridge.get("ok") is False and each_bridge.get("message"):
+        return {
+            "code": "invalid_temporary_each_bridge",
+            "message": each_bridge["message"],
+        }
+    needs_each_bridge = any(normalize_unit_symbol(part.get("unit")) == "each" for part in needed_parts)
+    if needs_each_bridge and not each_bridge.get("ok"):
+        return {
+            "code": "missing_each_bridge",
+            "message": (
+                f"Cannot convert recipe eaches into {format_unit_label(target_unit)} because this item "
+                "does not have an official each-to-mass/volume conversion."
+            ),
+        }
+    return {
+        "code": "conversion_unavailable",
+        "message": f"Cannot convert recipe need into {format_unit_label(target_unit)} with the current item metadata.",
+    }
+
+
+def _inventory_needed_measure(
+    needed_parts: list[dict],
+    profile: dict | None,
+    temporary_each_bridge: dict | None = None,
+) -> dict:
     empty_measure = {
         "display": "",
         "quantity": None,
         "unit": "",
         "unit_label": "",
+        "conversion_note": "",
+        "conversion_issue": None,
     }
     if not profile:
         return empty_measure
@@ -309,27 +418,33 @@ def _inventory_needed_measure(needed_parts: list[dict], profile: dict | None) ->
     unit_of_measurement = profile.get("unit_of_measurement")
     count_type = profile.get("count_type")
     pack_size = _parse_pack_size_text(profile.get("pack_size_text"))
+    each_bridge = _each_bridge(profile, temporary_each_bridge)
 
     if unit_of_measurement == "Case" and count_type != EACH_ONLY_COUNT_TYPE:
         pack_quantity = float(profile.get("pack_quantity") or 0)
         if not pack_size or pack_quantity <= 0:
-            return ""
-        pack_size_quantity, pack_size_unit = pack_size
-        needed_in_pack_unit = _sum_needed_parts_in_unit(needed_parts, pack_size_unit, profile)
-        if needed_in_pack_unit is None or pack_size_quantity <= 0:
             return empty_measure
+        pack_size_quantity, pack_size_unit = pack_size
+        needed_in_pack_unit = _sum_needed_parts_in_unit(needed_parts, pack_size_unit, profile, each_bridge)
+        if needed_in_pack_unit is None or pack_size_quantity <= 0:
+            return {
+                **empty_measure,
+                "conversion_issue": _needed_conversion_issue(needed_parts, pack_size_unit, each_bridge),
+            }
         quantity = needed_in_pack_unit / (pack_quantity * pack_size_quantity)
         return {
             "display": f"{_format_quantity(quantity)} case",
             "quantity": quantity,
             "unit": "case",
             "unit_label": "case",
+            "conversion_note": each_bridge.get("label", ""),
+            "conversion_issue": None,
         }
 
     if unit_of_measurement == "Each" or count_type == EACH_ONLY_COUNT_TYPE:
         if pack_size:
             pack_size_quantity, pack_size_unit = pack_size
-            needed_in_pack_unit = _sum_needed_parts_in_unit(needed_parts, pack_size_unit, profile)
+            needed_in_pack_unit = _sum_needed_parts_in_unit(needed_parts, pack_size_unit, profile, each_bridge)
             if needed_in_pack_unit is not None and pack_size_quantity > 0:
                 quantity = needed_in_pack_unit / pack_size_quantity
                 return {
@@ -337,31 +452,49 @@ def _inventory_needed_measure(needed_parts: list[dict], profile: dict | None) ->
                     "quantity": quantity,
                     "unit": "each",
                     "unit_label": format_unit_label("each"),
+                    "conversion_note": each_bridge.get("label", ""),
+                    "conversion_issue": None,
                 }
-        needed_each = _sum_needed_parts_in_unit(needed_parts, "each", profile)
+        needed_each = _sum_needed_parts_in_unit(needed_parts, "each", profile, each_bridge)
         if needed_each is not None:
             return {
                 "display": f"{_format_quantity(needed_each)} {format_unit_label('each')}",
                 "quantity": needed_each,
                 "unit": "each",
                 "unit_label": format_unit_label("each"),
+                "conversion_note": "",
+                "conversion_issue": None,
             }
-        return empty_measure
+        return {
+            **empty_measure,
+            "conversion_issue": _needed_conversion_issue(needed_parts, "each", each_bridge),
+        }
 
     if unit_of_measurement in {"Kg", "Lb"}:
         target_unit = "kg" if unit_of_measurement == "Kg" else "lb"
-        needed_in_unit = _sum_needed_parts_in_unit(needed_parts, target_unit, profile)
+        needed_in_unit = _sum_needed_parts_in_unit(needed_parts, target_unit, profile, each_bridge)
         if needed_in_unit is not None:
             return {
                 "display": f"{_format_quantity(needed_in_unit)} {format_unit_label(target_unit)}",
                 "quantity": needed_in_unit,
                 "unit": target_unit,
                 "unit_label": format_unit_label(target_unit),
+                "conversion_note": each_bridge.get("label", ""),
+                "conversion_issue": None,
             }
+        return {
+            **empty_measure,
+            "conversion_issue": _needed_conversion_issue(needed_parts, target_unit, each_bridge),
+        }
     return empty_measure
 
 
-def _attach_needed_display(item_id: int, usage: dict, inventory_needed_profile: dict | None) -> dict:
+def _attach_needed_display(
+    item_id: int,
+    usage: dict,
+    inventory_needed_profile: dict | None,
+    temporary_each_bridge: dict | None = None,
+) -> dict:
     needed_parts = _needed_parts_for_usage(item_id, usage)
     if not needed_parts:
         return {
@@ -374,6 +507,8 @@ def _attach_needed_display(item_id: int, usage: dict, inventory_needed_profile: 
             "recipe_needed_display": "",
             "needed_quantity_display": "",
             "recipe_needed_unit_label": "",
+            "needed_conversion_note": "",
+            "needed_conversion_issue": None,
         }
     display_parts = [
         f"{_format_quantity(part['quantity'])} {format_unit_label(part['unit'])}"
@@ -381,7 +516,7 @@ def _attach_needed_display(item_id: int, usage: dict, inventory_needed_profile: 
     ]
     first_part = needed_parts[0]
     recipe_needed_display = " + ".join(display_parts)
-    inventory_needed = _inventory_needed_measure(needed_parts, inventory_needed_profile)
+    inventory_needed = _inventory_needed_measure(needed_parts, inventory_needed_profile, temporary_each_bridge)
     return {
         **usage,
         "needed_parts": needed_parts,
@@ -392,10 +527,18 @@ def _attach_needed_display(item_id: int, usage: dict, inventory_needed_profile: 
         "recipe_needed_display": recipe_needed_display,
         "needed_quantity_display": _format_quantity(first_part["quantity"]),
         "recipe_needed_unit_label": format_unit_label(first_part["unit"]),
+        "needed_conversion_note": inventory_needed["conversion_note"],
+        "needed_conversion_issue": inventory_needed["conversion_issue"],
     }
 
 
-def get_inventory_item_usage(item_id: int, *, today: date | None = None, limit: int | None = None) -> dict:
+def get_inventory_item_usage(
+    item_id: int,
+    *,
+    today: date | None = None,
+    limit: int | None = None,
+    temporary_each_bridge: dict | None = None,
+) -> dict:
     today_iso = (today or date.today()).isoformat()
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -496,7 +639,12 @@ def get_inventory_item_usage(item_id: int, *, today: date | None = None, limit: 
     upcoming = []
     past = []
     for row in raw_rows:
-        payload = _attach_needed_display(item_id, _usage_payload(row, menu_date_lookup, today_iso), inventory_needed_profile)
+        payload = _attach_needed_display(
+            item_id,
+            _usage_payload(row, menu_date_lookup, today_iso),
+            inventory_needed_profile,
+            temporary_each_bridge,
+        )
         if payload["is_past"]:
             past.append(payload)
         else:
@@ -645,8 +793,8 @@ def _build_inventory_item_summary(*, usage: dict, count_rolldown: list[dict]) ->
     }
 
 
-def get_inventory_item_detail(item_id: int) -> dict | None:
-    usage = get_inventory_item_usage(item_id)
+def get_inventory_item_detail(item_id: int, *, temporary_each_bridge: dict | None = None) -> dict | None:
+    usage = get_inventory_item_usage(item_id, temporary_each_bridge=temporary_each_bridge)
     if not usage["item"]["item_name"]:
         return None
     count_rolldown = get_inventory_item_count_rolldown(item_id)

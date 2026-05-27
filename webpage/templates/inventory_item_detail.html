@@ -30,9 +30,18 @@
                             <td>{{ usage.meal_period_label }} / {{ usage.concept_label }}</td>
                             <td>
                                 {% if usage.needed_display %}
-                                    {{ usage.needed_display }}
+                                    <strong class="inventory-needed-value">{{ usage.needed_display }}</strong>
+                                    {% if usage.recipe_needed_display and usage.recipe_needed_display != usage.needed_display %}
+                                        <div class="inventory-needed-source">Recipe need: {{ usage.recipe_needed_display }}</div>
+                                    {% endif %}
+                                    {% if usage.needed_conversion_note %}
+                                        <div class="inventory-needed-source">{{ usage.needed_conversion_note }}</div>
+                                    {% endif %}
                                 {% else %}
                                     <span class="muted">--</span>
+                                {% endif %}
+                                {% if usage.needed_conversion_issue %}
+                                    <div class="inventory-needed-warning">{{ usage.needed_conversion_issue.message }}</div>
                                 {% endif %}
                             </td>
                             <td>
@@ -107,7 +116,9 @@
             </article>
             <article class="detail-stat-card">
                 <p class="detail-stat-label">Coverage</p>
-                <p class="detail-stat-value">{{ detail.summary.coverage_display }}</p>
+                <p class="detail-stat-value inventory-coverage-value inventory-coverage-value-{{ detail.summary.coverage_status }}">
+                    {{ detail.summary.coverage_display }}
+                </p>
             </article>
             <article class="detail-stat-card">
                 <p class="detail-stat-label">Menu Usage Rows</p>
@@ -119,6 +130,40 @@
             </article>
         </div>
     </section>
+
+    {% set conversion = namespace(issue=None) %}
+    {% for usage in detail.upcoming + detail.past %}
+        {% if usage.needed_conversion_issue and not conversion.issue %}
+            {% set conversion.issue = usage.needed_conversion_issue %}
+        {% endif %}
+    {% endfor %}
+    {% if conversion.issue %}
+        <section class="item-detail-section inventory-conversion-guard">
+            <div>
+                <h3>Need Conversion Guard</h3>
+                <p class="muted">{{ conversion.issue.message }}</p>
+            </div>
+            <form class="inventory-temporary-conversion-form" method="get">
+                <label>
+                    1 each =
+                    <input type="number" step="0.01" min="0" name="temporary_each_quantity" value="{{ temporary_each_bridge.quantity }}">
+                </label>
+                <label>
+                    Unit
+                    <select name="temporary_each_unit">
+                        <option value="">Select unit</option>
+                        {% for unit in unit_options %}
+                            <option value="{{ unit }}" {% if temporary_each_bridge.unit == unit %}selected{% endif %}>{{ unit }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <button type="submit">Preview Conversion</button>
+                {% if temporary_each_bridge.quantity and temporary_each_bridge.unit %}
+                    <a class="text-link" href="{{ url_for('inventory_item_detail', item_id=detail.item.item_id) }}">Clear preview</a>
+                {% endif %}
+            </form>
+        </section>
+    {% endif %}
 
     <section class="item-detail-section">
         <div class="menu-forecast-title-row">

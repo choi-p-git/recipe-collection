@@ -230,12 +230,18 @@ def inventory_dashboard():
 
 @app.route("/inventory/items/<int:item_id>")
 def inventory_item_detail(item_id: int):
-    detail = get_inventory_item_detail(item_id)
+    temporary_each_bridge = {
+        "quantity": request.args.get("temporary_each_quantity", ""),
+        "unit": request.args.get("temporary_each_unit", ""),
+    }
+    detail = get_inventory_item_detail(item_id, temporary_each_bridge=temporary_each_bridge)
     if detail is None:
         return "Inventory item not found.", 404
     return render_template(
         "inventory_item_detail.html",
         detail=detail,
+        temporary_each_bridge=temporary_each_bridge,
+        unit_options=STANDARD_UNITS,
         current_user=get_current_mock_user(session),
     )
 
