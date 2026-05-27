@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block app_header_title %}Inventory Management{% endblock %}
+{% block main_class %}container container-inventory{% endblock %}
+{% block title %}Inventory Planning Preferences{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <div>
+            <h2>Inventory Planning Preferences</h2>
+            <p class="page-subtitle">
+                Vendor/category ordering windows for reorder coverage.
+            </p>
+        </div>
+        <div class="production-record-review-actions">
+            <a class="page-action-link secondary" href="{{ url_for('inventory_planning') }}">Inventory Planning</a>
+        </div>
+    </div>
+
+    <section class="item-detail-section">
+        <div class="menu-forecast-title-row inventory-section-title">
+            <div>
+                <h3>Vendor Ordering Rule</h3>
+                <p class="muted">Save one vendor setup across every checked item category.</p>
+            </div>
+        </div>
+        <form method="post" action="{{ url_for('save_inventory_planning_preference') }}" class="form-section">
+            <div class="form-row">
+                <label for="vendor_name">Vendor Name</label>
+                <input id="vendor_name" name="vendor_name" type="text" required>
+            </div>
+            <div class="form-row">
+                <label>Item Categories</label>
+                <div class="inventory-checkbox-grid">
+                    {% for option in item_category_options %}
+                        <label>
+                            <input type="checkbox" name="item_categories" value="{{ option.value }}">
+                            {{ option.label }}
+                        </label>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="form-row">
+                <label for="ordering_frequency">Ordering Frequency</label>
+                <select id="ordering_frequency" name="ordering_frequency" required>
+                    {% for option in ordering_frequency_options %}
+                        <option value="{{ option.value }}">{{ option.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-row">
+                <label>Delivery Cutoffs</label>
+                <div class="inventory-delivery-rule-grid">
+                    <div class="inventory-delivery-rule-header">Delivery</div>
+                    <div class="inventory-delivery-rule-header">Cutoff Day</div>
+                    <div class="inventory-delivery-rule-header">Cutoff Time</div>
+                    {% for option in day_options %}
+                        <label class="inventory-delivery-day">
+                            <input type="checkbox" name="delivery_days" value="{{ option.value }}">
+                            {{ option.label }}
+                        </label>
+                        <select name="cutoff_day_{{ option.value }}">
+                            {% for cutoff_option in day_options %}
+                                <option value="{{ cutoff_option.value }}">{{ cutoff_option.label }}</option>
+                            {% endfor %}
+                        </select>
+                        <input name="cutoff_time_{{ option.value }}" type="time" value="14:00">
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="form-row">
+                <label for="preferred_lead_days">Preferred Lead Days</label>
+                <input id="preferred_lead_days" name="preferred_lead_days" type="number" min="0" max="14" step="1" value="0" required>
+            </div>
+            <button type="submit">Save Preference</button>
+        </form>
+    </section>
+
+    <section class="item-detail-section">
+        <div class="menu-forecast-title-row inventory-section-title">
+            <h3>Current Rules</h3>
+            <span class="muted">{{ preferences|length }} configured</span>
+        </div>
+        <div class="menu-forecast-table-shell">
+            <table class="menu-forecast-table inventory-table">
+                <thead>
+                    <tr>
+                        <th>Category</th>
+                        <th>Vendor</th>
+                        <th>Delivery Cutoffs</th>
+                        <th>Lead Time</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for preference in preferences %}
+                        <tr>
+                            <td>{{ preference.item_category_label }}</td>
+                            <td>{{ preference.vendor_name }}</td>
+                            <td>{{ preference.cutoff_rules_display }}</td>
+                            <td>{{ preference.preferred_lead_days }} day{% if preference.preferred_lead_days != 1 %}s{% endif %}</td>
+                            <td>
+                                <form method="post" action="{{ url_for('delete_inventory_planning_preference', item_category=preference.item_category) }}">
+                                    <button type="submit" class="page-action-link secondary compact">Delete</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="5">No inventory planning preferences configured yet.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+{% endblock %}

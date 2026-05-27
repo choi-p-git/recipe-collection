@@ -12,6 +12,12 @@
             </p>
         </div>
         <div class="production-record-review-actions">
+            <a class="page-action-link" href="{{ url_for('inventory_planning_preferences') }}">Planning Preferences</a>
+            {% if show_all %}
+                <a class="page-action-link secondary" href="{{ url_for('inventory_planning') }}">First 3 Operation Days</a>
+            {% elif plan.view.hidden_row_count > 0 %}
+                <a class="page-action-link secondary" href="{{ url_for('inventory_planning', view='all') }}">Load All Rows ({{ plan.view.hidden_row_count }} more)</a>
+            {% endif %}
             <a class="page-action-link secondary" href="{{ url_for('inventory_dashboard') }}">Inventory Dashboard</a>
         </div>
     </div>
@@ -37,11 +43,58 @@
         </div>
     </section>
 
+    {% if plan.review_rows %}
+        <section class="item-detail-section">
+            <div class="menu-forecast-title-row inventory-section-title">
+                <div>
+                    <h3>Planning Review</h3>
+                    <p class="muted">Rows needing conversion metadata or ordering-rule attention.</p>
+                </div>
+                <span class="muted">{{ plan.review_rows|length }} item{% if plan.review_rows|length != 1 %}s{% endif %}</span>
+            </div>
+            <div class="inventory-review-list">
+                {% for review in plan.review_rows %}
+                    <article class="inventory-review-row">
+                        <div>
+                            <strong>{{ review.item_name }}</strong>
+                            <div class="muted">{{ review.item_category_label }}{% if review.next_usage_display %} / {{ review.next_usage_display }}{% endif %}</div>
+                        </div>
+                        <div>
+                            <span class="inventory-review-reason">{{ review.reason_label }}</span>
+                            <div class="inventory-review-detail">{{ review.reason_detail }}</div>
+                            {% if review.next_menu_item_name %}
+                                <div class="muted">{{ review.next_menu_item_name }}</div>
+                            {% endif %}
+                        </div>
+                        <div>
+                            {% if review.next_needed_display %}
+                                <strong>{{ review.next_needed_display }}</strong>
+                            {% endif %}
+                            <div class="muted">{{ review.coverage_display }}</div>
+                        </div>
+                        <div class="inventory-review-actions">
+                            {% if review.action_type == "planning_preferences" %}
+                                <a class="page-action-link secondary compact" href="{{ url_for('inventory_planning_preferences') }}">Preferences</a>
+                            {% else %}
+                                <a class="page-action-link secondary compact" href="{{ url_for('inventory_item_detail', item_id=review.item_id) }}">Item Detail</a>
+                            {% endif %}
+                        </div>
+                    </article>
+                {% endfor %}
+            </div>
+        </section>
+    {% endif %}
+
     <section class="item-detail-section">
         <div class="menu-forecast-title-row inventory-section-title">
             <div>
                 <h3>Reorder Planning</h3>
-                <p class="muted">Calculated need only. Rounded purchase suggestions remain separate.</p>
+                <p class="muted">
+                    Calculated need only. Rounded purchase suggestions remain separate.
+                    {% if plan.view.is_limited %}
+                        Showing the next {{ plan.view.operation_day_limit }} operation days.
+                    {% endif %}
+                </p>
             </div>
         </div>
         <div class="menu-forecast-table-shell">
@@ -49,8 +102,9 @@
                 <thead>
                     <tr>
                         <th>Item</th>
+                        <th>Vendor Window</th>
                         <th>On Hand</th>
-                        <th>Next Need</th>
+                        <th>Window Need</th>
                         <th>Coverage</th>
                         <th>Upcoming</th>
                     </tr>
@@ -61,6 +115,49 @@
                             <td>
                                 <a class="text-link" href="{{ url_for('inventory_item_detail', item_id=row.item_id) }}">{{ row.item_name }}</a>
                                 <div class="muted">{{ row.item_category_label }}</div>
+                            </td>
+                            <td>
+                                <strong>{{ row.vendor_name }}</strong>
+                                <div class="app-popover inventory-dashboard-popover" data-popover>
+                                    <button type="button" class="app-popover-trigger inventory-table-popover-button" data-popover-trigger>
+                                        Window details
+                                    </button>
+                                    <div class="app-popover-panel inventory-dashboard-history-panel" role="tooltip" data-popover-panel>
+                                        <p class="app-popover-heading">Ordering Window</p>
+                                        <p class="inventory-usage-detail-line">
+                                            <span class="inventory-usage-primary">Usage</span>
+                                            <span class="inventory-usage-secondary">{{ row.next_usage_display }}</span>
+                                        </p>
+                                        {% if row.ordering_window.preferred_in_house_display %}
+                                            <p class="inventory-usage-detail-line">
+                                                <span class="inventory-usage-primary">Preferred In-House</span>
+                                                <span class="inventory-usage-secondary">{{ row.ordering_window.preferred_in_house_display }}</span>
+                                            </p>
+                                        {% endif %}
+                                        {% if row.ordering_window.planned_delivery_display %}
+                                            <p class="inventory-usage-detail-line">
+                                                <span class="inventory-usage-primary">Planned Delivery</span>
+                                                <span class="inventory-usage-secondary">{{ row.ordering_window.planned_delivery_display }}</span>
+                                            </p>
+                                        {% endif %}
+                                        {% if row.ordering_window.order_cutoff_display %}
+                                            <p class="inventory-usage-detail-line">
+                                                <span class="inventory-usage-primary">Order Cutoff</span>
+                                                <span class="inventory-usage-secondary">{{ row.ordering_window.order_cutoff_display }}</span>
+                                            </p>
+                                        {% endif %}
+                                        <p class="inventory-usage-detail-line">
+                                            <span class="inventory-usage-primary">Window</span>
+                                            <span class="inventory-usage-secondary">{{ row.ordering_window.planning_window_label }}</span>
+                                        </p>
+                                        {% if row.planning_review_message %}
+                                            <p class="inventory-needed-warning">{{ row.planning_review_message }}</p>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                {% if row.preference_source == "default" %}
+                                    <div class="inventory-needed-warning">Default planning window</div>
+                                {% endif %}
                             </td>
                             <td>{{ row.current_on_hand_display }}</td>
                             <td>
@@ -74,17 +171,20 @@
                                 {% if row.needed_conversion_issue %}
                                     <div class="inventory-needed-warning">{{ row.needed_conversion_issue.message }}</div>
                                 {% endif %}
+                                {% if row.planning_review_message %}
+                                    <div class="inventory-needed-warning">{{ row.planning_review_message }}</div>
+                                {% endif %}
                             </td>
                             <td>
                                 <strong class="inventory-coverage-value inventory-coverage-value-{{ row.coverage_status }}">
                                     {{ row.coverage_display }}
                                 </strong>
                             </td>
-                            <td>{{ row.upcoming_count }} row{% if row.upcoming_count != 1 %}s{% endif %}</td>
+                            <td>{{ row.planning_usage_count }} in window / {{ row.upcoming_count }} total</td>
                         </tr>
                     {% else %}
                         <tr>
-                            <td colspan="5">No counted inventory items have upcoming menu need.</td>
+                            <td colspan="6">No counted inventory items have upcoming menu need in the current planning windows.</td>
                         </tr>
                     {% endfor %}
                 </tbody>

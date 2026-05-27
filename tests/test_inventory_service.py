@@ -20,7 +20,13 @@ from services.inventory_bridge_service import (
 )
 from services.item_service import create_base_food
 from services.inventory_usage_service import get_inventory_item_detail, get_inventory_item_usage
-from services.inventory_usage_service import get_inventory_reorder_plan
+from services.inventory_usage_service import _limit_rows_to_operation_days, get_inventory_reorder_plan
+from services.inventory_ordering_service import (
+    build_ordering_window_for_usage,
+    delete_inventory_ordering_preference,
+    list_inventory_ordering_preferences,
+    upsert_inventory_ordering_preference,
+)
 from services.menu_forecast_service import save_menu_forecast_yield
 from services.menu_service import create_menu, replace_menu_slot_items
 from services.production_record_service import ensure_production_record, save_production_record_line
@@ -661,6 +667,305 @@ def test_inventory_reorder_plan_compares_on_hand_to_next_need(isolated_db):
     assert plan["rows"][0]["coverage_status"] == "short"
 
 
+def test_inventory_reorder_plan_limits_need_to_next_vendor_cutoff_window(isolated_db):
+    item_id = _live_base_food(isolated_db, "Inventory Planning Window Beans")
+    location_id = create_inventory_location(
+        location_name="Planning Window Storage",
+        actor_user_id="dev_user_001",
+        actor_display_name="Plato Choi",
+    )
+    save_inventory_location_item(
+        inventory_location_id=location_id,
+        item_id=item_id,
+        count_each_quantity="10",
+        unit_of_measurement="Lb",
+        count_type="counted_by_each_only",
+    )
+    upsert_inventory_ordering_preference(
+        user_id="dev_user_001",
+        item_category="grocery",
+        vendor_name="Grocery Vendor",
+        ordering_frequency="as_needed",
+        cutoff_rules=[
+            {"delivery_day": "wednesday", "cutoff_day": "monday", "cutoff_time": "14:00"},
+        ],
+        preferred_lead_days=0,
+    )
+
+    for menu_name, service_date in [
+        ("Inventory Planning First Window", "2026-06-03"),
+        ("Inventory Planning Later Window", "2026-06-10"),
+    ]:
+        menu_id = create_menu(
+            menu_name=menu_name,
+            author_user_id="dev_user_001",
+            author_display_name="Plato Choi",
+            service_days=["wednesday"],
+            meal_periods=["lunch"],
+            concepts=["hot_line"],
+            menu_length_weeks=1,
+            menu_start_date=service_date,
+            menu_end_date=service_date,
+            require_date_range=True,
+            allowed_service_days=["wednesday"],
+            allowed_meal_periods=["lunch"],
+            allowed_concepts=["hot_line"],
+        )
+        conn = sqlite3.connect(isolated_db)
+        cursor = conn.cursor()
+        cursor.execute("SELECT menu_slot_id FROM menu_slot WHERE menu_id = ?", (menu_id,))
+        slot_id = cursor.fetchone()[0]
+        conn.close()
+        replace_menu_slot_items(menu_slot_id=slot_id, selected_item_ids=[item_id], actor_user_id="dev_user_001")
+        conn = sqlite3.connect(isolated_db)
+        cursor = conn.cursor()
+        cursor.execute("SELECT menu_slot_item_id FROM menu_slot_item WHERE menu_slot_id = ?", (slot_id,))
+        slot_item_id = cursor.fetchone()[0]
+        conn.close()
+        save_menu_forecast_yield(
+            menu_id=menu_id,
+            menu_slot_item_id=slot_item_id,
+            actor_user_id="dev_user_001",
+            forecast_yield_quantity=6,
+            forecast_yield_unit="lb",
+        )
+
+    plan = get_inventory_reorder_plan(
+        today=date(2026, 6, 1),
+        actor_user_id="dev_user_001",
+    )
+
+    assert plan["rows"][0]["vendor_name"] == "Grocery Vendor"
+    assert plan["rows"][0]["planning_usage_count"] == 1
+    assert plan["rows"][0]["next_needed_display"] == "6 lb"
+    assert plan["rows"][0]["coverage_display"] == "Can cover, 4 lb remaining"
+    assert plan["rows"][0]["ordering_window"]["order_cutoff_deadline"] == "2026-06-01T14:00"
+
+
+def test_inventory_reorder_plan_bridges_pack_mass_volume_coverage(isolated_db):
+    item_id = create_base_food(
+        item_name="Inventory Planning Cream Base",
+        mass_quantity=120,
+        mass_unit="g",
+        volume_quantity=1,
+        volume_unit="cup",
+    )
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id = ?", (item_id,))
+    conn.commit()
+    conn.close()
+    location_id = create_inventory_location(
+        location_name="Planning Freezer",
+        actor_user_id="dev_user_001",
+        actor_display_name="Plato Choi",
+    )
+    save_inventory_location_item(
+        inventory_location_id=location_id,
+        item_id=item_id,
+        count_each_quantity="10",
+        count_case_quantity="0",
+        pack_size_text="7 lb",
+        unit_of_measurement="Case",
+        count_type="counted_by_each_only",
+    )
+    menu_id = create_menu(
+        menu_name="Inventory Planning Bridge Menu",
+        author_user_id="dev_user_001",
+        author_display_name="Plato Choi",
+        service_days=["thursday"],
+        meal_periods=["lunch"],
+        concepts=["hot_line"],
+        menu_length_weeks=1,
+        menu_start_date="2026-05-28",
+        menu_end_date="2026-05-28",
+        require_date_range=True,
+        allowed_service_days=["thursday"],
+        allowed_meal_periods=["lunch"],
+        allowed_concepts=["hot_line"],
+    )
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT menu_slot_id FROM menu_slot WHERE menu_id = ?", (menu_id,))
+    slot_id = cursor.fetchone()[0]
+    conn.close()
+    replace_menu_slot_items(menu_slot_id=slot_id, selected_item_ids=[item_id], actor_user_id="dev_user_001")
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT menu_slot_item_id FROM menu_slot_item WHERE menu_slot_id = ?", (slot_id,))
+    slot_item_id = cursor.fetchone()[0]
+    conn.close()
+    save_menu_forecast_yield(
+        menu_id=menu_id,
+        menu_slot_item_id=slot_item_id,
+        actor_user_id="dev_user_001",
+        forecast_yield_quantity=27.475,
+        forecast_yield_unit="cup",
+    )
+
+    plan = get_inventory_reorder_plan(today=date(2026, 5, 27))
+
+    assert plan["rows"][0]["item_name"] == "Inventory Planning Cream Base"
+    assert plan["rows"][0]["next_needed_display"] == "1.04 each"
+    assert plan["rows"][0]["coverage_status"] == "ok"
+    assert "Unit mismatch" not in plan["rows"][0]["coverage_display"]
+
+
+def test_inventory_reorder_plan_operation_day_limit_keeps_first_three_dates(isolated_db):
+    rows = [
+        {"item_name": "Today", "next_service_date": "2026-06-01"},
+        {"item_name": "Fourth", "next_service_date": "2026-06-05"},
+        {"item_name": "First", "next_service_date": "2026-06-02"},
+        {"item_name": "Second", "next_service_date": "2026-06-03"},
+        {"item_name": "Third", "next_service_date": "2026-06-04"},
+    ]
+
+    limited_rows, view = _limit_rows_to_operation_days(
+        rows,
+        3,
+        today=date(2026, 6, 1),
+        operation_dates=["2026-06-02", "2026-06-03", "2026-06-04"],
+    )
+
+    assert [row["item_name"] for row in limited_rows] == ["First", "Second", "Third"]
+    assert view["visible_operation_dates"] == ["2026-06-02", "2026-06-03", "2026-06-04"]
+    assert view["hidden_row_count"] == 2
+    assert view["all_row_count"] == 5
+
+
+def test_inventory_reorder_plan_operation_dates_come_from_menu_calendar(isolated_db):
+    create_menu(
+        menu_name="Inventory Operation Calendar",
+        author_user_id="dev_user_001",
+        author_display_name="Plato Choi",
+        service_days=["monday", "tuesday", "wednesday", "thursday", "friday"],
+        meal_periods=["lunch"],
+        concepts=["hot_line"],
+        menu_length_weeks=2,
+        menu_start_date="2026-05-25",
+        menu_end_date="2026-06-05",
+        require_date_range=True,
+        allowed_service_days=["monday", "tuesday", "wednesday", "thursday", "friday"],
+        allowed_meal_periods=["lunch"],
+        allowed_concepts=["hot_line"],
+    )
+
+    plan = get_inventory_reorder_plan(
+        today=date(2026, 5, 27),
+        actor_user_id="dev_user_001",
+        operation_day_limit=3,
+    )
+
+    assert plan["view"]["visible_operation_dates"] == ["2026-05-28", "2026-05-29", "2026-06-01"]
+
+
+def test_inventory_ordering_preference_persists_vendor_category_rule(isolated_db):
+    preference = upsert_inventory_ordering_preference(
+        user_id="dev_user_001",
+        item_category="produce",
+        vendor_name="Fresh Vendor",
+        ordering_frequency="as_needed",
+        cutoff_rules=[
+            {"delivery_day": "monday", "cutoff_day": "friday", "cutoff_time": "14:00"},
+            {"delivery_day": "wednesday", "cutoff_day": "tuesday", "cutoff_time": "14:00"},
+            {"delivery_day": "friday", "cutoff_day": "thursday", "cutoff_time": "14:00"},
+        ],
+        preferred_lead_days="2",
+    )
+
+    preferences = list_inventory_ordering_preferences("dev_user_001")
+
+    assert preference["vendor_name"] == "Fresh Vendor"
+    assert preference["delivery_days"] == ["monday", "wednesday", "friday"]
+    assert preferences[0]["item_category"] == "produce"
+    assert preferences[0]["ordering_frequency"] == "as_needed"
+    assert "Monday: Friday 14:00" in preferences[0]["cutoff_rules_display"]
+    assert "Wednesday: Tuesday 14:00" in preferences[0]["cutoff_rules_display"]
+    assert preferences[0]["preferred_lead_days"] == 2
+
+
+def test_inventory_ordering_preference_delete_deactivates_category_rule(isolated_db):
+    upsert_inventory_ordering_preference(
+        user_id="dev_user_001",
+        item_category="produce",
+        vendor_name="Fresh Vendor",
+        ordering_frequency="as_needed",
+        cutoff_rules=[
+            {"delivery_day": "monday", "cutoff_day": "friday", "cutoff_time": "14:00"},
+        ],
+        preferred_lead_days=1,
+    )
+
+    delete_inventory_ordering_preference(
+        user_id="dev_user_001",
+        item_category="produce",
+    )
+
+    assert list_inventory_ordering_preferences("dev_user_001") == []
+
+
+def test_inventory_ordering_window_uses_preferred_lead_delivery_and_cutoff(isolated_db):
+    preference = upsert_inventory_ordering_preference(
+        user_id="dev_user_001",
+        item_category="produce",
+        vendor_name="Fresh Vendor",
+        ordering_frequency="as_needed",
+        cutoff_rules=[
+            {"delivery_day": "monday", "cutoff_day": "friday", "cutoff_time": "14:00"},
+            {"delivery_day": "wednesday", "cutoff_day": "tuesday", "cutoff_time": "14:00"},
+            {"delivery_day": "friday", "cutoff_day": "thursday", "cutoff_time": "14:00"},
+        ],
+        preferred_lead_days=2,
+    )
+
+    window = build_ordering_window_for_usage(
+        usage_date="2026-06-03",
+        item_category="produce",
+        preference=preference,
+        today=date(2026, 5, 29),
+    )
+
+    assert window["preferred_in_house_date"] == "2026-06-01"
+    assert window["planned_delivery_date"] == "2026-06-01"
+    assert window["order_cutoff_deadline"] == "2026-05-29T14:00"
+    assert window["cutoff_day"] == "friday"
+    assert window["planning_review_message"] == ""
+
+    wednesday_window = build_ordering_window_for_usage(
+        usage_date="2026-06-03",
+        item_category="produce",
+        preference={**preference, "preferred_lead_days": 0},
+        today=date(2026, 6, 2),
+    )
+
+    assert wednesday_window["planned_delivery_date"] == "2026-06-03"
+    assert wednesday_window["order_cutoff_deadline"] == "2026-06-02T14:00"
+    assert wednesday_window["cutoff_day"] == "tuesday"
+
+
+def test_inventory_ordering_window_flags_unmet_preferred_lead(isolated_db):
+    preference = upsert_inventory_ordering_preference(
+        user_id="dev_user_001",
+        item_category="produce",
+        vendor_name="Fresh Vendor",
+        ordering_frequency="as_needed",
+        cutoff_rules=[
+            {"delivery_day": "wednesday", "cutoff_day": "monday", "cutoff_time": "14:00"},
+        ],
+        preferred_lead_days=2,
+    )
+
+    window = build_ordering_window_for_usage(
+        usage_date="2026-06-03",
+        item_category="produce",
+        preference=preference,
+        today=date(2026, 6, 1),
+    )
+
+    assert window["planned_delivery_date"] == "2026-06-03"
+    assert window["planning_review_message"] == "Preferred lead time cannot be met by configured delivery days."
+
+
 def test_inventory_usage_needed_quantity_uses_recipe_mass_volume_bridge(isolated_db):
     ingredient_id = _live_base_food(isolated_db, "Inventory Usage Apple")
     recipe_id = create_recipe(
@@ -882,3 +1187,65 @@ def test_inventory_usage_each_need_guard_allows_temporary_preview_conversion(iso
     )
 
     assert preview_detail["summary"]["conversion_note"] == "Temporary each conversion: 1 each = 0.5 lb"
+
+
+def test_inventory_reorder_plan_exposes_conversion_review_rows(isolated_db):
+    item_id = create_base_food(item_name="Inventory Planning Each Review", yield_quantity=1, yield_unit="each")
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item SET status = 'live' WHERE item_id = ?", (item_id,))
+    conn.commit()
+    conn.close()
+    location_id = create_inventory_location(
+        location_name="Each Review Storage",
+        actor_user_id="dev_user_001",
+        actor_display_name="Plato Choi",
+    )
+    save_inventory_location_item(
+        inventory_location_id=location_id,
+        item_id=item_id,
+        count_case_quantity="1",
+        pack_quantity="8",
+        pack_size_text="4 lb",
+        unit_of_measurement="Case",
+        count_type="counted_by_each_and_case",
+    )
+    menu_id = create_menu(
+        menu_name="Inventory Each Review Menu",
+        author_user_id="dev_user_001",
+        author_display_name="Plato Choi",
+        service_days=["thursday"],
+        meal_periods=["lunch"],
+        concepts=["hot_line"],
+        menu_length_weeks=1,
+        menu_start_date="2026-05-28",
+        menu_end_date="2026-05-28",
+        require_date_range=True,
+        allowed_service_days=["thursday"],
+        allowed_meal_periods=["lunch"],
+        allowed_concepts=["hot_line"],
+    )
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT menu_slot_id FROM menu_slot WHERE menu_id = ?", (menu_id,))
+    slot_id = cursor.fetchone()[0]
+    conn.close()
+    replace_menu_slot_items(menu_slot_id=slot_id, selected_item_ids=[item_id], actor_user_id="dev_user_001")
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT menu_slot_item_id FROM menu_slot_item WHERE menu_slot_id = ?", (slot_id,))
+    slot_item_id = cursor.fetchone()[0]
+    conn.close()
+    save_menu_forecast_yield(
+        menu_id=menu_id,
+        menu_slot_item_id=slot_item_id,
+        actor_user_id="dev_user_001",
+        forecast_yield_quantity=12,
+        forecast_yield_unit="each",
+    )
+
+    plan = get_inventory_reorder_plan(today=date(2026, 5, 27), operation_day_limit=3)
+
+    assert plan["review_rows"][0]["item_name"] == "Inventory Planning Each Review"
+    assert plan["review_rows"][0]["reason_label"] == "Conversion Review"
+    assert plan["review_rows"][0]["action_type"] == "item_detail"

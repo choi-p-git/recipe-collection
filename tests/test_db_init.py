@@ -27,6 +27,7 @@ def test_initialize_database_creates_expected_tables(isolated_db):
     assert "inventory_location" in tables
     assert "inventory_location_item" in tables
     assert "inventory_location_break" in tables
+    assert "inventory_ordering_preference" in tables
 
 
 def test_initialize_database_creates_expected_indexes(isolated_db):
@@ -58,6 +59,8 @@ def test_initialize_database_creates_expected_indexes(isolated_db):
     assert "idx_inventory_location_break_location" in indexes
     assert "idx_inventory_catalog_item_status" in indexes
     assert "idx_inventory_item_match_recipe_item" in indexes
+    assert "idx_inventory_ordering_preference_user" in indexes
+    assert "idx_inventory_ordering_preference_category" in indexes
 
 
 def test_initialize_database_records_applied_migration_versions(isolated_db):
@@ -91,6 +94,9 @@ def test_initialize_database_records_applied_migration_versions(isolated_db):
         "0021_refine_live_inventory_rows.sql",
         "0022_add_inventory_catalog_bridge.sql",
         "0023_add_item_accounting_category.sql",
+        "0024_add_inventory_ordering_preferences.sql",
+        "0025_add_inventory_ordering_cutoff_rules.sql",
+        "0026_refine_inventory_ordering_frequency.sql",
     ]
 
 

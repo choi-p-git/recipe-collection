@@ -13,6 +13,7 @@ from config.hotel_pan_units import (
 )
 from config.cooking_methods import APPROVED_COOKING_METHODS
 from config.menu_builder import CONCEPT_OPTIONS, DAY_OF_WEEK_OPTIONS, MEAL_PERIOD_OPTIONS
+from config.item_categories import ITEM_CATEGORY_LABELS
 from config.roles import ROLE_LABELS
 from config.statuses import STATUS_LABELS
 from services.item_service import (
@@ -101,6 +102,14 @@ from services.inventory_usage_service import (
     get_inventory_item_usage,
     get_inventory_reorder_plan,
 )
+from services.inventory_ordering_service import (
+    DAY_OPTIONS,
+    ORDERING_FREQUENCY_OPTIONS,
+    InvalidInventoryOrderingPreferenceError,
+    delete_inventory_ordering_preference,
+    list_inventory_ordering_preferences,
+    upsert_inventory_ordering_preferences_for_categories,
+)
 from services.item_note_service import (
     ItemNoteError,
     acknowledge_item_notes_for_viewer,
@@ -181,6 +190,11 @@ app = Flask(
 app.secret_key = "dev-secret-key"
 
 
+@app.route("/favicon.ico")
+def favicon():
+    return Response(status=204)
+
+
 def _current_day_of_week() -> str:
     return current_day_of_week(_current_service_date())
 
@@ -235,11 +249,82 @@ def inventory_dashboard():
 
 @app.route("/inventory/planning")
 def inventory_planning():
+    current_user = get_current_mock_user(session)
+    show_all = request.args.get("view") == "all"
     return render_template(
         "inventory_planning.html",
-        plan=get_inventory_reorder_plan(),
-        current_user=get_current_mock_user(session),
+        plan=get_inventory_reorder_plan(
+            actor_user_id=current_user["user_id"],
+            operation_day_limit=None if show_all else 3,
+        ),
+        show_all=show_all,
+        current_user=current_user,
     )
+
+
+@app.route("/inventory/planning/preferences")
+def inventory_planning_preferences():
+    current_user = get_current_mock_user(session)
+    preferences = list_inventory_ordering_preferences(current_user["user_id"])
+    preferences_by_category = {
+        preference["item_category"]: preference
+        for preference in preferences
+    }
+    return render_template(
+        "inventory_planning_preferences.html",
+        preferences=preferences,
+        preferences_by_category=preferences_by_category,
+        item_category_options=[
+            {"value": value, "label": label}
+            for value, label in ITEM_CATEGORY_LABELS.items()
+        ],
+        day_options=[{"value": value, "label": label} for value, label in DAY_OPTIONS],
+        ordering_frequency_options=[
+            {"value": value, "label": label}
+            for value, label in ORDERING_FREQUENCY_OPTIONS
+        ],
+        current_user=current_user,
+    )
+
+
+@app.post("/inventory/planning/preferences")
+def save_inventory_planning_preference():
+    current_user = get_current_mock_user(session)
+    cutoff_rules = [
+        {
+            "delivery_day": delivery_day,
+            "cutoff_day": request.form.get(f"cutoff_day_{delivery_day}", ""),
+            "cutoff_time": request.form.get(f"cutoff_time_{delivery_day}", ""),
+        }
+        for delivery_day in request.form.getlist("delivery_days")
+    ]
+    try:
+        saved_preferences = upsert_inventory_ordering_preferences_for_categories(
+            user_id=current_user["user_id"],
+            item_categories=request.form.getlist("item_categories"),
+            vendor_name=request.form.get("vendor_name", ""),
+            ordering_frequency=request.form.get("ordering_frequency", "as_needed"),
+            cutoff_rules=cutoff_rules,
+            preferred_lead_days=request.form.get("preferred_lead_days", 0),
+        )
+        flash(f"Inventory planning preferences saved for {len(saved_preferences)} categories.", "success")
+    except InvalidInventoryOrderingPreferenceError as exc:
+        flash(str(exc), "error")
+    return redirect(url_for("inventory_planning_preferences"))
+
+
+@app.post("/inventory/planning/preferences/<item_category>/delete")
+def delete_inventory_planning_preference(item_category):
+    current_user = get_current_mock_user(session)
+    try:
+        delete_inventory_ordering_preference(
+            user_id=current_user["user_id"],
+            item_category=item_category,
+        )
+        flash("Inventory planning preference deleted.", "success")
+    except InvalidInventoryOrderingPreferenceError as exc:
+        flash(str(exc), "error")
+    return redirect(url_for("inventory_planning_preferences"))
 
 
 @app.route("/inventory/items/<int:item_id>")

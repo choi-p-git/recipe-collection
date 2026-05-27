@@ -1560,9 +1560,47 @@ def test_inventory_foundation_routes_create_count_and_current_on_hand(app_client
     assert planning_response.status_code == 200
     assert "Inventory Planning" in planning_page
     assert "Reorder Planning" in planning_page
-    assert "<th>Next Need</th>" in planning_page
-    assert "No counted inventory items have upcoming menu need." in planning_page
+    assert "<th>Window Need</th>" in planning_page
+    assert "Planning Preferences" in planning_page
+    assert "No counted inventory items have upcoming menu need in the current planning windows." in planning_page
     assert "Inventory Dashboard" in planning_page
+
+    preferences_response = app_client.post(
+        "/inventory/planning/preferences",
+        data={
+            "vendor_name": "Route Produce Vendor",
+            "item_categories": ["produce", "dairy"],
+            "ordering_frequency": "as_needed",
+            "delivery_days": ["monday", "wednesday", "friday"],
+            "cutoff_day_monday": "friday",
+            "cutoff_time_monday": "14:00",
+            "cutoff_day_wednesday": "tuesday",
+            "cutoff_time_wednesday": "14:00",
+            "cutoff_day_friday": "thursday",
+            "cutoff_time_friday": "14:00",
+            "preferred_lead_days": "2",
+        },
+        follow_redirects=True,
+    )
+    preferences_page = preferences_response.get_data(as_text=True)
+
+    assert preferences_response.status_code == 200
+    assert "Inventory planning preferences saved for 2 categories." in preferences_page
+    assert "Route Produce Vendor" in preferences_page
+    assert "Dairy" in preferences_page
+    assert "Produce" in preferences_page
+    assert "Delete" in preferences_page
+    assert "Monday: Friday 14:00" in preferences_page
+    assert "Wednesday: Tuesday 14:00" in preferences_page
+
+    delete_preferences_response = app_client.post(
+        "/inventory/planning/preferences/produce/delete",
+        follow_redirects=True,
+    )
+    delete_preferences_page = delete_preferences_response.get_data(as_text=True)
+
+    assert delete_preferences_response.status_code == 200
+    assert "Inventory planning preference deleted." in delete_preferences_page
 
     count_rollup_response = app_client.get(f"/api/inventory/items/{item_id}/count-rolldown")
     count_rollup_payload = count_rollup_response.get_json()

@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import date
+from datetime import date, timedelta
 
 from config.item_categories import ITEM_CATEGORY_LABELS
 from db import get_connection
 from services.inventory_service import _format_location_line_display, _format_quantity
+from services.inventory_ordering_service import (
+    build_ordering_window_for_usage,
+    get_inventory_ordering_preference_map,
+)
 from services.menu_calendar_service import build_week_day_dates
 from services.recipe_flattening_service import build_flattened_recipe_view
 from services.unit_conversion_service import convert_unit_value, convert_with_item_mass_volume_bridge, normalize_unit_symbol
@@ -766,15 +770,29 @@ def _build_inventory_item_summary(*, usage: dict, count_rolldown: list[dict]) ->
         quantities_by_unit[unit] = quantities_by_unit.get(unit, 0.0) + float(row.get("display_quantity") or 0)
         quantity_labels_by_unit[unit] = unit_label
 
-        if row.get("unit_of_measurement") == "Case" and row.get("pack_quantity"):
+        if row.get("unit_of_measurement") == "Case":
             pack_quantity = float(row.get("pack_quantity") or 0)
+            count_each_quantity = float(row.get("count_each_quantity") or 0)
+            count_case_quantity = float(row.get("count_case_quantity") or 0)
+            pack_size = _parse_pack_size_text(row.get("pack_size_text"))
             if pack_quantity > 0:
-                count_each_quantity = float(row.get("count_each_quantity") or 0)
-                count_case_quantity = float(row.get("count_case_quantity") or 0)
                 equivalent_case_quantity = count_case_quantity + (count_each_quantity / pack_quantity)
                 equivalent_each_quantity = (count_case_quantity * pack_quantity) + count_each_quantity
                 coverage_quantities_by_unit["case"] = coverage_quantities_by_unit.get("case", 0.0) + equivalent_case_quantity
                 coverage_quantities_by_unit["each"] = coverage_quantities_by_unit.get("each", 0.0) + equivalent_each_quantity
+                if pack_size:
+                    pack_size_quantity, pack_size_unit = pack_size
+                    coverage_quantities_by_unit[pack_size_unit] = coverage_quantities_by_unit.get(pack_size_unit, 0.0) + (
+                        equivalent_each_quantity * pack_size_quantity
+                    )
+                continue
+            if row.get("count_type") == EACH_ONLY_COUNT_TYPE and count_each_quantity > 0:
+                coverage_quantities_by_unit["each"] = coverage_quantities_by_unit.get("each", 0.0) + count_each_quantity
+                if pack_size:
+                    pack_size_quantity, pack_size_unit = pack_size
+                    coverage_quantities_by_unit[pack_size_unit] = coverage_quantities_by_unit.get(pack_size_unit, 0.0) + (
+                        count_each_quantity * pack_size_quantity
+                    )
                 continue
         coverage_quantities_by_unit[unit] = coverage_quantities_by_unit.get(unit, 0.0) + float(
             row.get("display_quantity") or 0
@@ -836,12 +854,12 @@ def get_inventory_item_detail(item_id: int, *, temporary_each_bridge: dict | Non
     }
 
 
-def _inventory_planning_item_ids() -> list[int]:
+def _inventory_planning_items() -> list[dict]:
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
             """
-            SELECT DISTINCT ili.item_id
+            SELECT DISTINCT ili.item_id, i.item_category
             FROM inventory_location_item ili
             JOIN inventory_location il
               ON il.inventory_location_id = ili.inventory_location_id
@@ -853,40 +871,424 @@ def _inventory_planning_item_ids() -> list[int]:
             ORDER BY i.item_name ASC, i.item_id ASC
             """
         )
-        return [int(row[0]) for row in cursor.fetchall()]
+        return [
+            {
+                "item_id": int(row[0]),
+                "item_category": row[1],
+            }
+            for row in cursor.fetchall()
+        ]
 
 
-def get_inventory_reorder_plan(*, today: date | None = None, limit: int | None = None) -> dict:
+def _coverage_quantities_by_unit(count_rolldown: list[dict]) -> dict[str, float]:
+    quantities_by_unit: dict[str, float] = {}
+    for row in count_rolldown:
+        if row.get("unit_of_measurement") == "Case":
+            pack_quantity = float(row.get("pack_quantity") or 0)
+            count_each_quantity = float(row.get("count_each_quantity") or 0)
+            count_case_quantity = float(row.get("count_case_quantity") or 0)
+            pack_size = _parse_pack_size_text(row.get("pack_size_text"))
+            if pack_quantity > 0:
+                equivalent_each_quantity = (count_case_quantity * pack_quantity) + count_each_quantity
+                quantities_by_unit["case"] = quantities_by_unit.get("case", 0.0) + (
+                    count_case_quantity + (count_each_quantity / pack_quantity)
+                )
+                quantities_by_unit["each"] = quantities_by_unit.get("each", 0.0) + equivalent_each_quantity
+                if pack_size:
+                    pack_size_quantity, pack_size_unit = pack_size
+                    quantities_by_unit[pack_size_unit] = quantities_by_unit.get(pack_size_unit, 0.0) + (
+                        equivalent_each_quantity * pack_size_quantity
+                    )
+                continue
+            if row.get("count_type") == EACH_ONLY_COUNT_TYPE and count_each_quantity > 0:
+                quantities_by_unit["each"] = quantities_by_unit.get("each", 0.0) + count_each_quantity
+                if pack_size:
+                    pack_size_quantity, pack_size_unit = pack_size
+                    quantities_by_unit[pack_size_unit] = quantities_by_unit.get(pack_size_unit, 0.0) + (
+                        count_each_quantity * pack_size_quantity
+                    )
+                continue
+        unit = row.get("display_unit") or row.get("unit") or ""
+        if unit:
+            quantities_by_unit[unit] = quantities_by_unit.get(unit, 0.0) + float(row.get("display_quantity") or 0)
+    return quantities_by_unit
+
+
+def _coverage_quantity_for_needed_unit(
+    coverage_quantities: dict[str, float],
+    needed_unit: str,
+    item_profile: dict | None,
+) -> float | None:
+    if needed_unit in coverage_quantities:
+        return coverage_quantities[needed_unit]
+
+    converted_total = 0.0
+    converted_any = False
+    for source_unit, source_quantity in coverage_quantities.items():
+        conversion = convert_unit_value(source_quantity, source_unit, needed_unit)
+        if not conversion["ok"] and item_profile:
+            conversion = convert_with_item_mass_volume_bridge(
+                source_quantity,
+                source_unit,
+                needed_unit,
+                item_type=item_profile.get("item_type") or "",
+                mass_quantity=item_profile.get("mass_quantity"),
+                mass_unit=item_profile.get("mass_unit"),
+                volume_quantity=item_profile.get("volume_quantity"),
+                volume_unit=item_profile.get("volume_unit"),
+            )
+        if conversion["ok"]:
+            converted_total += float(conversion["quantity"])
+            converted_any = True
+
+    return converted_total if converted_any else None
+
+
+def _is_actionable_planning_usage(usage_row: dict) -> bool:
+    return bool(
+        usage_row.get("needed_conversion_issue")
+        or (usage_row.get("needed_quantity") is not None and usage_row.get("needed_unit"))
+    )
+
+
+def _build_planning_need_summary(
+    *,
+    planning_usages: list[dict],
+    count_rolldown: list[dict],
+    item_profile: dict | None = None,
+) -> dict:
+    needed_by_unit: dict[str, float] = {}
+    unit_labels: dict[str, str] = {}
+    conversion_issue = None
+    for usage in planning_usages:
+        if usage.get("needed_conversion_issue") and conversion_issue is None:
+            conversion_issue = usage["needed_conversion_issue"]
+        needed_quantity = usage.get("needed_quantity")
+        needed_unit = usage.get("needed_unit")
+        if needed_quantity is None or not needed_unit:
+            continue
+        needed_by_unit[needed_unit] = needed_by_unit.get(needed_unit, 0.0) + float(needed_quantity)
+        unit_labels[needed_unit] = usage.get("needed_unit_label") or needed_unit
+
+    if not needed_by_unit:
+        if conversion_issue:
+            return {
+                "needed_display": planning_usages[0].get("needed_display", "") if planning_usages else "",
+                "coverage_display": "Needs conversion review",
+                "coverage_status": "unknown",
+                "conversion_issue": conversion_issue,
+            }
+        return {
+            "needed_display": planning_usages[0].get("needed_display", "") if planning_usages else "",
+            "coverage_display": "Unit mismatch",
+            "coverage_status": "unknown",
+            "conversion_issue": conversion_issue,
+        }
+    if len(needed_by_unit) > 1:
+        return {
+            "needed_display": " + ".join(
+                f"{_format_quantity(quantity)} {unit_labels.get(unit, unit)}"
+                for unit, quantity in sorted(needed_by_unit.items())
+            ),
+            "coverage_display": "Multiple units need review",
+            "coverage_status": "unknown",
+            "conversion_issue": conversion_issue,
+        }
+
+    needed_unit, needed_quantity = next(iter(needed_by_unit.items()))
+    needed_unit_label = unit_labels.get(needed_unit, needed_unit)
+    on_hand_quantity = _coverage_quantity_for_needed_unit(
+        _coverage_quantities_by_unit(count_rolldown),
+        needed_unit,
+        item_profile,
+    )
+    if on_hand_quantity is None:
+        return {
+            "needed_display": f"{_format_quantity(needed_quantity)} {needed_unit_label}",
+            "coverage_display": "Unit mismatch",
+            "coverage_status": "unknown",
+            "conversion_issue": conversion_issue,
+        }
+    delta = on_hand_quantity - needed_quantity
+    if delta >= 0:
+        coverage_display = f"Can cover, {_format_quantity(delta)} {needed_unit_label} remaining"
+        coverage_status = "ok"
+    else:
+        coverage_display = f"Short by {_format_quantity(abs(delta))} {needed_unit_label}"
+        coverage_status = "short"
+    return {
+        "needed_display": f"{_format_quantity(needed_quantity)} {needed_unit_label}",
+        "coverage_display": coverage_display,
+        "coverage_status": coverage_status,
+        "conversion_issue": conversion_issue,
+    }
+
+
+def _parse_service_date(value: str) -> date | None:
+    try:
+        return date.fromisoformat(str(value or ""))
+    except ValueError:
+        return None
+
+
+def _next_menu_operation_dates(*, today: date, limit: int | None) -> list[str]:
+    if limit is None:
+        return []
+
+    menu_rules = []
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT menu_start_date, menu_end_date, service_days_json
+            FROM menu
+            WHERE menu_start_date IS NOT NULL
+              AND (menu_end_date IS NULL OR date(menu_end_date) > date(?))
+            """,
+            (today.isoformat(),),
+        )
+        for start_date_value, end_date_value, service_days_json in cursor.fetchall():
+            start_date = _parse_service_date(start_date_value)
+            end_date = _parse_service_date(end_date_value)
+            try:
+                service_days = set(json.loads(service_days_json or "[]"))
+            except json.JSONDecodeError:
+                service_days = set()
+            if start_date is not None and service_days:
+                menu_rules.append(
+                    {
+                        "start_date": start_date,
+                        "end_date": end_date,
+                        "service_days": service_days,
+                    }
+                )
+
+    operation_dates = []
+    candidate = today + timedelta(days=1)
+    lookahead_limit = today + timedelta(days=90)
+    while len(operation_dates) < limit and candidate <= lookahead_limit:
+        day_name = candidate.strftime("%A").lower()
+        if any(
+            candidate >= rule["start_date"]
+            and (rule["end_date"] is None or candidate <= rule["end_date"])
+            and day_name in rule["service_days"]
+            for rule in menu_rules
+        ):
+            operation_dates.append(candidate.isoformat())
+        candidate += timedelta(days=1)
+    return operation_dates
+
+
+def _limit_rows_to_operation_days(
+    rows: list[dict],
+    operation_day_limit: int | None,
+    *,
+    today: date | None = None,
+    operation_dates: list[str] | None = None,
+) -> tuple[list[dict], dict]:
+    all_row_count = len(rows)
+    if operation_day_limit is None:
+        return rows, {
+            "operation_day_limit": None,
+            "visible_operation_dates": [],
+            "hidden_row_count": 0,
+            "all_row_count": all_row_count,
+            "is_limited": False,
+        }
+
+    anchor_date = today or date.today()
+    visible_dates = list(operation_dates or [])
+    if not visible_dates:
+        for row in sorted(rows, key=lambda item: item.get("next_service_date") or "9999-99-99"):
+            service_date = row.get("next_service_date", "")
+            parsed_service_date = _parse_service_date(service_date)
+            if parsed_service_date is not None and parsed_service_date <= anchor_date:
+                continue
+            if service_date and service_date not in visible_dates:
+                visible_dates.append(service_date)
+            if len(visible_dates) >= operation_day_limit:
+                break
+
+    visible_date_set = set(visible_dates)
+    visible_rows = [
+        row
+        for row in rows
+        if row.get("next_service_date", "") in visible_date_set
+    ]
+    return visible_rows, {
+        "operation_day_limit": operation_day_limit,
+        "visible_operation_dates": visible_dates,
+        "hidden_row_count": all_row_count - len(visible_rows),
+        "all_row_count": all_row_count,
+        "is_limited": True,
+    }
+
+
+def _planning_review_payload(row: dict) -> dict | None:
+    conversion_issue = row.get("needed_conversion_issue")
+    if conversion_issue:
+        return {
+            "item_id": row["item_id"],
+            "item_name": row["item_name"],
+            "item_category_label": row["item_category_label"],
+            "next_usage_display": row.get("next_usage_display", ""),
+            "next_needed_display": row.get("next_needed_display", ""),
+            "coverage_display": row.get("coverage_display", ""),
+            "next_menu_item_name": row.get("next_menu_item_name", ""),
+            "reason_label": "Conversion Review",
+            "reason_detail": conversion_issue.get("message", "Inventory need cannot be converted with current item metadata."),
+            "action_type": "item_detail",
+        }
+
+    planning_review_message = row.get("planning_review_message", "")
+    if planning_review_message:
+        action_type = "planning_preferences"
+        reason_label = "Planning Rule Review"
+        if row.get("preference_source") == "default":
+            reason_label = "Default Planning Rule"
+        elif "Preferred lead time" in planning_review_message:
+            reason_label = "Lead Time Review"
+        elif "No valid delivery day" in planning_review_message:
+            reason_label = "Delivery Day Review"
+        return {
+            "item_id": row["item_id"],
+            "item_name": row["item_name"],
+            "item_category_label": row["item_category_label"],
+            "next_usage_display": row.get("next_usage_display", ""),
+            "next_needed_display": row.get("next_needed_display", ""),
+            "coverage_display": row.get("coverage_display", ""),
+            "next_menu_item_name": row.get("next_menu_item_name", ""),
+            "reason_label": reason_label,
+            "reason_detail": planning_review_message,
+            "action_type": action_type,
+        }
+
+    if row.get("coverage_status") == "unknown":
+        return {
+            "item_id": row["item_id"],
+            "item_name": row["item_name"],
+            "item_category_label": row["item_category_label"],
+            "next_usage_display": row.get("next_usage_display", ""),
+            "next_needed_display": row.get("next_needed_display", ""),
+            "coverage_display": row.get("coverage_display", ""),
+            "next_menu_item_name": row.get("next_menu_item_name", ""),
+            "reason_label": "Coverage Review",
+            "reason_detail": row.get("coverage_display") or "Inventory coverage needs review.",
+            "action_type": "item_detail",
+        }
+
+    return None
+
+
+def _build_planning_review_rows(rows: list[dict]) -> list[dict]:
+    review_rows = []
+    for row in rows:
+        review_payload = _planning_review_payload(row)
+        if review_payload:
+            review_rows.append(review_payload)
+    return review_rows
+
+
+def get_inventory_reorder_plan(
+    *,
+    today: date | None = None,
+    limit: int | None = None,
+    actor_user_id: str | None = None,
+    operation_day_limit: int | None = None,
+) -> dict:
     """
     Build first-pass shortage/reorder facts from counted inventory and upcoming menu need.
 
     This intentionally returns calculated need/coverage only. Rounded purchasing
     suggestions belong to a later inventory purchasing slice.
     """
+    normalized_today = today or date.today()
+    operation_dates = _next_menu_operation_dates(today=normalized_today, limit=operation_day_limit)
+    preference_map = get_inventory_ordering_preference_map(actor_user_id) if actor_user_id else {}
     rows = []
     status_sort = {"short": 0, "unknown": 1, "ok": 2, "none": 3}
-    for item_id in _inventory_planning_item_ids():
-        usage = get_inventory_item_usage(item_id, today=today)
+    for planning_item in _inventory_planning_items():
+        item_id = planning_item["item_id"]
+        item_category = planning_item["item_category"]
+        preference = preference_map.get(item_category)
+        usage = get_inventory_item_usage(item_id, today=normalized_today)
         if not usage["upcoming"]:
             continue
+        decorated_upcoming = [
+            {
+                **usage_row,
+                "ordering_window": build_ordering_window_for_usage(
+                    usage_date=usage_row.get("service_date", ""),
+                    item_category=item_category,
+                    preference=preference,
+                    today=normalized_today,
+                ),
+            }
+            for usage_row in usage["upcoming"]
+        ]
+        actionable_upcoming = [
+            usage_row
+            for usage_row in decorated_upcoming
+            if _is_actionable_planning_usage(usage_row)
+        ]
+        if not actionable_upcoming:
+            continue
+        if preference:
+            upcoming_with_future_cutoffs = [
+                usage_row
+                for usage_row in actionable_upcoming
+                if usage_row["ordering_window"].get("order_cutoff_deadline", "")[:10] >= normalized_today.isoformat()
+            ]
+            if not upcoming_with_future_cutoffs:
+                continue
+            next_cutoff = min(
+                usage_row["ordering_window"]["order_cutoff_deadline"]
+                for usage_row in upcoming_with_future_cutoffs
+            )
+            planning_usages = [
+                usage_row
+                for usage_row in upcoming_with_future_cutoffs
+                if usage_row["ordering_window"]["order_cutoff_deadline"] == next_cutoff
+            ]
+        else:
+            planning_usages = [
+                usage_row
+                for usage_row in actionable_upcoming
+                if usage_row["ordering_window"].get("include_in_current_window")
+            ]
+        if not planning_usages:
+            continue
+
         count_rolldown = get_inventory_item_count_rolldown(item_id)
         summary = _build_inventory_item_summary(usage=usage, count_rolldown=count_rolldown)
-        next_usage = usage["upcoming"][0]
+        planning_summary = _build_planning_need_summary(
+            planning_usages=planning_usages,
+            count_rolldown=count_rolldown,
+            item_profile=_load_inventory_needed_profile(item_id),
+        )
+        next_usage = planning_usages[0]
+        ordering_window = next_usage["ordering_window"]
         rows.append(
             {
                 "item_id": item_id,
                 "item_name": usage["item"]["item_name"],
+                "item_category": item_category,
                 "item_category_label": usage["item"]["item_category_label"],
                 "current_on_hand_display": summary["current_on_hand_display"],
                 "next_service_date": next_usage.get("service_date", ""),
-                "next_usage_display": summary["next_usage_display"],
-                "next_needed_display": summary["next_needed_display"],
-                "coverage_display": summary["coverage_display"],
-                "coverage_status": summary["coverage_status"],
+                "next_usage_display": next_usage.get("service_date_display", ""),
+                "next_needed_display": planning_summary["needed_display"],
+                "coverage_display": planning_summary["coverage_display"],
+                "coverage_status": planning_summary["coverage_status"],
                 "upcoming_count": usage["upcoming_count"],
+                "planning_usage_count": len(planning_usages),
                 "next_menu_name": next_usage.get("menu_name", ""),
                 "next_menu_item_name": next_usage.get("menu_item_name", ""),
-                "needed_conversion_issue": next_usage.get("needed_conversion_issue"),
+                "needed_conversion_issue": planning_summary["conversion_issue"],
+                "ordering_window": ordering_window,
+                "vendor_name": ordering_window.get("vendor_name", ""),
+                "preference_source": ordering_window.get("preference_source", "default"),
+                "planning_review_message": ordering_window.get("planning_review_message", ""),
                 "service_context": {
                     "menu_id": next_usage["menu_id"],
                     "week_number": next_usage["week_number"],
@@ -902,16 +1304,31 @@ def get_inventory_reorder_plan(*, today: date | None = None, limit: int | None =
             row["item_name"].lower(),
         )
     )
+    rows, view = _limit_rows_to_operation_days(
+        rows,
+        operation_day_limit,
+        today=normalized_today,
+        operation_dates=operation_dates,
+    )
     totals = {
         "planning_item_count": len(rows),
         "short_count": len([row for row in rows if row["coverage_status"] == "short"]),
-        "unknown_count": len([row for row in rows if row["coverage_status"] == "unknown"]),
+        "unknown_count": len(
+            [
+                row
+                for row in rows
+                if row["coverage_status"] == "unknown" or row.get("planning_review_message")
+            ]
+        ),
         "ok_count": len([row for row in rows if row["coverage_status"] == "ok"]),
     }
     if limit is not None:
         rows = rows[:limit]
+    review_rows = _build_planning_review_rows(rows)
     return {
         "rows": rows,
+        "review_rows": review_rows,
         "totals": totals,
+        "view": view,
         "contract_version": "inventory.reorder_plan.v1",
     }

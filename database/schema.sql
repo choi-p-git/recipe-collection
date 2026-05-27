@@ -545,6 +545,29 @@ CREATE TABLE IF NOT EXISTS inventory_location_break (
     CHECK (trim(break_label) != '')
 );
 
+CREATE TABLE IF NOT EXISTS inventory_ordering_preference (
+    inventory_ordering_preference_id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    user_id TEXT NOT NULL,
+    item_category TEXT NOT NULL,
+    vendor_name TEXT NOT NULL,
+    ordering_frequency TEXT NOT NULL DEFAULT 'as_needed',
+    cutoff_rules_json TEXT NOT NULL,
+    preferred_lead_days INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+
+    CHECK (trim(user_id) != ''),
+    CHECK (item_category IN ('meat', 'grocery', 'frozen', 'beverages', 'dairy', 'bakery', 'produce')),
+    CHECK (trim(vendor_name) != ''),
+    CHECK (ordering_frequency IN ('daily', 'as_needed', 'custom')),
+    CHECK (json_valid(cutoff_rules_json)),
+    CHECK (preferred_lead_days >= 0 AND preferred_lead_days <= 14),
+    CHECK (status IN ('active', 'inactive')),
+    UNIQUE (user_id, item_category)
+);
+
 CREATE INDEX IF NOT EXISTS idx_item_type
 ON item(item_type);
 
@@ -672,3 +695,9 @@ ON inventory_item_match(inventory_catalog_item_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_inventory_item_match_active_recipe_item
 ON inventory_item_match(recipe_collection_item_id)
 WHERE status = 'active';
+
+CREATE INDEX IF NOT EXISTS idx_inventory_ordering_preference_user
+ON inventory_ordering_preference(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_inventory_ordering_preference_category
+ON inventory_ordering_preference(item_category);

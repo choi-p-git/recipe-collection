@@ -1794,6 +1794,48 @@ button:disabled {
     font-size: 0.85rem;
 }
 
+.inventory-review-list {
+    display: grid;
+    gap: 0.5rem;
+}
+
+.inventory-review-row {
+    align-items: start;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: minmax(10rem, 1fr) minmax(14rem, 1.5fr) minmax(7rem, 0.7fr) auto;
+    padding: 0.75rem;
+}
+
+.inventory-review-reason {
+    color: #92400e;
+    display: block;
+    font-size: 0.84rem;
+    font-weight: 700;
+    margin-bottom: 0.2rem;
+}
+
+.inventory-review-detail {
+    color: #374151;
+    font-size: 0.9rem;
+}
+
+.inventory-review-actions {
+    justify-self: end;
+}
+
+@media (max-width: 760px) {
+    .inventory-review-row {
+        grid-template-columns: 1fr;
+    }
+
+    .inventory-review-actions {
+        justify-self: start;
+    }
+}
+
 .inventory-conversion-guard {
     display: grid;
     gap: 0.85rem;
@@ -2252,6 +2294,48 @@ button:disabled {
     color: #c2410c;
     margin: 0;
     padding: 0.75rem;
+}
+
+.inventory-checkbox-grid {
+    display: grid;
+    gap: 0.35rem;
+    grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+}
+
+.inventory-checkbox-grid label {
+    align-items: center;
+    display: inline-flex;
+    gap: 0.35rem;
+}
+
+.inventory-checkbox-grid input {
+    min-height: auto;
+    width: auto;
+}
+
+.inventory-delivery-rule-grid {
+    align-items: center;
+    display: grid;
+    gap: 0.35rem;
+    grid-template-columns: minmax(8rem, 1fr) minmax(8rem, 1fr) minmax(7rem, 0.8fr);
+}
+
+.inventory-delivery-rule-header {
+    color: #475569;
+    font-size: 0.78rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.inventory-delivery-day {
+    align-items: center;
+    display: inline-flex;
+    gap: 0.35rem;
+}
+
+.inventory-delivery-day input {
+    min-height: auto;
+    width: auto;
 }
 
 .inventory-count-table th,
