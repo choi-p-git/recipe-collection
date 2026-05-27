@@ -10,8 +10,7 @@
                 <thead>
                     <tr>
                         <th>Service</th>
-                        <th>Menu Item</th>
-                        <th>Context</th>
+                        <th>Menu Item / Context</th>
                         <th>Needed</th>
                         <th>Forecast</th>
                         <th>Production</th>
@@ -21,13 +20,15 @@
                     {% for usage in usages %}
                         <tr>
                             <td>
-                                <a class="text-link" href="{{ url_for('menu_service_context', menu_id=usage.menu_id, week=usage.week_number, day=usage.day_of_week) }}">
+                                <a class="text-link inventory-usage-primary" href="{{ url_for('menu_service_context', menu_id=usage.menu_id, week=usage.week_number, day=usage.day_of_week) }}">
                                     {{ usage.service_date_display }}
                                 </a>
-                                <div class="muted">{{ usage.menu_name }}</div>
+                                <div class="inventory-usage-secondary">{{ usage.menu_name }}</div>
                             </td>
-                            <td><a class="text-link" href="{{ url_for('item_detail', item_id=usage.menu_item_id) }}">{{ usage.menu_item_name }}</a></td>
-                            <td>{{ usage.meal_period_label }} / {{ usage.concept_label }}</td>
+                            <td>
+                                <a class="text-link inventory-usage-primary" href="{{ url_for('item_detail', item_id=usage.menu_item_id) }}">{{ usage.menu_item_name }}</a>
+                                <div class="inventory-usage-secondary">{{ usage.meal_period_label }} / {{ usage.concept_label }}</div>
+                            </td>
                             <td>
                                 {% if usage.needed_display %}
                                     <strong class="inventory-needed-value">{{ usage.needed_display }}</strong>
@@ -43,24 +44,30 @@
                             </td>
                             <td>
                                 {% if usage.forecast_quantity_display %}
-                                    {{ usage.forecast_quantity_display }} {{ usage.forecast_unit_label }}
+                                    <strong class="inventory-usage-primary">{{ usage.forecast_quantity_display }} {{ usage.forecast_unit_label }}</strong>
                                 {% else %}
                                     <span class="muted">No forecast</span>
                                 {% endif %}
                             </td>
                             <td>
                                 {% if usage.production_record_id %}
-                                    <details>
-                                        <summary>{{ usage.production_status_label or "Production Record" }}</summary>
-                                        <div class="inventory-usage-detail-line">
-                                            {% if usage.actual_quantity_display %}Actual {{ usage.actual_quantity_display }} {{ usage.actual_unit_label }}{% endif %}
-                                            {% if usage.variance_quantity_display %}| Var {{ usage.variance_quantity_display }} {{ usage.variance_unit_label }}{% endif %}
-                                            {% if usage.implied_demand_quantity_display %}| Demand {{ usage.implied_demand_quantity_display }} {{ usage.implied_demand_unit_label }}{% endif %}
-                                            {% if usage.forecast_error_percent_display %}| Error {{ usage.forecast_error_percent_display }}%{% endif %}
-                                            {% if usage.reason_label %}| {{ usage.reason_label }}{% endif %}
-                                        </div>
-                                        <a class="text-link" href="{{ url_for('production_record_review', menu_id=usage.menu_id, production_record_id=usage.production_record_id) }}">Open record</a>
-                                    </details>
+                                    <a class="text-link inventory-usage-primary" href="{{ url_for('production_record_review', menu_id=usage.menu_id, production_record_id=usage.production_record_id) }}">
+                                        {{ usage.production_status_label or "Production Record" }}
+                                    </a>
+                                    <div class="inventory-usage-secondary">
+                                        {% if usage.actual_quantity_display %}Actual {{ usage.actual_quantity_display }} {{ usage.actual_unit_label }}{% endif %}
+                                        {% if usage.variance_quantity_display %} / Var {{ usage.variance_quantity_display }} {{ usage.variance_unit_label }}{% endif %}
+                                    </div>
+                                    {% if usage.implied_demand_quantity_display or usage.forecast_error_percent_display or usage.reason_label %}
+                                        <details class="inventory-usage-more">
+                                            <summary>More</summary>
+                                            <div class="inventory-usage-detail-line">
+                                                {% if usage.implied_demand_quantity_display %}Demand {{ usage.implied_demand_quantity_display }} {{ usage.implied_demand_unit_label }}{% endif %}
+                                                {% if usage.forecast_error_percent_display %}{% if usage.implied_demand_quantity_display %} / {% endif %}Error {{ usage.forecast_error_percent_display }}%{% endif %}
+                                                {% if usage.reason_label %}{% if usage.implied_demand_quantity_display or usage.forecast_error_percent_display %} / {% endif %}{{ usage.reason_label }}{% endif %}
+                                            </div>
+                                        </details>
+                                    {% endif %}
                                 {% else %}
                                     <span class="muted">Not started</span>
                                 {% endif %}

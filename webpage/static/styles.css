@@ -1711,6 +1711,28 @@ button:disabled {
     color: #374151;
 }
 
+.inventory-usage-primary {
+    display: block;
+    font-weight: 700;
+}
+
+.inventory-usage-secondary {
+    color: #6b7280;
+    font-size: 0.86rem;
+    margin-top: 0.2rem;
+}
+
+.inventory-usage-more {
+    margin-top: 0.25rem;
+}
+
+.inventory-usage-more summary {
+    color: #2563eb;
+    cursor: pointer;
+    font-size: 0.86rem;
+    font-weight: 700;
+}
+
 .inventory-needed-value {
     display: block;
     color: #111827;

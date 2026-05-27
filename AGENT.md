@@ -60,6 +60,8 @@ Current on-hand semantics: sum live item rows across active storage locations by
 
 Inventory identity boundary: Recipe Collection `item_id` remains the culinary ingredient identity. Inventory owns `inventory_catalog_item` as the purchasing/counting/vendor-facing identity, and `inventory_item_match` bridges Recipe Collection items to inventory catalog items. Current count entry still accepts live base-food `item_id` for MVP workflow continuity, but new count rows create a legacy inventory catalog match so future invoice auto-match, vendor catalog import, accounting, and analytics work can migrate toward inventory-owned identity without breaking Menu Builder consumers.
 
+Inventory demand conversion governance: temporary `1 each = quantity/unit` conversions are preview-only operational assumptions and should not be persisted to Recipe Collection item metadata. Base-food official mass/volume metadata can support each-to-mass/volume conversion when present, but purveyor-specific or operator-specific each assumptions should stay in inventory/vendor/invoice context. Reorder and shortage planning should use inventory purchase UoM and pack setup for suggestions, while keeping calculated demand separate from rounded order quantities.
+
 ## Dev Automation Guidance
 
 `src/dev_automation.py` is back-of-house tooling for creating manual-test operating data after the commercial kitchen seed catalog is in place.
@@ -1362,9 +1364,10 @@ Test data cleanup boundaries:
 
 ## Current Next Logical Development Steps
 
-1. add review UI for unmatched, ambiguous, and invoice-auto-matched inventory catalog items
-2. expand inventory availability from menu item rollups to recipe ingredient demand rollups
-3. add forecast error trend reporting by item over time using posted facts
-4. refine posted facts only through versioned contract changes
-5. defer analytics algorithms until usage, menu, inventory, purchasing, and cost record contracts are stable
+1. add inventory reorder/shortage planning from current on hand versus upcoming menu need, with calculated need kept separate from rounded purchase suggestions
+2. add review UI for unmatched, ambiguous, and invoice-auto-matched inventory catalog items
+3. expand inventory availability from menu item rollups to recipe ingredient demand rollups
+4. add forecast error trend reporting by item over time using posted facts
+5. refine posted facts only through versioned contract changes
+6. defer analytics algorithms until usage, menu, inventory, purchasing, and cost record contracts are stable
 

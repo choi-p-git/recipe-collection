@@ -135,6 +135,12 @@ Dev automation note
 - Inventory example: `uv run python src/dev_automation.py --inventory --menu-ids 1 --seed 42`
 - Inventory automation creates Dry Pantry, Walk-In Cooler, and Walk-In Freezer with Left Wall / Right Wall sub-storage, then distributes menu base foods and flattened recipe ingredients across those sub-storage locations with randomized case-only pack/count setup.
 
+Inventory roadmap note
+
+- Inventory item detail now treats temporary `1 each = quantity/unit` conversions as preview-only operational context. Do not write those temporary conversions into base-food metadata, because purveyor, pack, and operator assumptions about `each` can differ by scenario.
+- Reorder and shortage planning is the next planned inventory slice after item-detail demand/usage refinement. It should compare current on hand against upcoming menu need, show `can cover`, `short by`, and remaining quantity, and keep calculated need separate from rounded purchase suggestions.
+- Future invoice/accounting work should use inventory purchase UoM and pack setup as the costing bridge, rather than forcing vendor-specific each assumptions into Recipe Collection item truth.
+
 Search stack note
 
 - Search results are limited to `live` items only
