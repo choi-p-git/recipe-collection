@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block app_header_title %}Inventory Management{% endblock %}
+{% block main_class %}container container-inventory{% endblock %}
+{% block title %}Inventory Planning{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <div>
+            <h2>Inventory Planning</h2>
+            <p class="page-subtitle">
+                Reorder coverage from current on-hand counts against upcoming menu need.
+            </p>
+        </div>
+        <div class="production-record-review-actions">
+            <a class="page-action-link secondary" href="{{ url_for('inventory_dashboard') }}">Inventory Dashboard</a>
+        </div>
+    </div>
+
+    <section class="item-detail-section">
+        <div class="production-record-summary">
+            <div class="production-record-summary-card">
+                <span class="detail-stat-label">Short</span>
+                <strong>{{ plan.totals.short_count }}</strong>
+            </div>
+            <div class="production-record-summary-card">
+                <span class="detail-stat-label">Covered</span>
+                <strong>{{ plan.totals.ok_count }}</strong>
+            </div>
+            <div class="production-record-summary-card">
+                <span class="detail-stat-label">Needs Review</span>
+                <strong>{{ plan.totals.unknown_count }}</strong>
+            </div>
+            <div class="production-record-summary-card">
+                <span class="detail-stat-label">Planning Items</span>
+                <strong>{{ plan.totals.planning_item_count }}</strong>
+            </div>
+        </div>
+    </section>
+
+    <section class="item-detail-section">
+        <div class="menu-forecast-title-row inventory-section-title">
+            <div>
+                <h3>Reorder Planning</h3>
+                <p class="muted">Calculated need only. Rounded purchase suggestions remain separate.</p>
+            </div>
+        </div>
+        <div class="menu-forecast-table-shell">
+            <table class="menu-forecast-table inventory-table">
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        <th>On Hand</th>
+                        <th>Next Need</th>
+                        <th>Coverage</th>
+                        <th>Upcoming</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in plan.rows %}
+                        <tr>
+                            <td>
+                                <a class="text-link" href="{{ url_for('inventory_item_detail', item_id=row.item_id) }}">{{ row.item_name }}</a>
+                                <div class="muted">{{ row.item_category_label }}</div>
+                            </td>
+                            <td>{{ row.current_on_hand_display }}</td>
+                            <td>
+                                <a class="text-link" href="{{ url_for('menu_service_context', menu_id=row.service_context.menu_id, week=row.service_context.week_number, day=row.service_context.day_of_week) }}">
+                                    {{ row.next_usage_display }}
+                                </a>
+                                {% if row.next_needed_display %}
+                                    <div><strong>{{ row.next_needed_display }}</strong></div>
+                                {% endif %}
+                                <div class="muted">{{ row.next_menu_item_name }}</div>
+                                {% if row.needed_conversion_issue %}
+                                    <div class="inventory-needed-warning">{{ row.needed_conversion_issue.message }}</div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <strong class="inventory-coverage-value inventory-coverage-value-{{ row.coverage_status }}">
+                                    {{ row.coverage_display }}
+                                </strong>
+                            </td>
+                            <td>{{ row.upcoming_count }} row{% if row.upcoming_count != 1 %}s{% endif %}</td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="5">No counted inventory items have upcoming menu need.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+{% endblock %}

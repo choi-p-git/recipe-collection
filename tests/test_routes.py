@@ -1539,7 +1539,9 @@ def test_inventory_foundation_routes_create_count_and_current_on_hand(app_client
     dashboard_page = dashboard_response.get_data(as_text=True)
 
     assert dashboard_response.status_code == 200
-    assert "Reorder Planning" in dashboard_page
+    assert "reorder coverage" in dashboard_page
+    assert "/inventory/planning" in dashboard_page
+    assert "<th>Next Need</th>" not in dashboard_page
     assert "Current On Hand" in dashboard_page
     assert "Route Inventory Onions" in dashboard_page
     assert f"/inventory/items/{item_id}" in dashboard_page
@@ -1551,6 +1553,16 @@ def test_inventory_foundation_routes_create_count_and_current_on_hand(app_client
     assert "Location Breakdown" in dashboard_page
     assert f"/api/inventory/items/{item_id}/count-rolldown" in dashboard_page
     assert "Enter Count" in dashboard_page
+
+    planning_response = app_client.get("/inventory/planning")
+    planning_page = planning_response.get_data(as_text=True)
+
+    assert planning_response.status_code == 200
+    assert "Inventory Planning" in planning_page
+    assert "Reorder Planning" in planning_page
+    assert "<th>Next Need</th>" in planning_page
+    assert "No counted inventory items have upcoming menu need." in planning_page
+    assert "Inventory Dashboard" in planning_page
 
     count_rollup_response = app_client.get(f"/api/inventory/items/{item_id}/count-rolldown")
     count_rollup_payload = count_rollup_response.get_json()

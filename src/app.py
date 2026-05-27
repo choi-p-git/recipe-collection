@@ -95,7 +95,12 @@ from services.inventory_service import (
     transfer_inventory_location_item,
     update_inventory_location_item,
 )
-from services.inventory_usage_service import get_inventory_item_count_rolldown, get_inventory_item_detail, get_inventory_item_usage
+from services.inventory_usage_service import (
+    get_inventory_item_count_rolldown,
+    get_inventory_item_detail,
+    get_inventory_item_usage,
+    get_inventory_reorder_plan,
+)
 from services.item_note_service import (
     ItemNoteError,
     acknowledge_item_notes_for_viewer,
@@ -224,6 +229,15 @@ def inventory_dashboard():
     return render_template(
         "inventory.html",
         page_data=get_inventory_dashboard(),
+        current_user=get_current_mock_user(session),
+    )
+
+
+@app.route("/inventory/planning")
+def inventory_planning():
+    return render_template(
+        "inventory_planning.html",
+        plan=get_inventory_reorder_plan(),
         current_user=get_current_mock_user(session),
     )
 

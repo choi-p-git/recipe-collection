@@ -1119,8 +1119,6 @@ def _list_current_on_hand() -> list[dict]:
 def get_inventory_dashboard() -> dict:
     initialize_database()
     sync_item_categories()
-    from services.inventory_usage_service import get_inventory_reorder_plan
-
     locations = list_inventory_locations(include_inactive=True)
     current_on_hand = _list_current_on_hand()
     location_tree = get_inventory_location_tree()
@@ -1129,7 +1127,6 @@ def get_inventory_dashboard() -> dict:
         "location_tree": location_tree,
         "active_locations": [location for location in locations if location["status"] == "active"],
         "current_on_hand": current_on_hand,
-        "reorder_plan": get_inventory_reorder_plan(limit=25),
         "totals": {
             "location_count": len([location for location in locations if location["parent_inventory_location_id"] is None]),
             "sub_location_count": len([location for location in locations if location["parent_inventory_location_id"] is not None]),
