@@ -1250,6 +1250,18 @@ def test_production_record_route_snapshots_forecast_and_saves_variance(app_clien
     assert f"/menus/{menu_id}/production-record/{production_record_id}/review" in history_page
     assert f"/menus/{menu_id}/production-record/{production_record_id}/export.csv" in history_page
     assert f"/menus/{menu_id}/service-context?week=1&amp;day=monday" in history_page
+    assert "variance-occurrences" in history_page
+
+    leftover_occurrences_response = app_client.get(
+        f"/api/menus/{menu_id}/production-record/history/variance-occurrences"
+        f"?item_id={recipe_id}&unit=pan_half_4&kind=leftover"
+    )
+    leftover_occurrences_page = leftover_occurrences_response.get_data(as_text=True)
+
+    assert leftover_occurrences_response.status_code == 200
+    assert "Leftover Occurrences" in leftover_occurrences_page
+    assert "Leftover 0 Half pan, 4&#34;" in leftover_occurrences_page
+    assert f"/menus/{menu_id}/service-context?week=1&amp;day=monday" in leftover_occurrences_page
 
     filtered_history_response = app_client.get(
         f"/menus/{menu_id}/production-record/history?status=posted&accuracy=accurate&reason_code=as_expected&item=Soup"

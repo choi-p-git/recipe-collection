@@ -18,6 +18,20 @@ The first pass preserved page behavior while moving the shared surfaces to neutr
 - CSS must not expose hover popovers via `:hover`; mouse hover visibility must be controlled by JS.
 - CSS may preserve `:focus-within` visibility for keyboard accessibility unless the controller introduces an equivalent focus governance path.
 
+## Final Audit
+
+- Templates now use neutral `data-popover*` attributes and `app-popover*` classes.
+- `popover.js` still accepts legacy `data-history-*` attributes as a compatibility path.
+- `styles.css` still carries legacy `menu-forecast-history*` selector aliases as a compatibility path.
+- No template should add new `data-history-*` attributes or `menu-forecast-history*` classes.
+- Compatibility aliases can be removed in a future cleanup once no external/custom templates depend on them.
+
+Local profiling after the refactor:
+
+- Inventory dashboard: about 1.31 MB initial HTML with lazy usage/count panels.
+- Menu forecast day view: about 1.16 MB initial HTML; history popovers remain static.
+- Production record history: about 1.71 MB initial HTML with lazy variance occurrence panels.
+
 ## Existing Popover And Overlay Inventory
 
 ### Inventory Dashboard
@@ -142,16 +156,19 @@ These should remain outside the shared history popover controller for now:
 
 ### Slice 5: Optional Lazy Static Popovers
 
+- Status: completed.
 - Evaluate whether menu forecast history or production record variance panels should also lazy-load if page size grows.
 - Do not change content loading unless profiling shows the static panels are a material cost.
+- Production record history variance panels were material and now lazy-load HTML fragments from `/api/menus/<menu_id>/production-record/history/variance-occurrences`.
+- Menu forecast history was comparatively small in local profiling and remains static HTML for now.
 
 ## Acceptance Checklist
 
-- Inventory dashboard initial HTML stays near the optimized size, not the pre-lazy-load size.
-- Fast mouse movement over inventory table does not issue popover API calls.
-- Hovering for 500ms opens the panel.
-- Inventory hover fetch starts after 650ms.
-- Click opens/pins immediately.
-- Outside click and Escape close open panels.
-- Menu forecast history still works without feature-specific duplicated popover code.
-- Production record variance history still works without feature-specific duplicated popover code.
+- [x] Inventory dashboard initial HTML stays near the optimized size, not the pre-lazy-load size.
+- [x] Fast mouse movement over inventory table does not issue popover API calls.
+- [x] Hovering for 500ms opens the panel.
+- [x] Inventory hover fetch starts after 650ms.
+- [x] Click opens/pins immediately.
+- [x] Outside click and Escape close open panels.
+- [x] Menu forecast history still works without feature-specific duplicated popover code.
+- [x] Production record variance history still works without feature-specific duplicated popover code.

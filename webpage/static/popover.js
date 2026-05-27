@@ -33,6 +33,15 @@
         panel.dataset.loading = "true";
         try {
             const response = await fetch(panel.dataset.fetchUrl || "", {headers: {"Accept": "application/json"}});
+            if (panel.dataset.popoverResponse === "html") {
+                const html = await response.text();
+                if (!response.ok) {
+                    throw new Error(html || "Unable to load popover.");
+                }
+                panel.innerHTML = html;
+                panel.dataset.loaded = "true";
+                return;
+            }
             const payload = await response.json();
             if (!response.ok || !payload.ok) {
                 throw new Error(payload.error || "Unable to load popover.");

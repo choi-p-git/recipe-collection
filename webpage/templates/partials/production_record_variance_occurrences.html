@@ -1,0 +1,27 @@
+<div class="app-popover-group">
+    <p class="app-popover-heading">{{ heading }}</p>
+    {% if occurrences %}
+        <ul class="app-popover-list">
+            {% for occurrence in occurrences %}
+                <li>
+                    <a class="text-link" href="{{ url_for('menu_service_context', menu_id=menu.menu_id, week=occurrence.week_number, day=occurrence.day_of_week) }}">
+                        {{ occurrence.service_date_display }}
+                    </a>
+                    <span>
+                        {{ kind_label }} {{ occurrence.quantity_display }} {{ occurrence.unit|unit_label }}
+                        | Forecast {{ occurrence.forecast_quantity_display }} {{ occurrence.forecast_unit|unit_label }}
+                        | Actual {{ occurrence.actual_quantity_display }} {{ occurrence.actual_unit|unit_label }}
+                    </span>
+                    <span class="muted">
+                        {{ occurrence.status_label }}
+                        {% if occurrence.forecast_accuracy_level %}| {{ occurrence.forecast_accuracy_level|title }} {{ occurrence.forecast_error_percent_display }}%{% endif %}
+                        {% if occurrence.reason_label %}| {{ occurrence.reason_label }}{% endif %}
+                        {% if occurrence.has_notes %}| Notes{% endif %}
+                    </span>
+                </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p class="muted">No {{ kind_label|lower }} occurrences for this item.</p>
+    {% endif %}
+</div>

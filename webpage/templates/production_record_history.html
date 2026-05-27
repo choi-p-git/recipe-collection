@@ -199,78 +199,26 @@
                                 <tr>
                                     <td>{{ item.recipe_name }}</td>
                                     <td>
-                                        {% set leftover_occurrences = item.leftover_occurrences %}
                                         <div class="app-popover production-record-variance-history" data-popover>
                                             <button type="button" class="app-popover-trigger" aria-label="Show leftover history for {{ item.recipe_name }}" data-popover-trigger>
                                                 {{ item.leftover_quantity_display }} {{ item.unit|unit_label }}
                                                 <span class="muted">({{ item.leftover_occurrence_count }})</span>
                                             </button>
-                                            <div class="app-popover-panel production-record-variance-history-panel" role="tooltip" data-popover-panel>
-                                                <div class="app-popover-group">
-                                                    <p class="app-popover-heading">Leftover Occurrences</p>
-                                                    {% if leftover_occurrences %}
-                                                        <ul class="app-popover-list">
-                                                            {% for occurrence in leftover_occurrences %}
-                                                                <li>
-                                                                    <a class="text-link" href="{{ url_for('menu_service_context', menu_id=menu.menu_id, week=occurrence.week_number, day=occurrence.day_of_week) }}">
-                                                                        {{ occurrence.service_date_display }}
-                                                                    </a>
-                                                                    <span>
-                                                                        Leftover {{ occurrence.quantity_display }} {{ occurrence.unit|unit_label }}
-                                                                        | Forecast {{ occurrence.forecast_quantity_display }} {{ occurrence.forecast_unit|unit_label }}
-                                                                        | Actual {{ occurrence.actual_quantity_display }} {{ occurrence.actual_unit|unit_label }}
-                                                                    </span>
-                                                                    <span class="muted">
-                                                                        {{ occurrence.status_label }}
-                                                                        {% if occurrence.forecast_accuracy_level %}| {{ occurrence.forecast_accuracy_level|title }} {{ occurrence.forecast_error_percent_display }}%{% endif %}
-                                                                        {% if occurrence.reason_label %}| {{ occurrence.reason_label }}{% endif %}
-                                                                        {% if occurrence.has_notes %}| Notes{% endif %}
-                                                                    </span>
-                                                                </li>
-                                                            {% endfor %}
-                                                        </ul>
-                                                    {% else %}
-                                                        <p class="muted">No leftover occurrences for this item.</p>
-                                                    {% endif %}
-                                                </div>
+                                            <div class="app-popover-panel production-record-variance-history-panel production-record-variance-history-panel-left" role="tooltip" data-popover-panel data-popover-response="html" data-fetch-url="{{ item.leftover_occurrences_url }}">
+                                                <p class="app-popover-heading">Leftover Occurrences</p>
+                                                <p class="muted">Loading leftover occurrences...</p>
                                             </div>
                                         </div>
                                     </td>
                                     <td>
-                                        {% set shortage_occurrences = item.shortage_occurrences %}
                                         <div class="app-popover production-record-variance-history" data-popover>
                                             <button type="button" class="app-popover-trigger" aria-label="Show shortage history for {{ item.recipe_name }}" data-popover-trigger>
                                                 {{ item.shortage_quantity_display }} {{ item.unit|unit_label }}
                                                 <span class="muted">({{ item.shortage_occurrence_count }})</span>
                                             </button>
-                                            <div class="app-popover-panel production-record-variance-history-panel" role="tooltip" data-popover-panel>
-                                                <div class="app-popover-group">
-                                                    <p class="app-popover-heading">Shortage Occurrences</p>
-                                                    {% if shortage_occurrences %}
-                                                        <ul class="app-popover-list">
-                                                            {% for occurrence in shortage_occurrences %}
-                                                                <li>
-                                                                    <a class="text-link" href="{{ url_for('menu_service_context', menu_id=menu.menu_id, week=occurrence.week_number, day=occurrence.day_of_week) }}">
-                                                                        {{ occurrence.service_date_display }}
-                                                                    </a>
-                                                                    <span>
-                                                                        Shortage {{ occurrence.quantity_display }} {{ occurrence.unit|unit_label }}
-                                                                        | Forecast {{ occurrence.forecast_quantity_display }} {{ occurrence.forecast_unit|unit_label }}
-                                                                        | Actual {{ occurrence.actual_quantity_display }} {{ occurrence.actual_unit|unit_label }}
-                                                                    </span>
-                                                                    <span class="muted">
-                                                                        {{ occurrence.status_label }}
-                                                                        {% if occurrence.forecast_accuracy_level %}| {{ occurrence.forecast_accuracy_level|title }} {{ occurrence.forecast_error_percent_display }}%{% endif %}
-                                                                        {% if occurrence.reason_label %}| {{ occurrence.reason_label }}{% endif %}
-                                                                        {% if occurrence.has_notes %}| Notes{% endif %}
-                                                                    </span>
-                                                                </li>
-                                                            {% endfor %}
-                                                        </ul>
-                                                    {% else %}
-                                                        <p class="muted">No shortage occurrences for this item.</p>
-                                                    {% endif %}
-                                                </div>
+                                            <div class="app-popover-panel production-record-variance-history-panel production-record-variance-history-panel-right" role="tooltip" data-popover-panel data-popover-response="html" data-fetch-url="{{ item.shortage_occurrences_url }}">
+                                                <p class="app-popover-heading">Shortage Occurrences</p>
+                                                <p class="muted">Loading shortage occurrences...</p>
                                             </div>
                                         </div>
                                     </td>

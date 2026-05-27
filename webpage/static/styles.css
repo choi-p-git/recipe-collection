@@ -1857,10 +1857,18 @@ button:disabled {
 }
 
 .production-record-variance-history-panel {
-    left: auto;
-    right: 0;
     text-wrap: wrap;
     white-space: normal;
+}
+
+.production-record-variance-history-panel-left {
+    left: 0;
+    right: auto;
+}
+
+.production-record-variance-history-panel-right {
+    left: auto;
+    right: 0;
 }
 
 .production-record-sort-heading {

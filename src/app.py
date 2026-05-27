@@ -1102,20 +1102,7 @@ def production_record_history(menu_id: int):
         return "Menu not found.", 404
 
     current_user = get_current_mock_user(session)
-    history_filter_payload = {
-        "status": request.args.get("status", ""),
-        "accuracy": request.args.get("accuracy", ""),
-        "reason_code": request.args.get("reason_code", ""),
-        "item_query": request.args.get("item", ""),
-        "week": request.args.get("week", ""),
-        "day": request.args.get("day", ""),
-        "date_from": request.args.get("date_from", ""),
-        "date_to": request.args.get("date_to", ""),
-        "reason_sort": request.args.get("reason_sort", ""),
-        "reason_dir": request.args.get("reason_dir", ""),
-        "variance_sort": request.args.get("variance_sort", ""),
-        "variance_dir": request.args.get("variance_dir", ""),
-    }
+    history_filter_payload = _production_history_filter_payload(request.args)
     try:
         history = list_production_records_for_menu(
             menu_id=menu_id,
@@ -1140,6 +1127,22 @@ def production_record_history(menu_id: int):
         clean_args = {key: value for key, value in args.items() if value}
         return url_for("production_record_history", menu_id=menu_id, **clean_args)
 
+    def _variance_occurrences_url(item: dict, kind: str) -> str:
+        args = request.args.to_dict()
+        args.update(
+            {
+                "item_id": item["item_id"],
+                "unit": item["unit"],
+                "kind": kind,
+            }
+        )
+        clean_args = {key: value for key, value in args.items() if value}
+        return url_for("api_production_record_variance_occurrences", menu_id=menu_id, **clean_args)
+
+    for item in history["report"]["variance_by_item"]:
+        item["leftover_occurrences_url"] = _variance_occurrences_url(item, "leftover")
+        item["shortage_occurrences_url"] = _variance_occurrences_url(item, "shortage")
+
     return render_template(
         "production_record_history.html",
         menu=menu,
@@ -1151,6 +1154,69 @@ def production_record_history(menu_id: int):
         },
         day_options=DAY_OF_WEEK_OPTIONS,
         production_record_reason_options=PRODUCTION_RECORD_REASON_OPTIONS,
+    )
+
+
+def _production_history_filter_payload(args) -> dict:
+    return {
+        "status": args.get("status", ""),
+        "accuracy": args.get("accuracy", ""),
+        "reason_code": args.get("reason_code", ""),
+        "item_query": args.get("item", ""),
+        "week": args.get("week", ""),
+        "day": args.get("day", ""),
+        "date_from": args.get("date_from", ""),
+        "date_to": args.get("date_to", ""),
+        "reason_sort": args.get("reason_sort", ""),
+        "reason_dir": args.get("reason_dir", ""),
+        "variance_sort": args.get("variance_sort", ""),
+        "variance_dir": args.get("variance_dir", ""),
+    }
+
+
+@app.get("/api/menus/<int:menu_id>/production-record/history/variance-occurrences")
+def api_production_record_variance_occurrences(menu_id: int):
+    menu = get_menu_detail(menu_id)
+    if menu is None:
+        return "Menu not found.", 404
+
+    current_user = get_current_mock_user(session)
+    history_filter_payload = _production_history_filter_payload(request.args)
+    try:
+        history = list_production_records_for_menu(
+            menu_id=menu_id,
+            actor_user_id=current_user["user_id"],
+            service_date_lookup=menu.get("week_day_dates", {}),
+            filters=history_filter_payload,
+        )
+    except InvalidProductionRecordError as exc:
+        return str(exc), 400
+
+    try:
+        item_id = int(request.args.get("item_id", ""))
+    except (TypeError, ValueError):
+        return "Item is required.", 400
+    unit = request.args.get("unit", "").strip()
+    kind = request.args.get("kind", "").strip()
+    if kind not in {"leftover", "shortage"}:
+        return "Variance kind is required.", 400
+
+    selected_item = next(
+        (
+            item
+            for item in history["report"]["variance_by_item"]
+            if int(item["item_id"]) == item_id and item["unit"] == unit
+        ),
+        None,
+    )
+    occurrences = selected_item[f"{kind}_occurrences"] if selected_item else []
+    kind_label = "Leftover" if kind == "leftover" else "Shortage"
+    return render_template(
+        "partials/production_record_variance_occurrences.html",
+        menu=menu,
+        occurrences=occurrences,
+        heading=f"{kind_label} Occurrences",
+        kind_label=kind_label,
     )
 
 
