@@ -1572,7 +1572,8 @@ def test_inventory_foundation_routes_create_count_and_current_on_hand(app_client
     assert "Current Counts" in detail_page
     assert "Upcoming Menu Usage" in detail_page
     assert "Past Menu Usage" in detail_page
-    assert "Each 3 / Case 1" in detail_page
+    assert "1 case + 3 each" in detail_page
+    assert "Counted By Each And Case" in detail_page
     assert "1.75 case" in detail_page
 
     print_response = app_client.get(f"/inventory/locations/{sub_location_id}/print")

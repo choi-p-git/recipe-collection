@@ -670,6 +670,29 @@ def get_inventory_item_usage(
     }
 
 
+def _format_entered_count_display(row: dict) -> str:
+    unit_of_measurement = row.get("unit_of_measurement")
+    count_type = row.get("count_type")
+    each_quantity = float(row.get("count_each_quantity") or 0)
+    case_quantity = float(row.get("count_case_quantity") or 0)
+    if unit_of_measurement == "Case":
+        parts = []
+        if count_type in {"counted_by_case_only", "counted_by_each_and_case"} and case_quantity > 0:
+            parts.append(f"{_format_quantity(case_quantity)} case")
+        if count_type in {EACH_ONLY_COUNT_TYPE, "counted_by_each_and_case"} and each_quantity > 0:
+            parts.append(f"{_format_quantity(each_quantity)} {format_unit_label('each')}")
+        return " + ".join(parts) or "0"
+    return f"{_format_quantity(each_quantity)} {format_unit_label(row.get('unit') or '')}".strip()
+
+
+def _format_count_pack_display(row: dict) -> str:
+    pack_quantity = row.get("pack_quantity_display")
+    pack_size_text = row.get("pack_size_text")
+    if pack_quantity and pack_size_text:
+        return f"{pack_quantity} packs x {pack_size_text}"
+    return pack_size_text or "--"
+
+
 def get_inventory_item_count_rolldown(item_id: int) -> list[dict]:
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -725,6 +748,8 @@ def get_inventory_item_count_rolldown(item_id: int) -> list[dict]:
                 "updated_at": row[12],
             }
             payload.update(_format_location_line_display(payload))
+            payload["entered_count_display"] = _format_entered_count_display(payload)
+            payload["pack_display"] = _format_count_pack_display(payload)
             payloads.append(payload)
         return payloads
 

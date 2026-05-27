@@ -185,9 +185,12 @@
                     {% for row in detail.count_rolldown %}
                         <tr>
                             <td><a class="text-link" href="{{ url_for('inventory_location_count', inventory_location_id=row.inventory_location_id) }}">{{ row.location_label }}</a></td>
-                            <td>Each {{ row.count_each_quantity_display }} / Case {{ row.count_case_quantity_display }}</td>
-                            <td>{% if row.pack_quantity_display %}{{ row.pack_quantity_display }} x {{ row.pack_size_text }}{% else %}--{% endif %}</td>
-                            <td>{{ row.display_quantity_display }} {{ row.display_unit_label }}</td>
+                            <td>
+                                <strong class="inventory-count-value">{{ row.entered_count_display }}</strong>
+                                <div class="inventory-needed-source">{{ row.count_type_label }}</div>
+                            </td>
+                            <td>{{ row.pack_display }}</td>
+                            <td><strong class="inventory-count-value">{{ row.display_quantity_display }} {{ row.display_unit_label }}</strong></td>
                             <td>{{ row.updated_at }}</td>
                         </tr>
                     {% else %}

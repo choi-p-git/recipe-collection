@@ -1717,6 +1717,11 @@ button:disabled {
     font-weight: 700;
 }
 
+.inventory-count-value {
+    color: #111827;
+    font-weight: 700;
+}
+
 .inventory-needed-source {
     margin-top: 0.2rem;
     color: #6b7280;

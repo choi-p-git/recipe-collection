@@ -558,6 +558,8 @@ def test_inventory_item_detail_groups_recipe_usage_and_count_rolldown(isolated_d
     assert detail["summary"]["total_usage_count"] == 2
     assert detail["count_rolldown"][0]["count_each_quantity_display"] == "3"
     assert detail["count_rolldown"][0]["count_case_quantity_display"] == "1"
+    assert detail["count_rolldown"][0]["entered_count_display"] == "1 case + 3 each"
+    assert detail["count_rolldown"][0]["pack_display"] == "4 packs x 5 lb"
     assert detail["upcoming"][0]["menu_item_name"] == "Inventory Usage Soup"
     assert detail["upcoming"][0]["menu_name"] == "Inventory Future Menu"
     assert detail["upcoming"][0]["needed_display"] == "0.12 case"
