@@ -49,7 +49,7 @@ Reserve full-project pytest for release/regression requests, broad shared-contra
 
 Keep first screens fast. Heavy calculations should run after explicit navigation or lazy fetch with visible loading state.
 
-`webpage/static/loading_indicator.js` wraps `window.fetch` and shows the global app loading indicator only after 250ms. Keep this delayed global indicator for user confidence during slower responses, and use feature-local loading/saving states when row- or panel-level context matters.
+`webpage/static/loading_indicator.js` shows the global app loading indicator after 250ms for `window.fetch`, same-window link navigation, and same-window form submits. It starts navigation feedback from the current page before the next document is available, so slow full-page GETs still acknowledge the user's click. Keep this delayed global indicator for user confidence during slower responses, and use feature-local loading/saving states when row- or panel-level context matters.
 
 Reserve blocking overlays/scrims for operations where user interaction must pause to avoid corrupting intent.
 

@@ -55,9 +55,9 @@ Current preference deletion is soft deletion of the active category rule. Future
 
 `/inventory` must stay fast and render current counts/storage immediately.
 
-Expensive reorder/shortage coverage runs on `/inventory/planning`, not during synchronous `/inventory` dashboard render. Planning uses vendor/category preferences when configured and otherwise falls back to a clearly-marked 7-day default window. The default planning view shows the next 3 operation days first and lets users load the full planning set from the page action. If planning later becomes lazy-loaded, it must use visible loading state.
+Expensive reorder/shortage coverage runs on `/inventory/planning`, not during synchronous `/inventory` dashboard render. Planning uses vendor/category preferences when configured and otherwise falls back to a clearly-marked 7-day default window. The default planning view shows the next 3 operation days first and lets users load the full planning set from the page action. Slow planning navigation should rely on the global delayed loading indicator; if planning later becomes lazy-loaded, it must also use visible loading state.
 
-Global fetch loading feedback appears after 250ms through `webpage/static/loading_indicator.js`.
+Global loading feedback appears after 250ms through `webpage/static/loading_indicator.js` for fetch requests, same-window links, and same-window form submits.
 
 ## Agent Implementation Guidance
 
