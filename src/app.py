@@ -102,6 +102,7 @@ from services.inventory_usage_service import (
     get_inventory_item_usage,
     get_inventory_reorder_plan,
 )
+from services.inventory_bridge_service import get_inventory_catalog_review_page
 from services.inventory_ordering_service import (
     DAY_OPTIONS,
     ORDERING_FREQUENCY_OPTIONS,
@@ -258,6 +259,17 @@ def inventory_planning():
             operation_day_limit=None if show_all else 3,
         ),
         show_all=show_all,
+        current_user=current_user,
+    )
+
+
+@app.route("/inventory/catalog/review")
+def inventory_catalog_review():
+    current_user = get_current_mock_user(session)
+    scope = request.args.get("scope", "relevant")
+    return render_template(
+        "inventory_catalog_review.html",
+        page_data=get_inventory_catalog_review_page(scope=scope, actor_user_id=current_user["user_id"]),
         current_user=current_user,
     )
 

@@ -1826,6 +1826,21 @@ button:disabled {
     justify-self: end;
 }
 
+.inventory-catalog-review-status {
+    display: block;
+}
+
+.inventory-catalog-review-status-unmatched,
+.inventory-catalog-review-status-review_needed,
+.inventory-catalog-review-status-auto_match,
+.inventory-catalog-review-status-legacy_match {
+    color: #92400e;
+}
+
+.inventory-catalog-review-status-manual_match {
+    color: #166534;
+}
+
 @media (max-width: 760px) {
     .inventory-review-row {
         grid-template-columns: 1fr;

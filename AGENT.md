@@ -17,6 +17,7 @@ The app is intentionally lightweight: Python, Flask, SQLite, server-rendered tem
 - Menu Builder, Forecasting, Production Record, posted facts, reporting: `docs/agent_context/menu_builder.md`
 - Inventory counts, catalog bridge, item usage, planning, loading guidance: `docs/agent_context/inventory.md`
 - Database, schema, shared services, dev automation: `docs/agent_context/data_and_schema.md`
+- Current task handoff/resume note: `docs/agent_context/handoff_2026_05_28.md`
 - Popover governance refactor history: `docs/popover_governance_refactor.md`
 
 ## Current Architecture
@@ -34,17 +35,19 @@ Shared services may be reused across apps, but user-facing screens and workflows
 
 - Recipe Collection: MVP.
 - Menu Builder / Forecasting / Production Record: MVP operational vertical.
-- Inventory: MVP foundation with dedicated planning page.
+- Inventory: MVP foundation with dedicated planning and catalog review pages.
 - Analytics: deferred.
 
 ## Current Next Logical Development Steps
 
-1. Add Inventory review UI for unmatched, ambiguous, and invoice-auto-matched inventory catalog items.
-2. Expand Inventory reorder/shortage planning beyond counted items to include upcoming base-food needs with no current count row.
-3. Expand Inventory availability from menu item rollups to recipe ingredient demand rollups.
-4. Add Forecast/Production forecast-error trend reporting by item over time using posted facts.
-5. Refine posted facts only through versioned contract changes.
-6. Defer analytics algorithms until usage, menu, inventory, purchasing, and cost record contracts are stable.
+1. Scaffold Inventory invoice/catalog staging contracts with a small CSV/manual fixture path.
+2. Add invoice line match review and prompt-to-add-to-location workflow for unmatched vendor lines.
+3. Add Inventory catalog match editing/confirmation after invoice/catalog review proves the row model.
+4. Expand Inventory reorder/shortage planning beyond counted items to include upcoming base-food needs with no current count row.
+5. Expand Inventory availability from menu item rollups to recipe ingredient demand rollups.
+6. Add Forecast/Production forecast-error trend reporting by item over time using posted facts.
+7. Refine posted facts only through versioned contract changes.
+8. Defer analytics algorithms until usage, menu, inventory, purchasing, and cost record contracts are stable.
 
 ## Agent Workflow
 
@@ -54,6 +57,7 @@ Shared services may be reused across apps, but user-facing screens and workflows
 - Put business calculations in service/query layers, not templates.
 - Update `README.md` for user-facing current behavior/roadmap changes.
 - Update the relevant `docs/agent_context/*.md` file for agent-facing constraints, semantics, and next steps.
+- When asked for handoff/next-session continuity, create or update a dated `docs/agent_context/handoff_YYYY_MM_DD.md` and link it above.
 - Use focused pytest scopes for the changed module; reserve full-project pytest for broad regression/release work.
 
 ## Common Verification

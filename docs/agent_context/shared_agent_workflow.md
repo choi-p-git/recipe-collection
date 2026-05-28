@@ -57,7 +57,24 @@ Reserve blocking overlays/scrims for operations where user interaction must paus
 
 - Root `AGENT.md`: compact entry point and current next steps.
 - `docs/agent_context/*.md`: app/service-specific implementation context.
+- Dated handoff docs such as `docs/agent_context/handoff_YYYY_MM_DD.md`: temporary resume notes for the next agent/session.
 - `README.md`: user-facing current behavior, roadmap, and operating notes.
 - Other `docs/*.md`: focused deep dives, refactors, audits, or historical specs.
 
 When changing roadmap or feature status, update the closest relevant app context doc and, if user-facing, `README.md`.
+
+## Handoff Workflow
+
+When the user asks for "handoff", "prepare for handoff", "handoff for next session", "next session handoff", or clearly similar continuity language, create or update a dated handoff doc under `docs/agent_context/` and link the current handoff from `AGENT.md`.
+
+The handoff should be concise but operational:
+
+- Current task state and recent decisions.
+- What changed in the working tree.
+- Important files touched.
+- Last successful verification commands and results.
+- Known blockers, caveats, or things not yet done.
+- The recommended next slice.
+- A commit message candidate when useful.
+
+Handoff docs are not durable architecture docs. Keep durable behavior, roadmap, and constraints in the relevant app context file and `README.md`.

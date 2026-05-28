@@ -1541,6 +1541,8 @@ def test_inventory_foundation_routes_create_count_and_current_on_hand(app_client
     assert dashboard_response.status_code == 200
     assert "reorder coverage" in dashboard_page
     assert "/inventory/planning" in dashboard_page
+    assert "item matches" in dashboard_page
+    assert "/inventory/catalog/review" in dashboard_page
     assert "<th>Next Need</th>" not in dashboard_page
     assert "Current On Hand" in dashboard_page
     assert "Route Inventory Onions" in dashboard_page
@@ -1564,6 +1566,22 @@ def test_inventory_foundation_routes_create_count_and_current_on_hand(app_client
     assert "Planning Preferences" in planning_page
     assert "No counted inventory items have upcoming menu need in the current planning windows." in planning_page
     assert "Inventory Dashboard" in planning_page
+
+    catalog_review_response = app_client.get("/inventory/catalog/review")
+    catalog_review_page = catalog_review_response.get_data(as_text=True)
+
+    assert catalog_review_response.status_code == 200
+    assert "Inventory Catalog Review" in catalog_review_page
+    assert "Catalog Matches" in catalog_review_page
+    assert "All Live Items" in catalog_review_page
+
+    catalog_review_all_response = app_client.get("/inventory/catalog/review?scope=all")
+    catalog_review_all_page = catalog_review_all_response.get_data(as_text=True)
+
+    assert catalog_review_all_response.status_code == 200
+    assert "Relevant Items" in catalog_review_all_page
+    assert "Route Inventory Onions" in catalog_review_all_page
+    assert "Inventory Detail" in catalog_review_all_page
 
     preferences_response = app_client.post(
         "/inventory/planning/preferences",

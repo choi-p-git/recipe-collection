@@ -1,4 +1,5 @@
 from db import get_connection, initialize_database
+from config.item_categories import ITEM_CATEGORY_LABELS
 
 
 MATCH_TYPES = {"manual", "legacy_item", "invoice_auto", "name_match", "vendor_code"}
@@ -411,3 +412,179 @@ def get_inventory_availability_for_items(recipe_collection_item_ids: list[int]) 
         }
         for row in rows
     ]
+
+
+def _catalog_review_classification(row: dict) -> dict:
+    if not row["inventory_item_match_id"]:
+        return {
+            "review_status": "unmatched",
+            "review_status_label": "Unmatched",
+            "review_reason": "No inventory catalog match exists yet.",
+            "needs_review": True,
+        }
+    if row["match_status"] == "review_needed" or row["catalog_status"] == "review_needed":
+        return {
+            "review_status": "review_needed",
+            "review_status_label": "Needs Review",
+            "review_reason": "Match or catalog item is marked for review.",
+            "needs_review": True,
+        }
+    if row["match_type"] in {"invoice_auto", "name_match", "vendor_code"}:
+        return {
+            "review_status": "auto_match",
+            "review_status_label": "Auto Match",
+            "review_reason": "Auto/vendor-derived match should be reviewed before relying on invoices.",
+            "needs_review": True,
+        }
+    if row["match_type"] == "legacy_item":
+        return {
+            "review_status": "legacy_match",
+            "review_status_label": "Legacy Match",
+            "review_reason": "Created from existing inventory count entry; review before invoice automation.",
+            "needs_review": True,
+        }
+    return {
+        "review_status": "manual_match",
+        "review_status_label": "Manual Match",
+        "review_reason": "Manual match is active.",
+        "needs_review": False,
+    }
+
+
+def get_inventory_catalog_review_page(*, scope: str = "relevant", actor_user_id: str | None = None) -> dict:
+    initialize_database()
+    normalized_scope = str(scope or "relevant").strip()
+    if normalized_scope not in {"relevant", "all"}:
+        normalized_scope = "relevant"
+    query_params = []
+    scope_filter = ""
+    if normalized_scope == "relevant":
+        from services.inventory_usage_service import get_inventory_reorder_plan
+
+        planning_item_ids = sorted(
+            {
+                int(row["item_id"])
+                for row in get_inventory_reorder_plan(
+                    actor_user_id=actor_user_id,
+                    operation_day_limit=3,
+                )["rows"]
+            }
+        )
+        planning_placeholders = ", ".join("?" for _ in planning_item_ids) or "NULL"
+        query_params.extend(planning_item_ids)
+        scope_filter = """
+              AND (
+                i.item_id IN ({planning_placeholders})
+                OR lm.match_status = 'review_needed'
+                OR ici.status = 'review_needed'
+                OR lm.match_type IN ('invoice_auto', 'name_match', 'vendor_code')
+              )
+        """.format(planning_placeholders=planning_placeholders)
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""
+            WITH latest_match AS (
+                SELECT
+                    iim.inventory_item_match_id,
+                    iim.recipe_collection_item_id,
+                    iim.inventory_catalog_item_id,
+                    iim.match_type,
+                    iim.confidence_score,
+                    iim.status AS match_status,
+                    iim.updated_at AS match_updated_at
+                FROM inventory_item_match iim
+                WHERE iim.status IN ('active', 'review_needed')
+                  AND iim.inventory_item_match_id = (
+                    SELECT iim2.inventory_item_match_id
+                    FROM inventory_item_match iim2
+                    WHERE iim2.recipe_collection_item_id = iim.recipe_collection_item_id
+                      AND iim2.status IN ('active', 'review_needed')
+                    ORDER BY
+                        CASE WHEN iim2.status = 'review_needed' THEN 0 ELSE 1 END,
+                        iim2.inventory_item_match_id DESC
+                    LIMIT 1
+                  )
+            )
+            SELECT
+                i.item_id,
+                i.item_name,
+                i.item_category,
+                i.status,
+                lm.inventory_item_match_id,
+                lm.inventory_catalog_item_id,
+                lm.match_type,
+                lm.confidence_score,
+                lm.match_status,
+                lm.match_updated_at,
+                ici.display_name,
+                ici.vendor_name,
+                ici.vendor_item_code,
+                ici.purchase_uom,
+                ici.pack_quantity,
+                ici.pack_size_text,
+                ici.status AS catalog_status
+            FROM item i
+            LEFT JOIN latest_match lm
+              ON lm.recipe_collection_item_id = i.item_id
+            LEFT JOIN inventory_catalog_item ici
+              ON ici.inventory_catalog_item_id = lm.inventory_catalog_item_id
+            WHERE i.status = 'live'
+              AND i.item_type = 'base_food'
+              {scope_filter}
+            ORDER BY
+                CASE
+                    WHEN lm.inventory_item_match_id IS NULL THEN 0
+                    WHEN lm.match_status = 'review_needed' OR ici.status = 'review_needed' THEN 1
+                    WHEN lm.match_type IN ('invoice_auto', 'name_match', 'vendor_code') THEN 2
+                    WHEN lm.match_type = 'legacy_item' THEN 3
+                    ELSE 4
+                END,
+                i.item_name ASC
+            """,
+            query_params,
+        )
+        rows = cursor.fetchall()
+
+    review_rows = []
+    for row in rows:
+        payload = {
+            "item_id": int(row[0]),
+            "item_name": row[1],
+            "item_category": row[2],
+            "item_category_label": ITEM_CATEGORY_LABELS.get(row[2], str(row[2] or "").title()),
+            "item_status": row[3],
+            "inventory_item_match_id": int(row[4]) if row[4] is not None else None,
+            "inventory_catalog_item_id": int(row[5]) if row[5] is not None else None,
+            "match_type": row[6] or "",
+            "match_type_label": str(row[6] or "unmatched").replace("_", " ").title(),
+            "confidence_score": float(row[7] or 0),
+            "confidence_percent_display": f"{round(float(row[7] or 0) * 100):g}%",
+            "match_status": row[8] or "unmatched",
+            "match_updated_at": row[9] or "",
+            "catalog_display_name": row[10] or "",
+            "vendor_name": row[11] or "",
+            "vendor_item_code": row[12] or "",
+            "purchase_uom": row[13] or "",
+            "pack_quantity": row[14],
+            "pack_quantity_display": _format_quantity(row[14]) if row[14] is not None else "",
+            "pack_size_text": row[15] or "",
+            "catalog_status": row[16] or "",
+        }
+        review_rows.append({**payload, **_catalog_review_classification(payload)})
+
+    totals = {
+        "row_count": len(review_rows),
+        "needs_review_count": len([row for row in review_rows if row["needs_review"]]),
+        "unmatched_count": len([row for row in review_rows if row["review_status"] == "unmatched"]),
+        "legacy_match_count": len([row for row in review_rows if row["review_status"] == "legacy_match"]),
+        "auto_match_count": len([row for row in review_rows if row["review_status"] == "auto_match"]),
+        "manual_match_count": len([row for row in review_rows if row["review_status"] == "manual_match"]),
+    }
+    return {
+        "rows": review_rows,
+        "totals": totals,
+        "scope": normalized_scope,
+        "scope_label": "Relevant Inventory Items" if normalized_scope == "relevant" else "All Live Base Foods",
+        "contract_version": "inventory.catalog_review.v1",
+    }

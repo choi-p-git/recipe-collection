@@ -15,6 +15,7 @@ from services.inventory_service import (
 from services.inventory_bridge_service import (
     create_inventory_catalog_item,
     create_inventory_item_match,
+    get_inventory_catalog_review_page,
     get_inventory_availability_for_items,
     resolve_inventory_for_recipe_item,
 )
@@ -414,6 +415,103 @@ def test_manual_inventory_match_can_exist_without_count_rows(isolated_db):
     assert availability[0]["confidence_score"] == 0.95
     assert availability[0]["on_hand_quantity_display"] == "0"
     assert availability[0]["purchase_uom"] == "Case"
+
+
+def test_inventory_catalog_review_page_surfaces_unmatched_and_match_types(isolated_db):
+    unrelated_id = _live_base_food(isolated_db, "Inventory Review Unrelated")
+    manual_id = _live_base_food(isolated_db, "Inventory Review Manual")
+    legacy_id = _live_base_food(isolated_db, "Inventory Review Legacy")
+    catalog_item_id = create_inventory_catalog_item(
+        display_name="Vendor Manual Match",
+        vendor_name="Review Vendor",
+        vendor_item_code="REV-1",
+        purchase_uom="Case",
+        pack_quantity="2",
+        pack_size_text="5 lb",
+    )
+    create_inventory_item_match(
+        recipe_collection_item_id=manual_id,
+        inventory_catalog_item_id=catalog_item_id,
+        match_type="manual",
+        confidence_score="0.97",
+    )
+    location_id = create_inventory_location(
+        location_name="Review Storage",
+        actor_user_id="dev_user_001",
+        actor_display_name="Plato Choi",
+    )
+    save_inventory_location_item(
+        inventory_location_id=location_id,
+        item_id=manual_id,
+        count_each_quantity="2",
+        unit_of_measurement="Lb",
+        count_type="counted_by_each_only",
+    )
+    save_inventory_location_item(
+        inventory_location_id=location_id,
+        item_id=legacy_id,
+        count_each_quantity="3",
+        unit_of_measurement="Lb",
+        count_type="counted_by_each_only",
+    )
+    menu_id = create_menu(
+        menu_name="Inventory Review Planning Menu",
+        author_user_id="dev_user_001",
+        author_display_name="Plato Choi",
+        service_days=["thursday"],
+        meal_periods=["lunch"],
+        concepts=["hot_line"],
+        menu_length_weeks=1,
+        menu_start_date="2026-05-28",
+        menu_end_date="2026-05-28",
+        require_date_range=True,
+        allowed_service_days=["thursday"],
+        allowed_meal_periods=["lunch"],
+        allowed_concepts=["hot_line"],
+    )
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT menu_slot_id FROM menu_slot WHERE menu_id = ?", (menu_id,))
+    slot_id = cursor.fetchone()[0]
+    conn.close()
+    replace_menu_slot_items(menu_slot_id=slot_id, selected_item_ids=[manual_id, legacy_id], actor_user_id="dev_user_001")
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT menu_slot_item_id, item_id
+        FROM menu_slot_item
+        WHERE menu_slot_id = ?
+        """,
+        (slot_id,),
+    )
+    slot_items = {item_id: slot_item_id for slot_item_id, item_id in cursor.fetchall()}
+    conn.close()
+    for item_id, slot_item_id in slot_items.items():
+        save_menu_forecast_yield(
+            menu_id=menu_id,
+            menu_slot_item_id=slot_item_id,
+            actor_user_id="dev_user_001",
+            forecast_yield_quantity=1,
+            forecast_yield_unit="lb",
+        )
+
+    page = get_inventory_catalog_review_page(scope="relevant", actor_user_id="dev_user_001")
+    all_page = get_inventory_catalog_review_page(scope="all")
+    rows_by_id = {row["item_id"]: row for row in page["rows"]}
+    all_rows_by_id = {row["item_id"]: row for row in all_page["rows"]}
+
+    assert page["contract_version"] == "inventory.catalog_review.v1"
+    assert page["scope"] == "relevant"
+    assert unrelated_id not in rows_by_id
+    assert all_rows_by_id[unrelated_id]["review_status"] == "unmatched"
+    assert rows_by_id[manual_id]["review_status"] == "manual_match"
+    assert rows_by_id[manual_id]["needs_review"] is False
+    assert rows_by_id[manual_id]["vendor_name"] == "Review Vendor"
+    assert rows_by_id[legacy_id]["review_status"] == "legacy_match"
+    assert rows_by_id[legacy_id]["needs_review"] is True
+    assert page["totals"]["unmatched_count"] == 0
+    assert all_page["totals"]["unmatched_count"] >= 1
 
 
 def test_inventory_item_detail_groups_recipe_usage_and_count_rolldown(isolated_db):

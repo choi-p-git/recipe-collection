@@ -78,6 +78,7 @@ Current Features
 - Dedicated `/inventory/planning` page for first-pass reorder/shortage coverage.
 - Inventory planning preferences let users define a vendor, check covered item categories, and apply delivery-day-specific cutoff rules plus preferred in-house lead days.
 - Inventory catalog and item-match bridge foundation for future invoice/vendor matching.
+- `/inventory/catalog/review` review-only page for live base-food catalog matches.
 
 Inventory Notes
 ---------------
@@ -88,6 +89,8 @@ Inventory Notes
 - Reorder planning uses configured vendor/category ordering preferences to expose vendor, preferred in-house date, planned delivery date, and the cutoff tied to that delivery day. Categories without preferences use a clearly-marked default 7-day planning window.
 - Inventory Planning initially shows the next 3 operation days, with the rest of the planning set available behind the page action.
 - The base Inventory dashboard links to planning without running the expensive planning calculation during `/inventory` render.
+- Catalog review defaults to demand-relevant rows only: current planning-window items, explicit review-needed rows, and auto/vendor-derived matches. `scope=all` is available for admin/audit debugging.
+- Future invoice ingest should stage vendor invoice/catalog lines from API, CSV, PDF, or email sources, match by vendor item id/catalog id first, and prompt users to add unmatched items to inventory sub-locations with invoice history attached.
 - Future invoice/accounting work should use Inventory purchase UoM and pack setup as the costing bridge, and will need item-level vendor mapping for categories split across multiple vendors.
 
 Development Data
@@ -142,13 +145,15 @@ Detailed agent-facing implementation guidance has moved out of this README:
 Current Roadmap
 ---------------
 
-1. Add Inventory review UI for unmatched, ambiguous, and invoice-auto-matched inventory catalog items.
-2. Expand Inventory reorder/shortage planning beyond counted items to include upcoming base-food needs with no current count row.
-3. Add item-level vendor/source mapping for invoice/catalog ingestion where category-level vendor rules are not specific enough.
-4. Expand Inventory availability from menu item rollups to recipe ingredient demand rollups.
-5. Add Forecast/Production forecast-error trend reporting by item over time using posted facts.
-6. Refine posted facts only through versioned contract changes.
-7. Defer analytics algorithms until usage, menu, inventory, purchasing, and cost record contracts are stable.
+1. Scaffold Inventory invoice/catalog staging contracts with a small CSV/manual fixture path.
+2. Add invoice line match review and prompt-to-add-to-location workflow for unmatched vendor lines.
+3. Add Inventory catalog match editing/confirmation after invoice/catalog review proves the row model.
+4. Expand Inventory reorder/shortage planning beyond counted items to include upcoming base-food needs with no current count row.
+5. Add item-level vendor/source mapping for invoice/catalog ingestion where category-level vendor rules are not specific enough.
+6. Expand Inventory availability from menu item rollups to recipe ingredient demand rollups.
+7. Add Forecast/Production forecast-error trend reporting by item over time using posted facts.
+8. Refine posted facts only through versioned contract changes.
+9. Defer analytics algorithms until usage, menu, inventory, purchasing, and cost record contracts are stable.
 
 Patch Notes
 -----------
