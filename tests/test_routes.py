@@ -928,7 +928,13 @@ def test_production_record_route_defaults_to_current_service_day(app_client, iso
     assert record_count == 1
 
 
-def test_production_record_route_snapshots_forecast_and_saves_variance(app_client, isolated_db):
+def test_production_record_route_snapshots_forecast_and_saves_variance(app_client, isolated_db, monkeypatch):
+    from datetime import date
+
+    import app as app_module
+
+    monkeypatch.setattr(app_module, "_current_service_date", lambda: date(2026, 5, 6))
+
     base_food_id = create_base_food(item_name="Production Record Base")
     recipe_id = create_recipe(
         {
@@ -1251,6 +1257,31 @@ def test_production_record_route_snapshots_forecast_and_saves_variance(app_clien
     assert f"/menus/{menu_id}/production-record/{production_record_id}/export.csv" in history_page
     assert f"/menus/{menu_id}/service-context?week=1&amp;day=monday" in history_page
     assert "variance-occurrences" in history_page
+    assert f'href="/menus/{menu_id}/production-record/history?view=items"' in history_page
+
+    grouped_history_response = app_client.get(f"/menus/{menu_id}/production-record/history?view=items")
+    grouped_history_page = grouped_history_response.get_data(as_text=True)
+
+    assert grouped_history_response.status_code == 200
+    assert "Grouped Item Trends" in grouped_history_page
+    assert "Grouped By Item" in grouped_history_page
+    assert 'name="view" value="items"' in grouped_history_page
+    assert 'id="history_date_from" name="date_from" type="date" value="2026-05-04"' in grouped_history_page
+    assert 'id="history_date_to" name="date_to" type="date" value="2026-05-06"' in grouped_history_page
+    assert "Production Record Soup" in grouped_history_page
+    assert "1 occurrences" in grouped_history_page
+    assert "1 Half pan, 4&#34;" in grouped_history_page
+    assert "As Expected" in grouped_history_page
+    assert "Use kettle B next time" in grouped_history_page
+    assert f"/menus/{menu_id}/service-context?week=1&amp;day=monday" in grouped_history_page
+
+    empty_grouped_history_response = app_client.get(
+        f"/menus/{menu_id}/production-record/history?view=items&date_from=2026-05-07"
+    )
+    empty_grouped_history_page = empty_grouped_history_response.get_data(as_text=True)
+
+    assert empty_grouped_history_response.status_code == 200
+    assert "No item trend rows match this view." in empty_grouped_history_page
 
     leftover_occurrences_response = app_client.get(
         f"/api/menus/{menu_id}/production-record/history/variance-occurrences"

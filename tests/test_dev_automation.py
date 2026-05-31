@@ -134,6 +134,50 @@ def test_dev_menu_automation_can_post_records_when_requested(isolated_db):
     conn.close()
 
 
+def test_dev_menu_automation_repeats_cycle_assignments(isolated_db):
+    result = run_dev_menu_automation(
+        AutomationConfig(
+            menu_name="Automation Repeating Menu",
+            start_date=date(2026, 6, 1),
+            weeks=5,
+            menu_cycle_weeks=2,
+            service_days=("monday",),
+            meal_periods=("breakfast",),
+            concepts=("hot_line",),
+            min_items_per_slot=3,
+            max_items_per_slot=3,
+            random_seed=13,
+        )
+    )
+
+    conn = sqlite3.connect(isolated_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT
+            ms.week_number,
+            msi.item_id
+        FROM menu_slot ms
+        JOIN menu_slot_item msi
+          ON msi.menu_slot_id = ms.menu_slot_id
+        WHERE ms.menu_id = ?
+        ORDER BY ms.week_number ASC, ms.menu_slot_id ASC, msi.item_sequence ASC
+        """,
+        (result["menu_id"],),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+
+    assignments_by_week = {}
+    for week_number, item_id in rows:
+        assignments_by_week.setdefault(week_number, []).append(item_id)
+    assert result["weeks"] == 5
+    assert result["menu_cycle_weeks"] == 2
+    assert assignments_by_week[3] == assignments_by_week[1]
+    assert assignments_by_week[4] == assignments_by_week[2]
+    assert assignments_by_week[5] == assignments_by_week[1]
+
+
 def test_dev_inventory_automation_populates_locations_and_menu_ingredients(isolated_db):
     menu_result = run_dev_menu_automation(
         AutomationConfig(

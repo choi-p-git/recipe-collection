@@ -102,7 +102,7 @@ Empty real databases bootstrap with a reusable seed catalog from `src/seed_catal
 - 100 simple recipes
 - 100 complex recipes
 
-`src/dev_automation.py` can create randomized menu, forecast, production-record, and inventory operating data for manual workflow testing.
+`src/dev_automation.py` can create randomized menu, forecast, production-record, and inventory operating data for manual workflow testing. The default menu automation creates a 16-week Monday-Friday breakfast/lunch menu from a repeated 4-week hot-line/cold-line/grab-go cycle.
 
 Examples:
 

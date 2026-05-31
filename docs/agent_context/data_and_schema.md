@@ -48,12 +48,13 @@ Do not scatter controlled-list semantics in templates.
 
 Current default shape:
 
-- 8 weeks
+- 16 total weeks built from a 4-week menu cycle.
+    - Generate/populate weeks 1-4, then copy that 4-week pattern into weeks 5-8, 9-12, and 13-16.
 - Monday-Friday
-- breakfast and dinner
-- elementary/middle/high concepts
+- breakfast and lunch
+- hot line, cold line, grab go concepts
 
-Inventory automation should run after at least one populated menu exists. It parses populated menu cells, expands recipe assignments into flattened base-food ingredients, creates default inventory storage/sub-storage structure, distributes items, and saves randomized case-only count rows through Inventory service paths.
+Inventory automation should run after at least one populated menu exists. It parses populated menu cells, expands recipe assignments into flattened base-food ingredients, creates default inventory storage/sub-storage structure, distributes items, and saves randomized each/case count rows through Inventory service paths.
 
 ## Validation Checklist
 

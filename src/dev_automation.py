@@ -27,9 +27,10 @@ from services.recipe_flattening_service import build_flattened_recipe_view
 DEV_AUTOMATION_USER_ID = "dev_user_001"
 DEV_AUTOMATION_DISPLAY_NAME = "Plato Choi"
 DEFAULT_SERVICE_DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday"]
-DEFAULT_MEAL_PERIODS = ["breakfast", "dinner"]
+DEFAULT_MEAL_PERIODS = ["breakfast", "lunch"]
 DEFAULT_CONCEPTS = ["hot_line", "cold_line", "grab_go"]
-DEFAULT_WEEKS = 8
+DEFAULT_WEEKS = 16
+DEFAULT_MENU_CYCLE_WEEKS = 4
 DEFAULT_MIN_ITEMS = 3
 DEFAULT_MAX_ITEMS = 5
 DEFAULT_RANDOM_SEED = 42
@@ -53,6 +54,7 @@ class AutomationConfig:
     menu_name: str = "Dev Automation Draft Menu"
     start_date: date | None = None
     weeks: int = DEFAULT_WEEKS
+    menu_cycle_weeks: int = DEFAULT_MENU_CYCLE_WEEKS
     service_days: tuple[str, ...] = tuple(DEFAULT_SERVICE_DAYS)
     meal_periods: tuple[str, ...] = tuple(DEFAULT_MEAL_PERIODS)
     concepts: tuple[str, ...] = tuple(DEFAULT_CONCEPTS)
@@ -160,6 +162,15 @@ def _load_menu_slots(menu_id: int) -> list[dict]:
             }
             for row in cursor.fetchall()
         ]
+
+
+def _slot_pattern_key(slot: dict, *, week_number: int | None = None) -> tuple[int, str, str, str]:
+    return (
+        int(week_number if week_number is not None else slot["week_number"]),
+        slot["day_of_week"],
+        slot["meal_period"],
+        slot["concept_name"],
+    )
 
 
 def _load_menu_slot_items(menu_id: int) -> list[dict]:
@@ -533,6 +544,8 @@ def run_dev_menu_automation(config: AutomationConfig | None = None) -> dict:
     config = config or AutomationConfig()
     if config.weeks <= 0:
         raise ValueError("weeks must be greater than zero.")
+    if config.menu_cycle_weeks <= 0:
+        raise ValueError("menu cycle weeks must be greater than zero.")
     if config.min_items_per_slot <= 0 or config.max_items_per_slot < config.min_items_per_slot:
         raise ValueError("item range must be positive and min cannot exceed max.")
 
@@ -564,13 +577,20 @@ def run_dev_menu_automation(config: AutomationConfig | None = None) -> dict:
 
     slots = _load_menu_slots(menu_id)
     assignment_count = 0
+    cycle_weeks = min(config.menu_cycle_weeks, config.weeks)
+    cycle_assignments: dict[tuple[int, str, str, str], list[int]] = {}
     for slot in slots:
-        item_ids = _choose_slot_items(
-            rng=rng,
-            live_items=live_items,
-            min_items=config.min_items_per_slot,
-            max_items=config.max_items_per_slot,
-        )
+        if slot["week_number"] <= cycle_weeks:
+            item_ids = _choose_slot_items(
+                rng=rng,
+                live_items=live_items,
+                min_items=config.min_items_per_slot,
+                max_items=config.max_items_per_slot,
+            )
+            cycle_assignments[_slot_pattern_key(slot)] = item_ids
+        else:
+            source_week = ((slot["week_number"] - 1) % cycle_weeks) + 1
+            item_ids = cycle_assignments[_slot_pattern_key(slot, week_number=source_week)]
         replace_menu_slot_items(
             menu_slot_id=slot["menu_slot_id"],
             selected_item_ids=item_ids,
@@ -643,6 +663,7 @@ def run_dev_menu_automation(config: AutomationConfig | None = None) -> dict:
         "menu_start_date": start_date.isoformat(),
         "menu_end_date": end_date.isoformat(),
         "weeks": config.weeks,
+        "menu_cycle_weeks": cycle_weeks,
         "slot_count": len(slots),
         "assignment_count": assignment_count,
         "forecast_count": forecast_count,
@@ -758,8 +779,14 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--menu-name", default="Dev Automation Draft Menu")
     parser.add_argument("--start-date", help="Menu start date in YYYY-MM-DD format. Defaults to the next Monday.")
     parser.add_argument("--weeks", type=int, default=DEFAULT_WEEKS)
+    parser.add_argument(
+        "--cycle-weeks",
+        type=int,
+        default=DEFAULT_MENU_CYCLE_WEEKS,
+        help="Number of initial weeks to randomize before repeating the pattern.",
+    )
     parser.add_argument("--service-days", help="Comma-separated days. Defaults to monday-friday.")
-    parser.add_argument("--meal-periods", help="Comma-separated meal periods. Defaults to breakfast,dinner.")
+    parser.add_argument("--meal-periods", help="Comma-separated meal periods. Defaults to breakfast,lunch.")
     parser.add_argument("--concepts", help="Comma-separated concepts. Defaults to hot_line,cold_line,grab_go.")
     parser.add_argument("--min-items", type=int, default=DEFAULT_MIN_ITEMS)
     parser.add_argument("--max-items", type=int, default=DEFAULT_MAX_ITEMS)
@@ -801,6 +828,7 @@ def main() -> None:
         menu_name=args.menu_name,
         start_date=date.fromisoformat(args.start_date) if args.start_date else None,
         weeks=args.weeks,
+        menu_cycle_weeks=args.cycle_weeks,
         service_days=_normalize_csv_values(args.service_days, defaults=DEFAULT_SERVICE_DAYS, allowed=allowed_days),
         meal_periods=_normalize_csv_values(args.meal_periods, defaults=DEFAULT_MEAL_PERIODS, allowed=allowed_meals),
         concepts=_normalize_csv_values(args.concepts, defaults=DEFAULT_CONCEPTS, allowed=allowed_concepts),

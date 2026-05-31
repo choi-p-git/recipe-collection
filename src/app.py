@@ -76,6 +76,7 @@ from services.production_record_service import (
     get_production_record_for_service_day,
     get_production_record_review,
     get_posted_production_facts_for_menu,
+    list_production_record_item_trends_for_menu,
     list_production_records_for_menu,
     post_production_record,
     save_production_record_line,
@@ -1220,16 +1221,53 @@ def production_record_history(menu_id: int):
 
     current_user = get_current_mock_user(session)
     history_filter_payload = _production_history_filter_payload(request.args)
+    history_view = history_filter_payload.get("view", "records")
+    if history_view not in {"records", "items"}:
+        history_view = "records"
+        history_filter_payload["view"] = "records"
+
+    history = None
+    item_trends = None
     try:
-        history = list_production_records_for_menu(
-            menu_id=menu_id,
-            actor_user_id=current_user["user_id"],
-            service_date_lookup=menu.get("week_day_dates", {}),
-            filters=history_filter_payload,
-        )
+        if history_view == "items":
+            default_date_from = str(menu.get("menu_start_date") or "").strip()
+            default_date_to = _current_service_date().isoformat()
+            if default_date_from:
+                try:
+                    menu_start = date.fromisoformat(default_date_from)
+                    current_service_day = date.fromisoformat(default_date_to)
+                    if current_service_day < menu_start:
+                        default_date_to = default_date_from
+                except ValueError:
+                    pass
+            item_trends = list_production_record_item_trends_for_menu(
+                menu_id=menu_id,
+                actor_user_id=current_user["user_id"],
+                service_date_lookup=menu.get("week_day_dates", {}),
+                filters=history_filter_payload,
+                default_date_from=default_date_from,
+                default_date_to=default_date_to,
+            )
+            history_filters = item_trends["filters"]
+        else:
+            history = list_production_records_for_menu(
+                menu_id=menu_id,
+                actor_user_id=current_user["user_id"],
+                service_date_lookup=menu.get("week_day_dates", {}),
+                filters=history_filter_payload,
+            )
+            history_filters = history["filters"]
     except InvalidProductionRecordError as exc:
         flash(str(exc), "error")
         return redirect(url_for("menus"))
+
+    def _history_url(**overrides) -> str:
+        args = request.args.to_dict()
+        args.update(overrides)
+        if args.get("view") == "records":
+            args.pop("view", None)
+        clean_args = {key: value for key, value in args.items() if value}
+        return url_for("production_record_history", menu_id=menu_id, **clean_args)
 
     def _history_sort_url(sort_param: str, direction_param: str, sort_value: str) -> str:
         args = request.args.to_dict()
@@ -1256,14 +1294,28 @@ def production_record_history(menu_id: int):
         clean_args = {key: value for key, value in args.items() if value}
         return url_for("api_production_record_variance_occurrences", menu_id=menu_id, **clean_args)
 
-    for item in history["report"]["variance_by_item"]:
+    for item in (history or {}).get("report", {}).get("variance_by_item", []):
         item["leftover_occurrences_url"] = _variance_occurrences_url(item, "leftover")
         item["shortage_occurrences_url"] = _variance_occurrences_url(item, "shortage")
+
+    reset_url_args = {"view": "items"} if history_view == "items" else {}
 
     return render_template(
         "production_record_history.html",
         menu=menu,
         history=history,
+        item_trends=item_trends,
+        history_view=history_view,
+        history_filters=history_filters,
+        history_view_urls={
+            "records": _history_url(view="records"),
+            "items": _history_url(view="items"),
+        },
+        history_reset_url=url_for(
+            "production_record_history",
+            menu_id=menu_id,
+            **reset_url_args,
+        ),
         history_sort_urls={
             "reason_lines": _history_sort_url("reason_sort", "reason_dir", "lines"),
             "variance_leftover": _history_sort_url("variance_sort", "variance_dir", "leftover"),
@@ -1276,6 +1328,7 @@ def production_record_history(menu_id: int):
 
 def _production_history_filter_payload(args) -> dict:
     return {
+        "view": args.get("view", "records"),
         "status": args.get("status", ""),
         "accuracy": args.get("accuracy", ""),
         "reason_code": args.get("reason_code", ""),

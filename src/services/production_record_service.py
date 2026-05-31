@@ -43,7 +43,9 @@ PRODUCTION_RECORD_STATUS_LABELS = {
     "draft": "Draft",
     "posted": "Posted",
 }
+PRODUCTION_RECORD_HISTORY_CYCLE_WEEKS = 4
 PRODUCTION_RECORD_HISTORY_FILTER_DEFAULTS = {
+    "view": "records",
     "status": "",
     "accuracy": "",
     "reason_code": "",
@@ -249,11 +251,20 @@ def _build_record_summary(lines: list[dict]) -> dict:
     return summary
 
 
+def _is_recorded_line(line: dict) -> bool:
+    return (
+        line.get("actual_quantity") is not None
+        and line.get("end_service_variance_quantity") is not None
+    )
+
+
 def _normalize_history_filters(filters: dict | None) -> dict:
     normalized = dict(PRODUCTION_RECORD_HISTORY_FILTER_DEFAULTS)
     for key in normalized:
         normalized[key] = str((filters or {}).get(key, "") or "").strip()
 
+    if normalized["view"] not in {"records", "items"}:
+        normalized["view"] = "records"
     if normalized["status"] not in {"", "draft", "posted"}:
         normalized["status"] = ""
     if normalized["accuracy"] not in {"", "accurate", "review", "miss", "unrecorded"}:
@@ -276,6 +287,20 @@ def _normalize_history_filters(filters: dict | None) -> dict:
     except ValueError:
         normalized["week"] = ""
 
+    return normalized
+
+
+def _apply_item_trend_default_dates(
+    filters: dict,
+    *,
+    default_date_from: str = "",
+    default_date_to: str = "",
+) -> dict:
+    normalized = dict(filters)
+    if not normalized["date_from"] and default_date_from:
+        normalized["date_from"] = str(default_date_from)
+    if not normalized["date_to"] and default_date_to:
+        normalized["date_to"] = str(default_date_to)
     return normalized
 
 
@@ -337,6 +362,83 @@ def _build_history_totals(records: list[dict]) -> dict:
         for key in ("total", "recorded", "unrecorded", "accurate", "review", "miss"):
             totals["total_lines" if key == "total" else key] += record["summary"][key]
     return totals
+
+
+def _build_item_trend_totals(groups: list[dict]) -> dict:
+    totals = {
+        "group_count": len(groups),
+        "occurrence_count": 0,
+        "recorded": 0,
+        "unrecorded": 0,
+        "accurate": 0,
+        "review": 0,
+        "miss": 0,
+    }
+    for group in groups:
+        totals["occurrence_count"] += group["occurrence_count"]
+        totals["recorded"] += group["recorded"]
+        totals["unrecorded"] += group["unrecorded"]
+        totals["accurate"] += group["accurate"]
+        totals["review"] += group["review"]
+        totals["miss"] += group["miss"]
+    return totals
+
+
+def _history_cycle_day_sort(day_of_week: str) -> int:
+    return {
+        "sunday": 0,
+        "monday": 1,
+        "tuesday": 2,
+        "wednesday": 3,
+        "thursday": 4,
+        "friday": 5,
+        "saturday": 6,
+    }.get(day_of_week, 7)
+
+
+def _build_cycle_day_groups(rows: list[dict]) -> list[dict]:
+    groups_by_cycle_day: dict[tuple[int, str], dict] = {}
+    for row in rows:
+        cycle_week = ((int(row["week_number"]) - 1) % PRODUCTION_RECORD_HISTORY_CYCLE_WEEKS) + 1
+        cycle_day_key = (cycle_week, row["day_of_week"])
+        group = groups_by_cycle_day.setdefault(
+            cycle_day_key,
+            {
+                "cycle_week": cycle_week,
+                "day_of_week": row["day_of_week"],
+                "day_label": row["day_label"],
+                "label": f"Cycle Week {cycle_week} {row['day_label']}",
+                "rows": [],
+            },
+        )
+        group["rows"].append(row)
+
+    return sorted(
+        groups_by_cycle_day.values(),
+        key=lambda group: (
+            group["cycle_week"],
+            _history_cycle_day_sort(group["day_of_week"]),
+        ),
+    )
+
+
+def _finalize_item_trend_groups(groups_by_item: dict[int, dict]) -> list[dict]:
+    groups = []
+    for group in groups_by_item.values():
+        error_values = group.pop("_forecast_error_values")
+        group["occurrence_count"] = len(group["rows"])
+        group["average_forecast_error_percent"] = (
+            sum(error_values) / len(error_values)
+            if error_values
+            else None
+        )
+        group["average_forecast_error_percent_display"] = _format_quantity(
+            group["average_forecast_error_percent"]
+        )
+        group["cycle_day_groups"] = _build_cycle_day_groups(group["rows"])
+        groups.append(group)
+
+    return sorted(groups, key=lambda row: (row["recipe_name"].casefold(), row["item_id"]))
 
 
 def _build_history_report(records: list[dict], filters: dict | None = None) -> dict:
@@ -1186,6 +1288,180 @@ def list_production_records_for_menu(
         "records": records,
         "totals": _build_history_totals(records),
         "report": _build_history_report(records, normalized_filters),
+        "filters": normalized_filters,
+    }
+
+
+def list_production_record_item_trends_for_menu(
+    *,
+    menu_id: int,
+    actor_user_id: str,
+    service_date_lookup: dict | None = None,
+    filters: dict | None = None,
+    default_date_from: str = "",
+    default_date_to: str = "",
+) -> dict:
+    initialize_database()
+    normalized_filters = _apply_item_trend_default_dates(
+        _normalize_history_filters(filters),
+        default_date_from=default_date_from,
+        default_date_to=default_date_to,
+    )
+    normalized_filters["view"] = "items"
+
+    where_clauses = ["pr.menu_id = ?"]
+    query_params: list = [menu_id]
+    if normalized_filters["status"]:
+        where_clauses.append("pr.status = ?")
+        query_params.append(normalized_filters["status"])
+    if normalized_filters["week"]:
+        where_clauses.append("pr.week_number = ?")
+        query_params.append(int(normalized_filters["week"]))
+    if normalized_filters["day"]:
+        where_clauses.append("pr.day_of_week = ?")
+        query_params.append(normalized_filters["day"])
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        _ensure_menu_can_update(cursor, menu_id=menu_id, actor_user_id=actor_user_id)
+        cursor.execute(
+            f"""
+            SELECT
+                pr.production_record_id,
+                pr.week_number,
+                pr.day_of_week,
+                pr.status,
+                pr.updated_at,
+                prl.production_record_line_id,
+                prl.production_record_id,
+                prl.item_id,
+                prl.recipe_name,
+                prl.assignment_count,
+                prl.slot_labels_json,
+                prl.forecast_quantity,
+                prl.forecast_unit,
+                prl.actual_quantity,
+                prl.actual_unit,
+                prl.variance_quantity,
+                prl.variance_unit,
+                prl.variance_percent,
+                prl.variance_level,
+                prl.end_service_variance_quantity,
+                prl.end_service_variance_unit,
+                prl.implied_demand_quantity,
+                prl.implied_demand_unit,
+                prl.forecast_error_quantity,
+                prl.forecast_error_unit,
+                prl.forecast_error_percent,
+                prl.forecast_accuracy_level,
+                prl.reason_code,
+                prl.reason_note,
+                prl.notes,
+                prl.actual_quantity_formula,
+                prl.end_service_variance_quantity_formula
+            FROM production_record pr
+            JOIN production_record_line prl
+              ON pr.production_record_id = prl.production_record_id
+            WHERE {" AND ".join(where_clauses)}
+            ORDER BY pr.week_number ASC,
+                     CASE pr.day_of_week
+                        WHEN 'sunday' THEN 0
+                        WHEN 'monday' THEN 1
+                        WHEN 'tuesday' THEN 2
+                        WHEN 'wednesday' THEN 3
+                        WHEN 'thursday' THEN 4
+                        WHEN 'friday' THEN 5
+                        WHEN 'saturday' THEN 6
+                        ELSE 7
+                     END ASC,
+                     prl.recipe_name ASC,
+                     prl.item_id ASC
+            """,
+            tuple(query_params),
+        )
+        rows = cursor.fetchall()
+
+    groups_by_item: dict[int, dict] = {}
+    for row in rows:
+        record_week = int(row[1])
+        record_day = row[2]
+        service_date = (service_date_lookup or {}).get(record_week, {}).get(record_day, {})
+        record = {
+            "week_number": record_week,
+            "day_of_week": record_day,
+            "status": row[3],
+            "service_date": service_date,
+        }
+        if not _record_matches_history_filters(record, normalized_filters):
+            continue
+
+        line = _build_line_payload(row[5:])
+        if not _line_matches_history_filters(line, normalized_filters):
+            continue
+
+        item_id = line["item_id"]
+        group = groups_by_item.setdefault(
+            item_id,
+            {
+                "item_id": item_id,
+                "recipe_name": line["recipe_name"],
+                "rows": [],
+                "occurrence_count": 0,
+                "recorded": 0,
+                "unrecorded": 0,
+                "accurate": 0,
+                "review": 0,
+                "miss": 0,
+                "_forecast_error_values": [],
+            },
+        )
+        recorded = _is_recorded_line(line)
+        accuracy_level = line.get("forecast_accuracy_level")
+        if recorded:
+            group["recorded"] += 1
+            if accuracy_level in {"accurate", "review", "miss"}:
+                group[accuracy_level] += 1
+        else:
+            group["unrecorded"] += 1
+
+        if line.get("forecast_error_percent") is not None:
+            group["_forecast_error_values"].append(float(line["forecast_error_percent"]))
+
+        group["rows"].append(
+            {
+                "production_record_id": int(row[0]),
+                "production_record_line_id": line["production_record_line_id"],
+                "week_number": record_week,
+                "day_of_week": record_day,
+                "day_label": str(record_day).title(),
+                "status": row[3],
+                "status_label": PRODUCTION_RECORD_STATUS_LABELS.get(row[3], str(row[3]).title()),
+                "is_posted": row[3] == "posted",
+                "updated_at": row[4],
+                "service_date": service_date.get("date", ""),
+                "service_date_display": service_date.get("display") or f"Week {record_week} {str(record_day).title()}",
+                "forecast_quantity_display": line["forecast_quantity_display"],
+                "forecast_unit": line["forecast_unit"],
+                "actual_quantity_display": line["actual_quantity_display"],
+                "actual_unit": line["actual_unit"],
+                "implied_demand_quantity_display": line["implied_demand_quantity_display"],
+                "implied_demand_unit": line["implied_demand_unit"],
+                "forecast_error_quantity_display": line["forecast_error_quantity_display"],
+                "forecast_error_unit": line["forecast_error_unit"],
+                "forecast_error_percent_display": line["forecast_error_percent_display"],
+                "forecast_accuracy_level": accuracy_level or "",
+                "reason_label": line.get("reason_label", ""),
+                "reason_note": line.get("reason_note", ""),
+                "notes": line.get("notes", ""),
+                "has_notes": bool(line.get("reason_note", "") or line.get("notes", "")),
+                "recorded": recorded,
+            }
+        )
+
+    groups = _finalize_item_trend_groups(groups_by_item)
+    return {
+        "groups": groups,
+        "totals": _build_item_trend_totals(groups),
         "filters": normalized_filters,
     }
 

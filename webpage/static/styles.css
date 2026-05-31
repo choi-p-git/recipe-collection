@@ -1955,6 +1955,11 @@ button:disabled {
     align-items: end;
 }
 
+.production-record-history-view-toggle {
+    align-items: center;
+    margin-bottom: 0.85rem;
+}
+
 .production-record-history-filter-form input,
 .production-record-history-filter-form select {
     min-width: 8rem;
@@ -2045,6 +2050,134 @@ button:disabled {
 .production-record-variance-history-panel {
     text-wrap: wrap;
     white-space: normal;
+}
+
+.production-record-item-trend-list {
+    display: grid;
+    gap: 1rem;
+}
+
+.production-record-item-trend {
+    border-top: 1px solid #e5e7eb;
+    padding-top: 1rem;
+}
+
+.production-record-item-trend:first-child {
+    border-top: 0;
+    padding-top: 0;
+}
+
+.production-record-item-trend-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: flex-start;
+    margin-bottom: 0.65rem;
+}
+
+.production-record-item-trend-header h4 {
+    margin: 0 0 0.2rem;
+}
+
+.production-record-item-trend-header p {
+    margin: 0;
+}
+
+.production-record-item-trend-stats {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.45rem;
+    text-align: right;
+}
+
+.production-record-item-trend-note {
+    margin: 0 0 0.65rem;
+    padding-left: 0.75rem;
+    border-left: 3px solid #dbeafe;
+}
+
+.production-record-cycle-day-list {
+    display: grid;
+    gap: 0.9rem;
+    margin-left: 1rem;
+    padding-left: 0.9rem;
+    border-left: 2px solid #e5e7eb;
+}
+
+.production-record-cycle-day-group {
+    display: grid;
+    gap: 0.45rem;
+}
+
+.production-record-cycle-day-heading {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    align-items: baseline;
+}
+
+.production-record-cycle-day-heading h5 {
+    margin: 0;
+    font-size: 0.98rem;
+}
+
+.production-record-item-trend-table-shell {
+    overflow-x: auto;
+}
+
+.production-record-item-trend-table {
+    min-width: 58rem;
+    table-layout: fixed;
+}
+
+.production-record-item-trend-table th,
+.production-record-item-trend-table td {
+    padding: 0.45rem 0.5rem;
+    text-align: left;
+    vertical-align: top;
+}
+
+.production-record-item-trend-table th:nth-child(1),
+.production-record-item-trend-table td:nth-child(1) {
+    width: 11%;
+}
+
+.production-record-item-trend-table th:nth-child(2),
+.production-record-item-trend-table td:nth-child(2) {
+    width: 8%;
+}
+
+.production-record-item-trend-table th:nth-child(3),
+.production-record-item-trend-table td:nth-child(3),
+.production-record-item-trend-table th:nth-child(4),
+.production-record-item-trend-table td:nth-child(4),
+.production-record-item-trend-table th:nth-child(5),
+.production-record-item-trend-table td:nth-child(5) {
+    width: 11%;
+}
+
+.production-record-item-trend-table th:nth-child(6),
+.production-record-item-trend-table td:nth-child(6) {
+    width: 12%;
+}
+
+.production-record-item-trend-table th:nth-child(7),
+.production-record-item-trend-table td:nth-child(7) {
+    width: 28%;
+}
+
+.production-record-item-trend-table th:nth-child(8),
+.production-record-item-trend-table td:nth-child(8) {
+    width: 8%;
+}
+
+.production-record-item-trend-table tr[data-forecast-accuracy-level="review"] {
+    background: #fffbeb;
+}
+
+.production-record-item-trend-table tr[data-forecast-accuracy-level="miss"] {
+    background: #fff1f2;
 }
 
 .production-record-variance-history-panel-left {
@@ -3465,6 +3598,61 @@ button:disabled {
 
     .production-record-report-grid {
         grid-template-columns: 1fr;
+    }
+
+    .production-record-item-trend-header {
+        flex-direction: column;
+    }
+
+    .production-record-item-trend-stats {
+        justify-content: flex-start;
+        text-align: left;
+    }
+
+    .production-record-cycle-day-list {
+        margin-left: 0;
+        padding-left: 0.7rem;
+    }
+
+    .production-record-cycle-day-heading {
+        flex-direction: column;
+        gap: 0.1rem;
+        align-items: flex-start;
+    }
+
+    .production-record-item-trend-table {
+        min-width: 0;
+    }
+
+    .production-record-item-trend-table thead {
+        display: none;
+    }
+
+    .production-record-item-trend-table,
+    .production-record-item-trend-table tbody,
+    .production-record-item-trend-table tr,
+    .production-record-item-trend-table td {
+        display: block;
+        width: 100%;
+    }
+
+    .production-record-item-trend-table tr {
+        padding: 0.65rem 0;
+        border-bottom: 1px solid #e5e7eb;
+    }
+
+    .production-record-item-trend-table td {
+        display: grid;
+        grid-template-columns: minmax(7rem, 0.4fr) 1fr;
+        gap: 0.65rem;
+        border: 0;
+        padding: 0.18rem 0;
+    }
+
+    .production-record-item-trend-table td::before {
+        content: attr(data-label);
+        font-weight: 700;
+        color: #4b5563;
     }
 
     .production-record-review-actions {
